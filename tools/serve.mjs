@@ -5,7 +5,8 @@ import fs from 'node:fs';
 const root = path.resolve(process.argv[2] || '.');
 const port = Number(process.env.PORT || 5173);
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.wasm': 'application/wasm', '.swf': 'application/x-shockwave-flash' };
-http.createServer((req, res) => {
+const server=http.createServer((req, res) => {
+  if(process.env.ABACUS_LAUNCH_TOKEN && req.url==='/__abacus_launcher'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify({token:process.env.ABACUS_LAUNCH_TOKEN,pid:process.pid}));return;}
   let url;
   try { url = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
   catch { res.writeHead(400).end('Invalid URL'); return; }
@@ -36,4 +37,9 @@ http.createServer((req, res) => {
   headers['Content-Length'] = fs.statSync(file).size;
   res.writeHead(200, headers);
   if (req.method === 'HEAD') res.end(); else fs.createReadStream(file).pipe(res);
-}).listen(port, '127.0.0.1', () => console.log(`Abacus is ready at http://localhost:${port}`));
+});
+server.listen(port,'127.0.0.1',()=>{
+ const actualPort=server.address().port;
+ if(process.env.ABACUS_LAUNCH_STATE)fs.writeFileSync(process.env.ABACUS_LAUNCH_STATE,JSON.stringify({root,port:actualPort,pid:process.pid,token:process.env.ABACUS_LAUNCH_TOKEN}));
+ console.log(`Abacus is ready at http://127.0.0.1:${actualPort}`);
+});

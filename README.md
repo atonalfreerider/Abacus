@@ -61,3 +61,7 @@ Whole-number group commas are triangles. The decimal boundary uses the original 
 Tray background fill is 16% opaque, so a stack passing behind an adjacent tray remains visible. Numerals use a consistent face-on font, centered anchors and a central baseline. The new keypad includes 0, decimal point, arithmetic operators, x, parentheses, equals and backspace.
 
 Cancellation pairs receive fixed targets before playback. Incoming units travel directly to the receiving card in top-left, left-to-right grid order, then fade while coincident. Borrowed units use the same target mapping.
+
+## Double-click on Windows
+
+Double-click **Start Abacus.cmd** in this folder. It starts a local server and opens your default browser; repeated launches reuse that server. No build or npm install is needed. Double-click **Stop Abacus.cmd** to stop it after closing the browser. The launcher serves the current source, so edits appear on refresh. It finds the existing Node runtime on this computer, or a standard Node.js installation. The folder can be moved; launch paths are relative. Temporary server state and logs stay in the Git-ignored `.runtime` directory.

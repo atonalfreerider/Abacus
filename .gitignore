@@ -8,3 +8,5 @@ dist/
 artifacts/
 public/textures/contact-sheet.jpg
 public/pixel-baselines/
+
+.runtime/
