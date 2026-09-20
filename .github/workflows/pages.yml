@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --test tests/*.test.js
+      - run: node tools/visual-tests.mjs
       - run: node tools/build.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

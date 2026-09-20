@@ -78,5 +78,5 @@ test('all legal transformations preserve solutions across every lesson and ratio
 });
 test('large intermediate fractions reduce exactly without float overflow',()=>{
   assert.deepEqual(mul(frac(999999999,999999998),frac(999999998,999999999)),frac(1));
-  assert.throws(()=>frac(1000000001),/large/);
+  assert.throws(()=>frac(9007199254740992n),/large/);
 });

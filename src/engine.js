@@ -1,5 +1,5 @@
 // Exact, bounded rational arithmetic. BigInt intermediates prevent silent rounding.
-const LIMIT = 1_000_000_000n;
+const LIMIT = BigInt(Number.MAX_SAFE_INTEGER);
 const gcd = (a, b) => { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) [a, b] = [b, a % b]; return a; };
 export function frac(n, d = 1) {
   n = BigInt(n); d = BigInt(d);

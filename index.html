@@ -1,44 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5efdf">
-  <meta name="description" content="The original ABACUS equation space, preserved in the browser with guided demonstrations.">
-  <title>ABACUS</title>
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./src/styles.css">
-  <script src="./src/ruffle-config.js"></script>
-  <script defer src="./vendor/ruffle/ruffle.js"></script>
-  <script type="module" src="./src/main.js"></script>
-</head>
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ABACUS</title><link rel="icon" href="./favicon.svg"><link rel="stylesheet" href="./src/mvc/style.css"><script type="module" src="./src/mvc/app.js"></script></head>
 <body>
-  <main id="equation-space" aria-label="Original ABACUS equation space"></main>
-  <div id="loading" role="status">Opening ABACUS…</div>
-  <nav id="tools" aria-label="Equation tools" hidden>
-    <button id="open-equation">Type equation</button>
-    <button id="open-director">Director</button>
-  </nav>
-  <section id="director" aria-label="Lesson director" hidden>
-    <div class="direction"><span id="lesson-title"></span><p id="prompt" role="status" aria-live="polite"></p></div>
-    <div class="director-actions"><button id="watch">Watch</button><button id="try">Try it</button><button id="next" hidden>Next</button><button id="replay" aria-label="Restart this step">↺</button><button id="close-director" aria-label="Leave director">×</button></div>
-  </section>
-  <dialog id="equation-dialog" aria-labelledby="equation-title">
-    <form id="equation-form">
-      <div class="dialog-heading"><h1 id="equation-title">Type an equation</h1><button type="button" data-close aria-label="Close">×</button></div>
-      <label for="equation-input">Equation</label>
-      <input id="equation-input" autocomplete="off" spellcheck="false" maxlength="80" value="x+3=7" placeholder="x+3=7">
-      <p class="hint">Numbers, decimals, x, y, +, −, ×, and =. The original number pad and keyboard also work directly in the equation space.</p>
-      <p id="input-error" role="alert"></p>
-      <button class="primary" type="submit">Place in equation space</button>
-    </form>
-  </dialog>
-  <dialog id="lesson-dialog" aria-labelledby="lessons-title">
-    <div class="dialog-heading"><h1 id="lessons-title">Director</h1><button data-close aria-label="Close">×</button></div>
-    <p>Watch a step, then try it in the same equation space.</p>
-    <div id="lessons"></div>
-  </dialog>
-  <div id="notice" role="alert" hidden></div>
-  <output id="equation-description" class="sr-only" aria-label="Current equation"></output>
-</body>
-</html>
+<header><div class="brand">The-WHY.com/ABACUS<small>Always Ask Why <span>Understand Math</span></small></div><nav><button id="open-equation">Equation</button><button id="open-director">Director</button><button id="open-view">View</button></nav></header>
+<section id="director-bar" hidden><span id="director-title"></span><p id="director-prompt" role="status"></p><button id="watch">Watch next</button><button id="try">Try it</button><button id="leave-director" aria-label="Leave director">×</button></section>
+<main id="workspace" aria-label="Equation space"><div id="stage"></div></main>
+<footer><div class="operations"><button id="undo" aria-label="Undo">↶</button><button id="redo" aria-label="Redo">↷</button><button id="clear">clear</button><button id="combine">combine</button></div><div id="keypad" aria-label="Number pad"></div><div class="operations"><label for="factor">Factor</label><input id="factor" value="2" aria-label="Operation factor"><button id="multiply">× both sides</button><button id="divide">÷ both sides</button><button id="solve">solve step</button></div></footer>
+<div id="transport"><button id="pause">Play</button><input id="progress" type="range" min="0" max="1" step=".01" value="1" aria-label="Animation position"><button id="skip">Finish animation</button><output id="equation-status" aria-live="polite"></output></div><p id="feedback" role="alert"></p>
+<dialog id="equation-dialog"><form id="equation-form"><div class="heading"><h1>Equation</h1><button type="button" data-close aria-label="Close">×</button></div><label for="equation-input">Type an equation or expression</label><input id="equation-input" value="x+3=7" autocomplete="off" spellcheck="false"><p>Exact fractions, decimals, parentheses, and linear algebra in x. For example: x/2 + 1/3 = 5/6.</p><button type="submit">Load equation</button></form></dialog>
+<dialog id="view-dialog"><div class="heading"><h1>View</h1><button data-close aria-label="Close">×</button></div><label for="orientation">Equation layout</label><select id="orientation"><option value="auto">Auto · fit device</option><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select><label for="camera">Camera</label><select id="camera"><option value="front">Face-on</option><option value="depth">Depth</option><option value="spread">Spread cards</option></select><label for="zoom">Zoom</label><input id="zoom" type="range" min=".6" max="2" value="1" step=".1"><p>Tens have 10 cards; hundreds have 100. Stacks extend down and left. k, M, and B are inscribed directly on each face.</p><button id="open-tests">Animation test bench</button></dialog>
+<dialog id="lesson-dialog"><div class="heading"><h1>Director</h1><button data-close aria-label="Close">×</button></div><p>Watch the next valid step, then try it yourself.</p><div id="lessons"></div></dialog>
+</body></html>
