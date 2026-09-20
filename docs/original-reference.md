@@ -1,50 +1,35 @@
-# Original ABACUS inspection
+# Original SWF inspection and fidelity contract
 
-Source: `C:\Users\johnb\Downloads\ABACUS.swf` (568,989 bytes, compressed SWF version 15).
+Source: C:\Users\johnb\Downloads\ABACUS.swf, 568,989 bytes, compressed SWF v15.
+SHA-256: c2749b7d0d685ea82c6b812de82ef469ec57843e037be16b2c8c278111e0b781.
 
-The source was inspected as data, and played locally through Ruffle in a separate, development-only page. The SWF was not uploaded to an external service. Ruffle is used for reference inspection only; it is not part of the new app or production build. API reference: https://ruffle.rs/js-docs/master/index.html.
+The file was inspected as data and played locally. No content was uploaded. The current application runs that same SWF through a local Ruffle 0.6.0 runtime, adding a small director bridge. `reference.html` runs the unmodified file for comparison.
 
-## Direct UI observations
+## Direct observations
 
-- Paper-textured background with a large equation workspace and a bottom input dock.
-- Blue bitmap fills indicate positive constants. The original `RED300` and `GREEN300` images provide the negative and variable palette.
-- Constants show a nine-cell (3 × 3) digit tray, filling left to right, top to bottom. The numeral overlays its cells.
-- `x` appears as a large glyph over a pale green nine-cell tray, becoming saturated green in a solved state.
-- An equals sign divides the two sides along a dotted vertical guide.
-- The bottom dock exposes arithmetic operators, back, clear, x/y, solve, powers, parentheses, and a nine-cell number control.
-- Keyboard input was used to build `x + 3 = 7`; both the interior constant and its sign were dragged to inspect the interaction. In the emulator, the observed move could retain a positive sign, so the new app follows the user's explicit sign-flip requirement instead of copying that observed behavior.
+The workspace has a paper background, rounded equation region, a dotted equals mirror, and a bottom keypad. Faces look straight at the viewer. Large original Garamond numerals overlay textured 3x3 trays. Constants are blue/red; unknown variables pulse through green cells, then show their constant value when isolated. The SWF owns layout, fonts, textures, pointer behavior, and animation timing. No replacement tray geometry or physical seesaw is drawn by the web wrapper.
 
-## Embedded script inspection
+Keyboard/keypad input, term dragging, sign crossing, 9+1 carrying, 10-1 borrowing, decimal carrying, and red/blue cancellation were exercised. The director invokes the same original routines and reads their results.
 
-The ActionScript 3 ABC constant pool was inspected; this is a symbol inventory, not a claim of full source decompilation. The application classes include:
+## Targeted bytecode findings
 
-- `absrc:ABCalc`, `Buttons`, `InputHandler`, `Solver`, `Operator`, `Update`, `PolyNom`, `Constant`, `Nomial`, `Addition`, and `Multiplication`.
-- Drag and sign-related method symbols: `SelectTerm`, `initDragger`, `CheckCross`, `mouseUpHandler`, `ZeroCollect`, `SwitchSign`, and `ChangeEqualState`.
-- Regrouping and depth symbols: `Carry10`, `Borrow10`, `Check10`, `Stack`, `Expand`, `Contract`, `Collapse`, and `ChangePerspective`.
-- Multiplication-related symbols: `Multiplier`, `Base10Factor`, and `Duplicator`.
-- GreenSock TweenLite/TimelineMax animation classes are embedded in the SWF.
+- `Constant.InsertNomial` multiplies local magnitude by 10. At 1000 it inserts a comma and resets the local magnitude to 1. Decimal input divides the magnitude by 10, with the corresponding reset at 0.001.
+- `Nomial.NewNomial` creates zero support faces at local magnitude 1, one at 10 (z=30), and ten at 100 (z=30..300). This repeats under each occupied unit cell.
+- `Nomial.Box` fills the nine positions of the 3x3 and places an overflow tenth unit in the center.
+- `Nomial.Stack` sends ten individual faces to the receiver with depth `(10-unitIndex)*magnitude*3`.
+- `Addition.Carry10` invokes Stack, clears the source digit, and increments its left neighbor. Borrow routines reverse the grouping.
+- `Update.Resettle` detects overlapping like terms, orders their absolute coefficients, and calls `Addition.Adder(larger,smaller,"1Step")`; its completion callback resettles the equation. The director uses this same ordering and callback.
+- `PolyNom.CheckCross` polls during dragging at 100 ms intervals and invokes the sign logic. Quick automated drags can miss that interval.
+- `Update.UpdateVariables` recursively schedules opacity animations while variables are unsolved. The director excludes these background pulses from its busy count, leaving them running.
+- `InputHandler.InputFunction` has empty `/` and `enter` branches. The Solve control routes to the empty enter branch.
+- `Solver.PEMDAS` calls `Multiplication.Multiplier` in expand mode, but the tested 3*4 path did not complete a correct product. A 999+1 carry also failed in testing. These are documented, not advertised as working lesson paths.
 
-These names alone do not establish exact runtime behavior. A subsequent targeted ABC bytecode disassembly verified the following implementation details:
+## Instrumentation boundary
 
-- `Constant.InsertNomial` multiplies the leftmost local magnitude by ten. When that reaches 1000, it inserts a comma and resets the magnitude to 1. On the fractional side it divides by ten, inserting a comma and resetting at 0.001.
-- `Nomial.NewNomial` creates zero support cards at magnitude 1, one at magnitude 10 (z = 30), and ten at magnitude 100 (z = 30, 60, …, 300). This structure is repeated under each unit cell, rather than being decorative depth under the whole tray.
-- `Nomial.Box` arranges nine units in a 3 × 3 grid and puts the tenth, overflow unit at the center.
-- `Nomial.Stack` animates all ten units toward the receiving position, using `(10 − unitIndex) × magnitude × 3` for depth.
-- `Addition.Carry10` detects a value of ten, invokes `Nomial.Stack`, clears the source digit, and increments the digit to the left.
+The bridge appends callbacks for input, reset, speed, state, sign movement, term combination, and the existing solver step. Two existing bodies receive appended instructions before returning: `ABMain.ABMainInit` registers callbacks, and `Operator.SwitchSign` flattens the extra OpContainer created by NewOp. The original sign artwork and recoloring run first, then the actual sign glyph is restored to the display-list level expected by GetSign. This repairs negative-to-positive and repeated crossings without introducing a new animation. Of 637 original methods, 635 are byte-identical; the other two retain their original instruction prefixes. All non-ABC tags, including fonts and drawings, are byte-identical.
 
-The new place-value renderer follows the verified 0/1/10 support-card cycle and comma reset. The k/M/B/T inscriptions and increasingly heavy nested borders on every face are additions explicitly requested by the user.
+The director is an addition to the header. It does not replace the original equation renderer. Original assets are also extracted into `public/textures/` for future work, but the faithful runtime reads its assets directly from the SWF.
 
-## Extracted assets
+The requested k/M/B inscriptions and heavier nested outlines are intentionally absent from this fidelity baseline, following the subsequent request for the original interface without design changes. They can be implemented later as a precisely scoped addition to the original faces.
 
-`public/textures/manifest.json` records every embedded bitmap, symbol name, original dimensions, and SWF tag. Important symbols:
-
-| Symbol | SWF character ID | Usage |
-| --- | --- | --- |
-| GREEN300 | 2 | Variable faces |
-| RED300 | 23 | Negative unit faces |
-| BLUE300 | 25 | Positive unit faces |
-| Paper1 | 24 | Tray surface |
-| Shade5White | 10 | Fraction remainder surface |
-| Shade4Trans100 | 14 | Depth shading |
-
-No original bytecode is used in the modern game. The modern math engine is independently implemented and tested.
+The supplied file has incomplete behaviors; preserving it does not make those behaviors complete. Browser fidelity beyond the tested Chromium runtime still requires visual and interaction checks on the target browsers.

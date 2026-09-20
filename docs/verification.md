@@ -1,32 +1,37 @@
-# Verification
-
-The following checks were performed during the first implementation.
+# Verification — faithful SWF browser build
 
 ## Automated
 
-`node --test tests/*.test.js`: 13 passing tests, including:
+`node --test tests/*.test.js`: 21 passing tests.
 
-- Exact rational arithmetic and safe intermediate reduction.
-- Parsing signs, decimals, grouped thousands, parentheses, and fractions.
-- Rejection of malformed input, non-linear expressions, and zero factors that destroy equivalence.
-- All eight lesson answers checked by exact substitution.
-- Transposition, cancellation, simplification, and both-side operations preserve solution sets across every lesson and four positive/negative rational factors.
-- 0 / 1 / 10 support-card cycling at local magnitudes 1 / 10 / 100, with comma resets.
-- Every occupied top and support card face receives the correct k/M inscription.
+Eight tests cover the shipping director/input and SWF provenance: malformed and unsupported input, lesson inputs, completion state, original file hash, all non-ABC tags, original method bodies, and patched output hash. Thirteen retained native-prototype arithmetic/place-value tests also pass, but those modules are not shipped and are not evidence that the SWF supports their features.
 
-`node tools/build.mjs`: static build succeeds; approximately 0.44 MB including the original production textures. Unused reference assets are excluded.
+The independent SWF audit verifies that every bitmap, font, shape, timeline, frame geometry, and rate tag is identical. Of 637 original methods, 635 are byte-identical. ABMainInit and SwitchSign preserve their instruction prefixes and have only the documented appended hooks. The entire original file remains unmodified alongside the instrumented one.
 
-## In-browser interactions
+`node tools/build.mjs`: successful static build. Ruffle, SWFs, scripts, licenses, and a plain reference page are bundled. No CDN is used at runtime. The build excludes the first prototype UI and extracted texture experiments.
 
-- Original SWF opened locally with Ruffle; keyboard input and dragging inspected.
-- Modern app: physically dragged `+3` across equals in `x + 3 = 7`, verified `x = 7 − 3`, then dragged the red `−3` onto blue `+7` and verified `x = 4`.
-- Solved `3x + 2 = 14` by moving 2, combining, and dividing by 3. Undo restored `3x = 12`.
-- Solved `x/2 + 1/3 = 5/6` with exact fractions and multiplication by 2.
-- Division by zero produces an explanation and preserves the workspace.
-- Input `x + 1,234 = 2,234` builds correctly; `x*x=4` is rejected with a linear-equation explanation.
-- Carry and division animations played to completion; borrow and multiplication steps exercised.
-- Selected the hundred-thousands digit in `1,234,567` and enabled Spread cards: ten under-cards per occupied cell, k inscriptions, one nested outline, and the correct 200,000 contribution were visible.
-- At a 390 × 844 viewport, the page fits without horizontal document overflow, and tap-to-select / Move / Combine solves the first lesson.
-- Browser console checked for errors and warnings; none observed in these flows.
+## Browser interaction (Chromium / Codex in-app browser)
 
-These checks do not replace user testing of the teaching model or verification in every browser. The prototype's scripted arithmetic workshop and linear-equation scope are documented in the README.
+The original SWF was played and its AVM2 bytecode inspected. The production build was also loaded through the local server with its production CSP and Brotli responses.
+
+Verified:
+
+- Original paper background, face-on textured trays, large original type, dotted equals mirror, full equation workspace, and bottom keypad.
+- Director 9+1 demonstration reaches 10.
+- Try it resets the exact step; a real pointer drag of 1 onto 9 reaches 10 and activates Finish.
+- Director 10-1 uses the original borrow/cancellation and reaches 9.
+- Director 0.9+0.1 reaches 1.
+- Director 1000+1000 reaches 2000.
+- Director x+3=7 moves +3 across, then cancels 7-3 to produce x=4 and four saturated green cells.
+- Unsolved variable opacity pulses remain active without blocking the director.
+
+The repaired negative crossing also completed x-4=5 -> x=5+4 -> x=9. A real pointer crossing in practice produced x=-3+7 and was accepted in either term order. The input dialog rejected 1/2 without changing the equation and successfully loaded x+3=7. A complete hands-on x+3=7 lesson reached x=4 through actual pointer crossings and cancellation, and the director enabled Finish. Final production logs contained no ERROR, error, or warning entries. A HEAD request to the selected WASM returned 200, application/wasm, Content-Encoding: br, Content-Length: 4011866, and the production CSP.
+
+## Known failures and limits
+
+- The original 999+1 path lost the outgoing carry; not included as a working lesson.
+- Original 3*4 expansion did not produce 12; not included as a working lesson.
+- Division and enter/Solve have empty source input branches.
+- Fast drags can miss the original 100 ms crossing poll. Crossing uses the term anchor, not the visible face center; dropping too near the mirror can flip a sign even when the face appears to stay on one side. This original geometric behavior is preserved.
+- Exact cross-browser pixels, touch phones, screen-reader equation editing, and long-session performance have not been certified.
+- No cloud deployment or remote repository has been created. The GitHub Pages workflow is prepared but not run.

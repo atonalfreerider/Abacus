@@ -1,0 +1,21 @@
+{
+  "source": "ABACUS.swf",
+  "sourceSha256": "c2749b7d0d685ea82c6b812de82ef469ec57843e037be16b2c8c278111e0b781",
+  "output": "abacus-director.swf",
+  "outputSha256": "eafeb5b68433f2378ac644817bd75a2bcbd1706fc62dae9bf40fa4a4a626a696",
+  "callbacks": [
+    "abacusInput",
+    "abacusClear",
+    "abacusPing",
+    "abacusStep",
+    "abacusSpeed",
+    "abacusState",
+    "abacusMove",
+    "abacusCombine"
+  ],
+  "originalDrawingTagsRetained": true,
+  "appendedHooks": [
+    "ABMain.ABMainInit: director callback registration",
+    "Operator.SwitchSign: flatten nested sign container; preserve original sign artwork and recoloring"
+  ]
+}

@@ -1,16 +1,16 @@
-# Abacus · Equation Lab
+# ABACUS
 
-A browser-native version of the supplied ABACUS educational game. It uses the blue, red, green, paper, and shading textures extracted from the original SWF. No Flash player, server, account, or runtime packages are required by the new app.
+The original ABACUS equation space runs in a modern browser through a pinned, self-hosted Ruffle runtime. This fidelity version replaces the earlier redesigned prototype: the original face-on cards, paper, type, equals mirror, number pad, dragging, and animation code are used directly.
 
 ## Run
 
-Requires Node.js 20 or later. There are no packages to install.
+Node.js 20 or later; no package installation is required.
 
 ```sh
 node tools/serve.mjs
 ```
 
-Open <http://localhost:5173>. `npm run dev` also works wherever npm is installed.
+Open http://localhost:5173. The unmodified comparison is at http://localhost:5173/reference.html.
 
 ```sh
 node --test tests/*.test.js
@@ -18,46 +18,53 @@ node tools/build.mjs
 node tools/serve.mjs dist
 ```
 
-The production output is `dist/`. All URLs are relative, so it can be hosted at a domain root or a subdirectory. Serve through HTTP, not `file://`, because the application uses JavaScript modules.
+Stop the development server before running the production preview on the same port. All URLs are relative for hosting under a project subdirectory.
 
-## Play
+## Equation space and director
 
-- Type an equation such as `3x + 2 = 14`, `x/2 + 1/3 = 5/6`, or `2(x + 3) = 18`.
-- Drag a term across the equals sign to change its sign. This is shorthand for adding the opposite term to both sides.
-- Drag opposing terms together on the same side, or choose **Combine like terms**. Partial cancellation leaves the exact remainder.
-- Add, subtract, multiply, or divide both sides by any supported nonzero rational factor. Multiplication by zero is rejected because it destroys equivalence.
-- Isolate one positive `x` opposite one constant to complete a lesson. Either side is allowed; an empty side is zero.
-- Use the `x` preview to check the numerical balance. Its value affects the seesaw only, not the equation. On solving, the preview uses the solution.
-- Eight guided problems cover transposition, negatives, equal groups, variables on both sides, fractions, distribution, and fractional solutions. Progress stays in this browser's local storage.
-- Open **Number workshop** for step-by-step carry, borrow, multiplication, and division demonstrations. Each has replay, stepping, speed controls, and reduced-motion support.
-- In **Place value**, enter a number such as `1,234,567`, select a digit, and spread its cards. Each occupied cell uses 0 / 1 / 10 support cards for local magnitudes 1 / 10 / 100. That pattern resets at commas. Every card face bears its group inscription (`k`, `M`, `B`, `T`) and progressively heavier nested outlines.
-- Keyboard: Tab to a term, Enter/Space to select it, then Left/Right to move it. Ctrl/Cmd+Z undoes a move. Tap-to-move works alongside dragging on touch screens.
+The original equation surface occupies the full browser window. Two small controls sit in the unused header area:
 
-## Project layout
+- **Type equation** sends input to the original keypad handler. Examples: `x+3=7`, `x-4=5`, `9+1`, `10-1`, `1000+1000`, `0.9+0.1`. It validates input before clearing the current equation.
+- **Director** offers demonstrations followed by hands-on practice. Watch runs the original sign/merge/stack routines. Try it restores that step and prompts the learner to drag the original cards. Feedback checks the actual SWF display-list state, including signs and equation sides. Next allows progression after a demonstration or a successful attempt.
 
-| File | Purpose |
-| --- | --- |
-| `src/engine.js` | Exact rational arithmetic, safe expression parser, linear-equation transformations, lessons |
-| `src/main.js` | UI, pointer and keyboard controls, history, progress, operation animations |
-| `src/blocks.js` | Original textured nine-cell trays, fraction tiles, isometric units |
-| `src/arithmetic.js` | Four narrated, step-by-step regrouping and equal-group demonstrations |
-| `src/styles.css` | Responsive layout, original-texture block surfaces, motion |
-| `tools/extract_swf.py` | Reproducible bitmap extraction from the supplied SWF; requires Pillow |
-| `tests/engine.test.js` | Arithmetic, parser, lesson answers, and solution-preservation checks |
-| `docs/original-reference.md` | What was observed in the original SWF and how it maps to this version |
+No separate balance beam, isometric renderer, lesson sidebar, or number workshop is included in the runtime. The original SWF includes its own small rotation/mirror effects; those have not been rewritten. The earlier requested k/M inscriptions and nested border additions are not applied to this fidelity baseline. They remain future, explicit extensions to the original card faces.
 
-## Hosting and loading
+## What is preserved
 
-Build with `node tools/build.mjs` and upload `dist/` to a static host (Cloudflare Pages, Netlify, GitHub Pages, or an object-store/CDN). No database, paid services, or server process are needed in production. The supplied GitHub Pages workflow is manually triggered, so committing code does not automatically publish it.
+`public/ABACUS.swf` is the exact supplied file. `public/abacus-director.swf` adds an ExternalInterface bridge and one initialization hook. Of 637 original methods, 635 are byte-identical. Two retain their complete original instruction prefix and receive appended hooks: initialization registers director callbacks, and SwitchSign flattens an erroneously nested sign container. The latter fixes blue positive cards being treated as negative after crossing. Drawing, bitmap, font, and timeline tags are byte-identical. The provenance hashes and automated audit make this reproducible.
 
-The app uses native ES modules and browser-cached bitmap textures. It serves the original embedded JPEG bytes for the color and paper textures, avoiding recompression and PNG bloat. Unused extracted images remain in the repository for future visual development but are excluded from the production build. No external fonts, analytics, or CDN scripts are loaded by the modern game.
+Regenerate the director SWF with `node tools/swf-bridge.mjs`. An optional first argument selects another source path. The script is specific to this ABACUS file and is not a general SWF compiler.
 
-Use short caching for `index.html`, and normal revalidation for the versioned source assets. A static `_headers` file is included for hosts that support that format. For large future graphing modules, load them with dynamic `import()` when their view opens. The math engine is independent of the UI so additional renderers can share the same transformations.
+The local stack pattern uses 0, 1, and 10 support cards at local magnitudes 1, 10, and 100. It repeats in each comma group. These are individual card faces under occupied cells, not decorative depth under a whole tray. See `docs/original-reference.md` for bytecode evidence.
 
-## Current scope
+## Known limits of the supplied SWF
 
-This first version supports **linear equations in one variable, x**. Products of variables, variable denominators, powers, graphing, and multivariable equations are intentionally rejected with an explanatory error. Fractions are exact and reduced, with BigInt intermediate arithmetic; reduced numerators and denominators are bounded at 1,000,000,000. Decimal input supports six decimal places.
+This is a preserved runtime, not a completed rewrite of every originally proposed feature. Browser playback depends on Ruffle compatibility; byte-identical source does not prove identical rendering in every browser or on every device.
 
-The workshop demonstrates `9 + 1`, `10 − 1`, `3 × 4`, and `12 ÷ 3`; it is an instructional animation set, not yet a general animation compiler for arbitrary expressions. The equation lab performs general supported arithmetic, with term-level operation feedback. Advanced graphing and more detailed animation can be developed from the next drawings.
+- Division and the Solve button have empty input branches. Fraction bars, parentheses, and powers are not enabled by the typed-input wrapper. Decimal fractions work.
+- The original multiplication routine was exercised but did not finish `3*4` correctly in the tested runtime. Multiplication input remains visible through the original UI, but it is not presented as a completed director lesson.
+- `999+1` lost the outgoing carry in the tested original arithmetic path. The director uses verified basic carries and a thousands-group addition instead. Arbitrary arithmetic in free play inherits original defects.
+- Very fast crossing drags may miss the original 100 ms crossing poll. Ordinary input uses the original handlers unchanged.
+- The canvas equation space retains the original accessibility and small-screen limitations. Dialogs and director controls are keyboard accessible, but a full accessible equation editor and phone layout are not finished.
+- Advanced graphing, general division/fraction animations, and magnitude inscriptions still need implementation against this reference. The first prototype's native arithmetic experiments remain in source history and some unshipped modules; they do not drive this UI.
 
-Original artwork remains the supplied author's material. No license to redistribute third-party or original SWF assets is implied by this repository.
+## Static hosting and loading
+
+`dist/` contains everything needed by a static host: no backend, account, database, analytics, external font service, or runtime CDN dependency. The checked-in Ruffle version is 0.6.0, downloaded from the official npm package and verified against its package integrity hash. License notices are bundled.
+
+The build retains two WASM variants for runtime compatibility; a browser selects one. Each variant is about 14 MB raw or 4 MB Brotli. The SWF is about 0.55 MB. The build produces `.br` and `.gz` sidecars, and the preview server negotiates them with the correct `application/wasm` MIME type for streaming compilation. Production hosting must enable Brotli/gzip or explicitly serve the sidecars with `Content-Encoding` and `Vary: Accept-Encoding`; copying sidecars alone does not configure every host. `_headers` provides caching and CSP for hosts that support that format. GitHub Pages uses its own header/compression behavior.
+
+The CSP permits self-hosted WebAssembly and restricts network requests to this origin. Ruffle's `allowNetworking: all` is needed for ExternalInterface; the CSP supplies the browser network restriction. The reference player disables script/network access.
+
+A manually triggered GitHub Pages workflow is included. No remote repository or public deployment has been created.
+
+## Main files
+
+- `src/main.js`, `src/lessons.js`: compact director, input wrapper, and state-based feedback.
+- `tools/swf-bridge.mjs`: reproducible AVM2 bridge instrumentation.
+- `tools/swf-audit.mjs`, `tests/faithfulness.test.js`: independent tag/method comparison.
+- `public/ABACUS.swf`, `public/swf-provenance.json`: original reference and hashes.
+- `public/vendor/ruffle/`: pinned browser runtime and licenses.
+- `docs/verification.md`: actual checks and remaining limits.
+
+Original artwork remains the supplied author's material. Ruffle's MIT/Apache license notices apply to the bundled runtime; this repository does not assert ownership of the original artwork.

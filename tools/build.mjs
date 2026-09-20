@@ -1,20 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const root = process.cwd();
 const out = path.join(root, 'dist');
-if (path.relative(root, out) !== 'dist') throw new Error('Build output must remain in the project dist directory.');
-// Only the checked, generated dist directory is replaced.
+if (path.relative(root, out) !== 'dist') throw new Error('Output must remain inside the project dist directory.');
 fs.rmSync(out, { recursive: true, force: true });
-fs.mkdirSync(out, { recursive: true });
-for (const name of ['index.html', 'src']) fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true });
-const runtimeTextures = new Set(['swf-2.jpg', 'swf-23.jpg', 'swf-24.jpg', 'swf-25.jpg', 'swf-10.png', 'swf-14.png', 'manifest.json']);
-fs.cpSync(path.join(root, 'public'), out, { recursive: true, filter: file => {
-  if (fs.statSync(file).isDirectory()) return true;
-  if (path.basename(path.dirname(file)) === 'textures') return runtimeTextures.has(path.basename(file));
-  return true;
-} });
-let bytes = 0;
-function total(dir) { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const file = path.join(dir, entry.name); if (entry.isDirectory()) total(file); else bytes += fs.statSync(file).size; } }
-total(out);
-console.log(`Built static site in dist/ (${(bytes / 1024 / 1024).toFixed(2)} MB). No runtime dependencies.`);
+fs.mkdirSync(path.join(out, 'src'), { recursive: true });
+fs.copyFileSync('index.html', path.join(out, 'index.html'));
+for (const file of ['main.js', 'lessons.js', 'styles.css', 'ruffle-config.js', 'reference.js']) fs.copyFileSync('src/' + file, path.join(out, 'src', file));
+for (const file of ['ABACUS.swf', 'abacus-director.swf', 'swf-provenance.json', 'reference.html', 'favicon.svg', '_headers']) fs.copyFileSync('public/' + file, path.join(out, file));
+fs.cpSync('public/vendor', path.join(out, 'vendor'), {recursive:true, filter: file => !file.endsWith('.map')});
+let bytes = 0, compressedBytes = 0;
+function compress(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) { compress(file); continue; }
+    const data = fs.readFileSync(file); bytes += data.length;
+    if (!/\.(wasm|js|css|html|json)$/.test(file)) continue;
+    const br = zlib.brotliCompressSync(data, {params:{[zlib.constants.BROTLI_PARAM_QUALITY]:6}});
+    fs.writeFileSync(file + '.br', br);
+    fs.writeFileSync(file + '.gz', zlib.gzipSync(data, {level:9}));
+    compressedBytes += br.length;
+  }
+}
+compress(out);
+console.log(`Built dist: ${(bytes/1048576).toFixed(2)} MB raw; ${(compressedBytes/1048576).toFixed(2)} MB Brotli for compressible assets. The browser selects one of two WASM variants.`);

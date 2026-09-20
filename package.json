@@ -1,13 +1,14 @@
 {
   "name": "abacus-equation-lab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "A tactile, browser-native algebra playground using the original ABACUS artwork.",
+  "description": "The original ABACUS equation space in a browser, with a guided lesson director.",
   "scripts": {
     "dev": "node tools/serve.mjs",
     "start": "node tools/serve.mjs",
     "build": "node tools/build.mjs",
+    "bridge": "node tools/swf-bridge.mjs",
     "test": "node --test tests/*.test.js",
     "preview": "node tools/serve.mjs dist"
   },

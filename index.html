@@ -1,18 +1,44 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f3ec" />
-    <meta name="description" content="Make algebra tangible. Move textured blocks, balance equations, and discover how numbers work." />
-    <title>Abacus — Make sense of the equation.</title>
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./src/styles.css" />
-    <script type="module" src="./src/main.js"></script>
-  </head>
-  <body>
-    <div id="app"></div>
-    <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
-    <div id="toast" class="toast" role="status"></div>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5efdf">
+  <meta name="description" content="The original ABACUS equation space, preserved in the browser with guided demonstrations.">
+  <title>ABACUS</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./src/styles.css">
+  <script src="./src/ruffle-config.js"></script>
+  <script defer src="./vendor/ruffle/ruffle.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</head>
+<body>
+  <main id="equation-space" aria-label="Original ABACUS equation space"></main>
+  <div id="loading" role="status">Opening ABACUS…</div>
+  <nav id="tools" aria-label="Equation tools" hidden>
+    <button id="open-equation">Type equation</button>
+    <button id="open-director">Director</button>
+  </nav>
+  <section id="director" aria-label="Lesson director" hidden>
+    <div class="direction"><span id="lesson-title"></span><p id="prompt" role="status" aria-live="polite"></p></div>
+    <div class="director-actions"><button id="watch">Watch</button><button id="try">Try it</button><button id="next" hidden>Next</button><button id="replay" aria-label="Restart this step">↺</button><button id="close-director" aria-label="Leave director">×</button></div>
+  </section>
+  <dialog id="equation-dialog" aria-labelledby="equation-title">
+    <form id="equation-form">
+      <div class="dialog-heading"><h1 id="equation-title">Type an equation</h1><button type="button" data-close aria-label="Close">×</button></div>
+      <label for="equation-input">Equation</label>
+      <input id="equation-input" autocomplete="off" spellcheck="false" maxlength="80" value="x+3=7" placeholder="x+3=7">
+      <p class="hint">Numbers, decimals, x, y, +, −, ×, and =. The original number pad and keyboard also work directly in the equation space.</p>
+      <p id="input-error" role="alert"></p>
+      <button class="primary" type="submit">Place in equation space</button>
+    </form>
+  </dialog>
+  <dialog id="lesson-dialog" aria-labelledby="lessons-title">
+    <div class="dialog-heading"><h1 id="lessons-title">Director</h1><button data-close aria-label="Close">×</button></div>
+    <p>Watch a step, then try it in the same equation space.</p>
+    <div id="lessons"></div>
+  </dialog>
+  <div id="notice" role="alert" hidden></div>
+  <output id="equation-description" class="sr-only" aria-label="Current equation"></output>
+</body>
 </html>
