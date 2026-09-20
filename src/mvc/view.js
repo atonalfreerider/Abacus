@@ -178,7 +178,7 @@ function renderUnits(plan,t,options){
  const sourceAt={x:sourceOrigin.x,y:sourceOrigin.y};
  const scene={...before,width:lerp(before.width,after.width),height:Math.max(before.height,after.height),terms:[...before.terms],equal:before.equal&&after.equal?{x:lerp(before.equal.x,after.equal.x),y:lerp(before.equal.y,after.equal.y)}:null};
  const maxPlace=Math.max(spec(target.term).maxPlace,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift)),minPlace=Math.min(spec(target.term).minPlace,spec(source.term).minPlace,0,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift));
- function pos(token){const owner=token.owner===u.target?anchor:{x:sourceAt.x+boundary(source.term),y:sourceAt.y};const cell=token.cell;
+ function pos(token){if(token.owner===u.target&&u.cancelTargets?.[token.id])token=u.cancelTargets[token.id];const owner=token.owner===u.target?anchor:{x:sourceAt.x+boundary(source.term),y:sourceAt.y};const cell=token.cell;
   return {x:owner.x+placeOffset(token.place+shift)+7+(cell<9?cell%3*47:47+(cell-9)*6),y:owner.y+7+(cell<9?Math.floor(cell/3)*47:47+(cell-9)*6)};
  }
  for(const slot of before.terms){const to=after.terms.find(s=>s.term.id===slot.term.id);if(to)overrides[slot.term.id]={x:lerp(slot.x,to.x),y:lerp(slot.y,to.y)};}
@@ -196,8 +196,8 @@ function renderUnits(plan,t,options){
   if(phase.type==='transfer'){
    const token=phase.before.find(a=>a.id===phase.removed[0]),next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});
   } else if(phase.type==='neutralize'){
-   const pair=phase.before.filter(a=>phase.removed.includes(a.id)),a=pos(pair[0]),b=pos(pair[1]),mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-   for(const token of pair){const start=pos(token);particles+=draw(token,{x:lerp(start.x,mid.x,ease(q)),y:lerp(start.y,mid.y,ease(q))},1-ease((q-.65)/.35));}
+   const pair=phase.before.filter(a=>phase.removed.includes(a.id)),at=pos(phase.receiver);
+   for(const token of pair)particles+=`<g data-cancel-target="${phase.receiver.id}" data-target-cell="${phase.receiver.cell}">${draw(token,at,1-ease((q-.65)/.35))}</g>`;
   } else if(phase.type==='carry'||phase.type==='borrow'){
    const carry=phase.type==='carry',many=(carry?phase.before:phase.after).filter(a=>(carry?phase.removed:phase.created).includes(a.id));
    const single=(carry?phase.after:phase.before).find(a=>a.id===(carry?phase.created[0]:phase.removed[0]));

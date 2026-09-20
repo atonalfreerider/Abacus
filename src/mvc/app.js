@@ -84,17 +84,20 @@ for(const lesson of lessons){const b=document.createElement('button');b.textCont
 $('watch').onclick=()=>safe(()=>{baseline=math.equationText(controller.model.state);practice=false;controller.step();});
 $('try').onclick=()=>{if(baseline)controller.load(baseline);practice=true;refresh();};
 $('leave-director').onclick=()=>{director=null;$('director-bar').hidden=true;};
-// Typing and keypad buttons use the same incremental expression, directly in the workspace.
+// Pad and hardware keys stage the same input; the up triangle deploys it.
 function enterKey(key){
- if(drag||key==='Enter'&&!entry.active)return;
+ if(drag||['Enter','ArrowUp'].includes(key)&&!entry.active)return;
  const text=entry.key(key);if(key==='Escape')$('entry-bar').hidden=true;if(text===null)return;
  $('entry-text').textContent=entry.text||'0';$('entry-bar').hidden=!entry.active;
- if(key==='Enter'){try{controller.load(text||'0');message('');}catch(e){entry.active=true;$('entry-bar').hidden=false;message(e.message);}return;}
- try{controller.load(entry.preview());message('');}catch{ /* Keep the last valid projection while parentheses or a fraction are incomplete. */ }
+ if(['Enter','ArrowUp'].includes(key)){try{controller.load(text||'0');message('');}catch(e){entry.active=true;$('entry-bar').hidden=false;message(e.message);}return;}
+ message('');
 }
-const keys=[['7','7'],['8','8'],['9','9'],['+','+'],['4','4'],['5','5'],['6','6'],['−','-'],['1','1'],['2','2'],['3','3'],['×','*'],['0','0'],['.','.'],['x','x'],['÷','/'],['(','('],[')',')'],['=','='],['⌫','Backspace']];
-for(const [label,key] of keys){const b=document.createElement('button');b.textContent=label;b.dataset.inputKey=key;b.setAttribute('aria-label',key==='Backspace'?'Delete last input':`Input ${label}`);b.onclick=()=>enterKey(key);$('keypad').append(b);}
-$('entry-done').onclick=()=>enterKey('Enter');
-document.addEventListener('keydown',event=>{if(event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),]$/.test(event.key)||['Backspace','Enter','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
+const cells=[];
+function illuminate(n){$('pad-numeral').textContent=String(n);cells.forEach((b,i)=>b.classList.toggle('lit',i<n));}
+for(let n=1;n<=9;n++){const b=document.createElement('button');b.dataset.inputKey=String(n);b.setAttribute('aria-label',`Input ${n}`);b.title=String(n);b.onpointerenter=()=>illuminate(n);b.onfocus=()=>illuminate(n);cells.push(b);$('keypad').append(b);}
+$('keypad').onpointerleave=()=>illuminate(0);
+for(const b of document.querySelectorAll('[data-input-key]'))b.onclick=()=>enterKey(b.dataset.inputKey);
+$('entry-done').onclick=()=>enterKey('ArrowUp');
+document.addEventListener('keydown',event=>{if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
 $('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>controller.load('0'));};
 $('open-tests').onclick=()=>location.href='./tests.html';

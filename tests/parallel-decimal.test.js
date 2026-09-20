@@ -29,3 +29,5 @@ test('crossing onto a matching term transposes and combines immediately from rel
 test('typing and keypad share incremental decimal, zero, operator and backspace behavior',()=>{
  const entry=new EquationEntry();for(const key of '0.25+0.75=1')entry.key(key);assert.equal(entry.preview(),'0.25+0.75=1');entry.key('Backspace');assert.equal(entry.preview(),'0.25+0.75=0');entry.key('1');assert.equal(entry.key('Enter'),'0.25+0.75=1');entry.key('7');assert.equal(entry.text,'7');entry.clear();entry.key('0');assert.equal(entry.preview(),'0');
 });
+
+test('up arrow deploys the staged entry and begins a fresh next input',()=>{const entry=new EquationEntry();for(const k of '2.9')entry.key(k);assert.equal(entry.key('ArrowUp'),'2.9');assert.equal(entry.active,false);entry.key('4');assert.equal(entry.text,'4');});

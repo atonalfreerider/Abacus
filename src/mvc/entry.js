@@ -4,7 +4,7 @@ export class EquationEntry {
  clear(){this.text='';this.active=true;}
  key(key){
   if(key==='Escape'){this.active=false;return null;}
-  if(key==='Enter'){this.active=false;return this.text;}
+  if(key==='Enter'||key==='ArrowUp'){this.active=false;return this.text;}
   if(!this.active){this.text='';this.active=true;}
   if(key==='Backspace')this.text=this.text.slice(0,-1);
   else if(/^[0-9xX.+\-*/=(),]$/.test(key))this.text+=key.toLowerCase();

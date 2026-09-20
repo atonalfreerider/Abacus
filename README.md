@@ -18,7 +18,7 @@ Development defaults to http://localhost:5173. Stop development before previewin
 
 ## Interaction
 
-Type directly into the workspace or use the on-screen keypad; both update the same expression as you enter it. Enter commits the input, Backspace edits it, and clear starts a fresh expression. The Equation dialog remains available for pasting a complete problem. Drag terms across the mirror to transpose them; drop like terms together to combine or cancel. A collision across the mirror transposes and combines in one command and one animation. Drop between terms to rearrange, or hold Shift when dropping to avoid combining. Keyboard arrows transpose a focused term; Shift + arrows rearrange. Multiply/divide applies a nonzero rational factor to both sides. Undo/redo restores exact mathematical states. Drag previews flip sign on each mirror crossing without changing the model; release commits once and animates from the pointer release coordinates.
+Type an expression or use the original-style row-major 3×3 counting pad. The pad highlights cumulative cells under a large hover numeral; the folded corner on 9 enters a decimal point. Up arrow, the upper triangle, or Enter deploys the staged input into the workspace. Backspace edits it, and clear starts a fresh expression. The Equation dialog remains available for pasting a complete problem. Drag terms across the mirror to transpose them; drop like terms together to combine or cancel. A collision across the mirror transposes and combines in one command and one animation. Drop between terms to rearrange, or hold Shift when dropping to avoid combining. Keyboard arrows transpose a focused term; Shift + arrows rearrange. Multiply/divide applies a nonzero rational factor to both sides. Undo/redo restores exact mathematical states. Drag previews flip sign on each mirror crossing without changing the model; release commits once and animates from the pointer release coordinates.
 
 View offers horizontal/vertical/automatic layouts and front/depth/spread stack views. These preserve face-on cards and change depth projection, rather than orbiting a 3D scene. Automatic layout responds to portrait screens. Animation controls pause, seek, resume, and finish independently of the committed model.
 
@@ -47,7 +47,7 @@ Open `tests.html` on the local server. Select a scene, layout, camera and frame,
 - `npm test`: exact arithmetic, invariants, stack geometry, clock behavior and retained SWF provenance checks.
 - `npm run test:visual`: 570 deterministic SVG snapshots against reviewed hashes. Outputs are in `artifacts/visual`.
 - Test bench **Compare pixels**: compares 38 rasterized scene PNGs across both orientations and all camera presets. Per-channel tolerance is 8; more than 0.1% changed pixels fails. Development saves actual PNGs to `artifacts/visual/pixels`.
-- **Record pixel baselines** writes PNGs to `public/pixel-baselines` through the loopback development server. Review changed images before committing. Production cannot record baselines.
+- **Record pixel baselines** writes PNGs to `public/pixel-baselines` through the loopback development server. These images stay local and are Git-ignored; do not commit pixel baselines. A fresh checkout must record local baselines before pixel comparison. Production cannot record baselines.
 - `npm run test:visual:update` intentionally updates structural hashes after visual review.
 
 CI runs unit and SVG snapshot checks and saves the SVG artifacts. Raster comparison currently runs through the browser test bench, not headless CI. Baseline PNGs capture the equation SVG, not application chrome; manual responsive and pointer tests complement them. See `docs/verification.md` for performed checks and limits.
@@ -59,3 +59,5 @@ Decimal input retains decimal notation and entered trailing zeros instead of bec
 Whole-number group commas are triangles. The decimal boundary uses the original triangle-and-dotted-mark convention. Following the SWF's magnitude reset, a group comma follows tenths and hundredths (before thousandths), repeating before millionths and further groups. Within a decimal unit's full-size face, the textured inner area shrinks by ten for each smaller place.
 
 Tray background fill is 16% opaque, so a stack passing behind an adjacent tray remains visible. Numerals use a consistent face-on font, centered anchors and a central baseline. The new keypad includes 0, decimal point, arithmetic operators, x, parentheses, equals and backspace.
+
+Cancellation pairs receive fixed targets before playback. Incoming units travel directly to the receiving card in top-left, left-to-right grid order, then fade while coincident. Borrowed units use the same target mapping.

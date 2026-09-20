@@ -5,3 +5,19 @@
 #keypad{grid-template-columns:repeat(4,30px);gap:2px}#keypad button{font-size:16px;padding:2px}#entry-bar{display:flex;align-items:center;justify-content:center;gap:12px;font-size:20px;min-height:30px}#entry-text{font-family:Georgia,serif}#equation-svg{font-family:Georgia,serif}.numeral{font-family:Georgia,serif;font-variant-numeric:lining-nums}
 @media(max-width:700px){#keypad{grid-template-columns:repeat(4,24px)}#keypad button{font-size:13px;padding:2px}footer{gap:6px;padding:6px}.operations button{font-size:12px}#entry-bar{font-size:16px}}
 @media(max-height:520px){#keypad{display:grid;grid-template-columns:repeat(10,25px)}#keypad button{font-size:12px}footer{flex-wrap:wrap;padding:4px}}
+/* Original dock: row-major counting pad, cumulative hover and corner decimal fold. */
+.original-dock{--key:50px;gap:34px;padding:17px 45px;border-radius:100px;background:#fff8;flex-wrap:nowrap}
+.original-dock button{border:2px solid #302f29;border-radius:7px;background:#efede5 url('../../textures/swf-12.png') center/50px;font-size:30px;padding:0;height:var(--key);min-width:var(--key);text-shadow:0 1px #fff}
+.original-dock button:hover,.original-dock button.lit{background-image:url('../../textures/swf-18.jpg');background-size:150px}
+.dock-operators{display:grid;grid-template-columns:repeat(2,var(--key));gap:10px}.dock-long{display:grid;gap:10px;width:110px}.dock-long>button{font-size:30px}.parentheses{display:flex;gap:10px}.parentheses button{flex:1}
+.pad-wrap{position:relative;width:calc(var(--key)*3 + 6px);flex-shrink:0}
+.original-dock #keypad{display:grid;grid-template-columns:repeat(3,var(--key));gap:2px;padding:1px;background:#555;border-radius:8px;overflow:hidden}
+.original-dock #keypad button{width:var(--key);height:var(--key);border-radius:7px;padding:0}
+#pad-numeral{position:absolute;inset:0;display:grid;place-items:center;font-size:calc(var(--key)*2.3);line-height:1;opacity:.5;pointer-events:none}
+.original-dock .deploy-triangle{position:absolute;bottom:calc(100% + 5px);left:34%;width:32%;height:25px;min-width:0;clip-path:polygon(50% 0,100% 100%,0 100%);border-radius:0;background-image:url('../../textures/swf-18.jpg')}
+.original-dock .decimal-fold{position:absolute;right:0;bottom:0;width:28px;height:28px;min-width:0;clip-path:polygon(100% 0,100% 100%,0 100%);border-radius:0;padding:7px 0 0 10px;font-size:17px;background:#aaa url('../../textures/swf-18.jpg') center/100px}
+.original-dock{margin-top:22px}#entry-bar{min-height:24px;font-size:18px}#entry-bar span{font-size:12px;color:#665f52}#entry-text{max-width:80vw;overflow-wrap:anywhere}
+@media(max-width:900px){.original-dock{--key:40px;gap:18px;padding:12px 25px}.dock-long{width:90px}.original-dock button{font-size:25px}.dock-operators,.dock-long,.parentheses{gap:6px}}
+@media(max-width:600px){.original-dock{--key:28px;gap:7px;padding:10px;width:auto;border-radius:45px}.dock-long{width:52px}.original-dock button,.dock-long>button{font-size:19px}.dock-operators,.dock-long,.parentheses{gap:3px}.original-dock .decimal-fold{width:21px;height:21px;font-size:12px;padding:4px 0 0 8px}.original-dock .deploy-triangle{height:19px}}
+@media(max-height:520px){.original-dock{--key:25px;gap:12px;padding:5px 20px;margin-top:20px}.original-dock button{font-size:18px}.dock-long{width:70px}.original-dock .deploy-triangle{height:18px}#transport{min-height:20px}}
+.original-dock #keypad button{background:#efede5 url('../../textures/swf-12.png') center/50px}.original-dock #keypad button.lit{background-image:url('../../textures/swf-18.jpg');background-size:150px}

@@ -31,20 +31,31 @@ export function unitPlan(a,b,target,source){
   const opposing=tokens.filter(t=>t.sign!==sign).sort((a,b)=>a.place-b.place)[0];
   const donor=tokens.filter(t=>t.sign===sign&&t.place>opposing.place).sort((a,b)=>a.place-b.place)[0];
   if(!donor)throw Error('Unable to borrow for unit animation.');
-  const place=donor.place-1,used=new Set(bucket(place).map(t=>t.cell));
+  const place=donor.place-1,used=new Set(bucket(place,sign).map(t=>t.cell));
   const children=Array.from({length:10},()=>{let cell=0;while(used.has(cell))cell++;used.add(cell);return make(sign,place,target,cell);});
   add('borrow',[donor.id],children);normalize(false);
  }
  // Compact gaps left by cancellation without changing token identities or weights.
  const before=snapshot();for(let place=0;place<17;place++)bucket(place).sort((a,b)=>a.cell-b.cell).forEach((t,i)=>{t.cell=i;});
  if(before.some((t,i)=>t.cell!==tokens[i].cell))phases.push({type:'settle',before,after:snapshot(),removed:[],created:[]});
- const plan={initial,phases,final:snapshot(),target,source,total:String(total)};scheduleUnits(plan);return plan;
+ // Bind each cancellation before playback. Existing receiving cards win, then
+ // borrowed receiving units. Incoming cards land on these cells, never a midpoint.
+ const cancelTargets={};
+ const original=new Map(initial.map(t=>[t.id,t.owner]));
+ for(const phase of phases.filter(p=>p.type==='neutralize')){
+  const pair=phase.before.filter(t=>phase.removed.includes(t.id));
+  const receiver=pair.find(t=>original.get(t.id)===target)||pair.find(t=>original.get(t.id)!==source)||pair[0];
+  const mover=pair.find(t=>t.id!==receiver.id);
+  phase.receiver={...receiver};phase.mover=mover.id;
+  cancelTargets[mover.id]={...receiver};
+ }
+ const plan={initial,phases,final:snapshot(),target,source,total:String(total),cancelTargets};scheduleUnits(plan);return plan;
 }
 export function scheduleUnits(plan){
  const ready=new Map();let end=0;
  for(const phase of plan.phases){
   const inputs=phase.type==='settle'?phase.before.map(t=>t.id):phase.removed;
-  phase.start=Math.max(0,...inputs.map(id=>ready.get(id)||0));
+  phase.start=Math.max(phase.type==='settle'?end:0,...inputs.map(id=>ready.get(id)||0));
   phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:.45);
   for(const id of (phase.type==='settle'?phase.after.map(t=>t.id):phase.created))ready.set(id,phase.end);
   end=Math.max(end,phase.end);
