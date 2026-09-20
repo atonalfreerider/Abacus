@@ -1,0 +1,15 @@
+{
+  "name": "abacus-equation-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A tactile, browser-native algebra playground using the original ABACUS artwork.",
+  "scripts": {
+    "dev": "node tools/serve.mjs",
+    "start": "node tools/serve.mjs",
+    "build": "node tools/build.mjs",
+    "test": "node --test tests/*.test.js",
+    "preview": "node tools/serve.mjs dist"
+  },
+  "engines": { "node": ">=20" }
+}

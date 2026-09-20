@@ -1,0 +1,235 @@
+{
+  "source": "ABACUS.swf",
+  "assets": [
+    {
+      "id": 2,
+      "file": "swf-2.png",
+      "originalJpeg": "swf-2.jpg",
+      "width": 300,
+      "height": 300,
+      "tag": 6,
+      "symbol": "GREEN300"
+    },
+    {
+      "id": 9,
+      "file": "swf-9.png",
+      "originalJpeg": null,
+      "width": 150,
+      "height": 150,
+      "tag": 35,
+      "symbol": "Trans1"
+    },
+    {
+      "id": 10,
+      "file": "swf-10.png",
+      "originalJpeg": null,
+      "width": 300,
+      "height": 300,
+      "tag": 35,
+      "symbol": "Shade5White"
+    },
+    {
+      "id": 11,
+      "file": "swf-11.png",
+      "originalJpeg": null,
+      "width": 100,
+      "height": 100,
+      "tag": 35,
+      "symbol": "Shade5Trans100"
+    },
+    {
+      "id": 12,
+      "file": "swf-12.png",
+      "originalJpeg": null,
+      "width": 100,
+      "height": 100,
+      "tag": 35,
+      "symbol": "Shade5Full100"
+    },
+    {
+      "id": 13,
+      "file": "swf-13.png",
+      "originalJpeg": "swf-13.jpg",
+      "width": 100,
+      "height": 100,
+      "tag": 6,
+      "symbol": "Shade4White100"
+    },
+    {
+      "id": 14,
+      "file": "swf-14.png",
+      "originalJpeg": null,
+      "width": 100,
+      "height": 100,
+      "tag": 35,
+      "symbol": "Shade4Trans100"
+    },
+    {
+      "id": 15,
+      "file": "swf-15.png",
+      "originalJpeg": null,
+      "width": 500,
+      "height": 500,
+      "tag": 35,
+      "symbol": "Shade4FullL"
+    },
+    {
+      "id": 16,
+      "file": "swf-16.png",
+      "originalJpeg": null,
+      "width": 100,
+      "height": 100,
+      "tag": 35,
+      "symbol": "Shade4Full100"
+    },
+    {
+      "id": 17,
+      "file": "swf-17.png",
+      "originalJpeg": null,
+      "width": 300,
+      "height": 300,
+      "tag": 35,
+      "symbol": "Shade3Trans"
+    },
+    {
+      "id": 18,
+      "file": "swf-18.png",
+      "originalJpeg": "swf-18.jpg",
+      "width": 300,
+      "height": 300,
+      "tag": 6,
+      "symbol": "Shade3Full"
+    },
+    {
+      "id": 19,
+      "file": "swf-19.png",
+      "originalJpeg": null,
+      "width": 150,
+      "height": 150,
+      "tag": 35,
+      "symbol": "Shade2Trans"
+    },
+    {
+      "id": 20,
+      "file": "swf-20.png",
+      "originalJpeg": "swf-20.jpg",
+      "width": 150,
+      "height": 150,
+      "tag": 6,
+      "symbol": "Shade2Full"
+    },
+    {
+      "id": 21,
+      "file": "swf-21.png",
+      "originalJpeg": null,
+      "width": 150,
+      "height": 150,
+      "tag": 35,
+      "symbol": "Shade1Trans"
+    },
+    {
+      "id": 22,
+      "file": "swf-22.png",
+      "originalJpeg": null,
+      "width": 150,
+      "height": 150,
+      "tag": 35,
+      "symbol": "Shade1Full"
+    },
+    {
+      "id": 23,
+      "file": "swf-23.png",
+      "originalJpeg": "swf-23.jpg",
+      "width": 300,
+      "height": 300,
+      "tag": 6,
+      "symbol": "RED300"
+    },
+    {
+      "id": 24,
+      "file": "swf-24.png",
+      "originalJpeg": "swf-24.jpg",
+      "width": 1600,
+      "height": 1197,
+      "tag": 6,
+      "symbol": "Paper1"
+    },
+    {
+      "id": 25,
+      "file": "swf-25.png",
+      "originalJpeg": "swf-25.jpg",
+      "width": 300,
+      "height": 300,
+      "tag": 6,
+      "symbol": "BLUE300"
+    },
+    {
+      "id": 27,
+      "file": "swf-27.png",
+      "originalJpeg": null,
+      "width": 615,
+      "height": 313,
+      "tag": 36,
+      "symbol": null
+    },
+    {
+      "id": 30,
+      "file": "swf-30.png",
+      "originalJpeg": null,
+      "width": 204,
+      "height": 116,
+      "tag": 36,
+      "symbol": null
+    }
+  ],
+  "symbols": {
+    "53": "ABContain",
+    "52": "ArithmeticContain",
+    "51": "BalanceContainer",
+    "50": "ConstantContainer",
+    "49": "EquContainer",
+    "48": "ModeContainer",
+    "47": "NomialContainer",
+    "46": "OpContainer",
+    "45": "OutlineBox",
+    "43": "OutlineContainer",
+    "42": "TermContainer",
+    "41": "VariableContainer",
+    "40": "CalculusContain",
+    "39": "TrigContain",
+    "38": "Comma",
+    "37": "EqualSign",
+    "36": "NomBox",
+    "35": "UnitNeg",
+    "34": "UnitPos",
+    "33": "UnitX",
+    "32": "AlJabrButton",
+    "29": "TenFingers",
+    "26": "Hub",
+    "25": "BLUE300",
+    "24": "Paper1",
+    "23": "RED300",
+    "22": "Shade1Full",
+    "21": "Shade1Trans",
+    "20": "Shade2Full",
+    "19": "Shade2Trans",
+    "18": "Shade3Full",
+    "17": "Shade3Trans",
+    "16": "Shade4Full100",
+    "15": "Shade4FullL",
+    "14": "Shade4Trans100",
+    "13": "Shade4White100",
+    "12": "Shade5Full100",
+    "11": "Shade5Trans100",
+    "10": "Shade5White",
+    "9": "Trans1",
+    "8": "MinusSign",
+    "7": "PlusSign",
+    "6": "MultiplySign",
+    "5": "DivideSign",
+    "3": "DecimalPoint",
+    "2": "GREEN300",
+    "1": "AdobeGaramondPro",
+    "0": "ABACUS"
+  }
+}
