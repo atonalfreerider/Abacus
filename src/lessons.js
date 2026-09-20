@@ -58,6 +58,7 @@ export function normalizeInput(raw) {
 }
 
 export function describe(state) {
+  if (!state.terms.some(term => Number.isFinite(term.value))) return 'Empty equation';
   const render = terms => terms.map((t, i) => `${t.positive ? (i ? ' + ' : '') : (i ? ' − ' : '−')}${t.kind === 'x' ? `${t.value === 1 ? '' : t.value}x` : t.value}`).join('') || '0';
   const [left, right] = sides(state);
   return render(left) + (state.hasEquals ? ' = ' + render(right) : '');
