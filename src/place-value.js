@@ -6,6 +6,7 @@ export const scaleGroups = [
   { mark: 'T', name: 'trillions' }, { mark: 'Q', name: 'quadrillions' },
 ];
 export function placeMetadata(exponent) {
+  if(exponent<0)return {exponent,group:0,local:0,magnitude:10**exponent,cardCount:1,supportCards:0,mark:'',name:'decimal',innerScale:10**(exponent/2)};
   const group = Math.floor(exponent / 3), local = exponent % 3;
   return { exponent, group, local, magnitude: 10 ** local, cardCount: 10 ** local, supportCards: 10 ** local - 1, ...scaleGroups[group] };
 }

@@ -1,7 +1,9 @@
+import {EquationEntry} from './entry.js';
 import { Controller } from './controller.js';
 import { math } from './model.js';
 import { renderEquation,layout } from './view.js';
 const $=id=>document.getElementById(id);
+const entry=new EquationEntry();
 let controller,drag=null,selected=null,director=null,lessonIndex=0,practice=false,baseline=null;
 const lessons=[
   {title:'Across the mirror',equation:'x+3=7'},
@@ -33,7 +35,7 @@ function tick(now){controller.frame(now);requestAnimationFrame(tick);}requestAni
 function point(event) {const svg=$('equation-svg'),p=svg.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());}
 $('stage').addEventListener('pointerdown',event=>{
   const term=event.target.closest('[data-term]');if(!term||term.classList.contains('placeholder')||controller.busy)return;
-  event.preventDefault();const p=point(event);drag={id:term.dataset.term,side:term.dataset.side,start:p,base:[Number(term.dataset.x),Number(term.dataset.y)],node:term};
+  event.preventDefault();entry.active=false;const p=point(event);drag={id:term.dataset.term,side:term.dataset.side,start:p,base:[Number(term.dataset.x),Number(term.dataset.y)],node:term};
   selected=drag.id;term.classList.add('dragging');$('stage').setPointerCapture(event.pointerId);
 });
 function dragPosition(event){const p=point(event),x=drag.base[0]+p.x-drag.start.x,y=drag.base[1]+p.y-drag.start.y;const scene=layout(controller.model.state,{...controller.options,expression:controller.model.expression}),slot=scene.terms.find(t=>t.term.id===drag.id);const side=controller.model.expression?'left':controller.options.orientation==='horizontal'?(x+slot.w/2<scene.equal.x?'left':'right'):(y+75<scene.equal.y?'left':'right');return {x,y,side};}
@@ -47,7 +49,8 @@ $('stage').addEventListener('pointerup',event=>{
   safe(()=>{if(!moved){controller.render();message('Selected. Arrow keys move across; Shift + arrows rearrange.');return;}
     const sideTerms=scene.terms.filter(t=>t.side===side&&!t.term.placeholder&&t.term.id!==current.id);
     const index=gap?Number(gap.dataset.insert):sideTerms.filter(t=>p.x>t.x+t.w/2).length;
-    controller.drop(current.id,side,event.shiftKey?null:target?.dataset.term,index,performance.now(),{x:origin.x,y:origin.y});
+    const picked=scene.terms.find(t=>t.term.id===current.id);const collision=sideTerms.filter(t=>t.term.kind===picked.term.kind).map(t=>({id:t.term.id,area:Math.max(0,Math.min(origin.x+picked.w,t.x+t.w)-Math.max(origin.x,t.x))*Math.max(0,Math.min(origin.y+150,t.y+150)-Math.max(origin.y,t.y))})).filter(t=>t.area>0).sort((a,b)=>b.area-a.area)[0];
+    controller.drop(current.id,side,event.shiftKey?null:(target?.dataset.term||collision?.id),index,performance.now(),{x:origin.x,y:origin.y});
   });
 });
 $('stage').addEventListener('pointercancel',()=>{drag=null;delete controller.options.drag;controller.render();});
@@ -62,7 +65,7 @@ $('stage').addEventListener('keydown',event=>{
   }
 });
 $('open-equation').onclick=()=>{$('equation-input').value=math.equationText(controller.model.state);$('equation-dialog').showModal();$('equation-input').focus();};
-$('equation-form').onsubmit=event=>{event.preventDefault();safe(()=>{controller.load($('equation-input').value);$('equation-dialog').close();director=null;$('director-bar').hidden=true;});};
+$('equation-form').onsubmit=event=>{event.preventDefault();safe(()=>{controller.load($('equation-input').value);entry.active=false;$('entry-bar').hidden=true;$('equation-dialog').close();director=null;$('director-bar').hidden=true;});};
 for(const button of document.querySelectorAll('[data-close]'))button.onclick=()=>button.closest('dialog').close();
 $('open-view').onclick=()=>$('view-dialog').showModal();
 $('camera').onchange=event=>controller.camera(event.target.value);
@@ -71,17 +74,27 @@ $('zoom').oninput=event=>{controller.options.zoom=Number(event.target.value);con
 function autoLayout(){if($('orientation').value==='auto')controller.orientation(window.innerWidth<700?'vertical':'horizontal');}
 window.addEventListener('resize',autoLayout);autoLayout();
 $('undo').onclick=()=>controller.undo();$('redo').onclick=()=>controller.redo();
-$('combine').onclick=()=>safe(()=>controller.execute({type:'simplify'}));
+$('combine').onclick=()=>safe(()=>{entry.active=false;$('entry-bar').hidden=true;const step=controller.model.nextStep();if(step?.type==='combine')controller.execute(step);else controller.execute({type:'simplify'});});
 $('solve').onclick=()=>safe(()=>{if(!controller.step())message(controller.status());});
 for(const operation of ['multiply','divide'])$(operation).onclick=()=>safe(()=>controller.execute({type:'operate',operation,amount:$('factor').value}));
 $('pause').onclick=()=>{if(controller.clock.playing)controller.seek(controller.clock.progress);else controller.clock.resume(performance.now());refresh();};
 $('skip').onclick=()=>controller.finish();$('progress').oninput=event=>controller.seek(Number(event.target.value));
 $('open-director').onclick=()=>$('lesson-dialog').showModal();
-for(const lesson of lessons){const b=document.createElement('button');b.textContent=`${lesson.title} · ${lesson.equation}`;b.onclick=()=>{director=lesson;practice=false;controller.load(lesson.equation);baseline=lesson.equation;$('lesson-dialog').close();$('director-bar').hidden=false;$('director-title').textContent=lesson.title;refresh();};$('lessons').append(b);}
+for(const lesson of lessons){const b=document.createElement('button');b.textContent=`${lesson.title} · ${lesson.equation}`;b.onclick=()=>{entry.active=false;$('entry-bar').hidden=true;director=lesson;practice=false;controller.load(lesson.equation);baseline=lesson.equation;$('lesson-dialog').close();$('director-bar').hidden=false;$('director-title').textContent=lesson.title;refresh();};$('lessons').append(b);}
 $('watch').onclick=()=>safe(()=>{baseline=math.equationText(controller.model.state);practice=false;controller.step();});
 $('try').onclick=()=>{if(baseline)controller.load(baseline);practice=true;refresh();};
 $('leave-director').onclick=()=>{director=null;$('director-bar').hidden=true;};
-// Original-style number pad builds input; Enter submits into the exact model.
-for(let n=1;n<=9;n++){const b=document.createElement('button');b.textContent=n;b.onclick=()=>{$('equation-dialog').showModal();$('equation-input').value+=n;$('equation-input').focus();};$('keypad').append(b);}
-$('clear').onclick=()=>safe(()=>controller.load('0=0'));
+// Typing and keypad buttons use the same incremental expression, directly in the workspace.
+function enterKey(key){
+ if(drag||key==='Enter'&&!entry.active)return;
+ const text=entry.key(key);if(key==='Escape')$('entry-bar').hidden=true;if(text===null)return;
+ $('entry-text').textContent=entry.text||'0';$('entry-bar').hidden=!entry.active;
+ if(key==='Enter'){try{controller.load(text||'0');message('');}catch(e){entry.active=true;$('entry-bar').hidden=false;message(e.message);}return;}
+ try{controller.load(entry.preview());message('');}catch{ /* Keep the last valid projection while parentheses or a fraction are incomplete. */ }
+}
+const keys=[['7','7'],['8','8'],['9','9'],['+','+'],['4','4'],['5','5'],['6','6'],['−','-'],['1','1'],['2','2'],['3','3'],['×','*'],['0','0'],['.','.'],['x','x'],['÷','/'],['(','('],[')',')'],['=','='],['⌫','Backspace']];
+for(const [label,key] of keys){const b=document.createElement('button');b.textContent=label;b.dataset.inputKey=key;b.setAttribute('aria-label',key==='Backspace'?'Delete last input':`Input ${label}`);b.onclick=()=>enterKey(key);$('keypad').append(b);}
+$('entry-done').onclick=()=>enterKey('Enter');
+document.addEventListener('keydown',event=>{if(event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),]$/.test(event.key)||['Backspace','Enter','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
+$('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>controller.load('0'));};
 $('open-tests').onclick=()=>location.href='./tests.html';

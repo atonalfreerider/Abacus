@@ -1,3 +1,4 @@
+import {numberSpec,placeOffset} from './numbers.js';
 import { math } from './model.js';
 import {unitFrame} from './units.js';
 import { placeMetadata } from '../place-value.js';
@@ -11,6 +12,8 @@ export function stackGeometry(exponent,camera='front') {
 }
 export function face(x,y,size,color,meta,attributes='') {
   const border=1+meta.group*.55;
+  if(meta.exponent<0){const inner=size*meta.innerScale,inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="#191a16" stroke-width="1"/><rect data-inner-area="${10**meta.exponent}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
+
   let svg=`<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#${color})" stroke="#191a16" stroke-width="${border}"/>`;
   for(let level=0;level<meta.group;level++) {const inset=3+level*3;svg+=`<rect x="${round(x+inset)}" y="${round(y+inset)}" width="${size-2*inset}" height="${size-2*inset}" rx="3" fill="none" stroke="#17271c" stroke-width="${1.2+meta.group*.55}"/>`;}
   if(meta.mark)svg+=`<text x="${round(x+size-7)}" y="${round(y+size-6)}" text-anchor="end" font-size="12" font-weight="bold" fill="#14251d">${meta.mark}</text>`;
@@ -18,7 +21,7 @@ export function face(x,y,size,color,meta,attributes='') {
 }
 export function tray(digit,color,exponent=0,camera='front',label=String(digit),unknown=false) {
   const meta=stackGeometry(exponent,camera),size=43;
-  let svg='<rect width="150" height="150" rx="12" fill="url(#paper)" stroke="#171713" stroke-width="2"/>';
+  let svg='<rect width="150" height="150" rx="12" fill="url(#paper)" fill-opacity=".16" stroke="#171713" stroke-width="2"/>';
   for(let cell=0;cell<9;cell++) {
     const x=7+cell%3*47,y=7+Math.floor(cell/3)*47;
     svg+=`<rect x="${x}" y="${y}" width="${size}" height="${size}" rx="5" fill="none" stroke="#858274" stroke-opacity=".2"/>`;
@@ -28,18 +31,21 @@ export function tray(digit,color,exponent=0,camera='front',label=String(digit),u
       svg+=`<g opacity="${unknown?.25:1}"${clip}>${stackUnit(x,y,color,exponent,camera)}</g>`;
     }
   }
-  svg+=`<text x="75" y="121" text-anchor="middle" class="numeral" font-size="131" fill="#050504" pointer-events="none">${esc(label)}</text>`;
+  svg+=`<text x="75" y="75" dominant-baseline="central" text-anchor="middle" class="numeral" font-size="124" fill="#050504" pointer-events="none">${esc(label)}</text>`;
   return `<g class="digit-tray" data-cards="${meta.cardCount}" data-stack-depth="${meta.depth}" data-exponent="${exponent}">${svg}</g>`;
 }
-function termWidth(term) {if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;return term.value.d===1?Math.max(1,String(Math.abs(term.value.n)).length)*160+(term.kind==='variable'?160:0):Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160+(term.kind==='variable'?160:0);}
+export function commaTriangle(x,decimal=false){return `<g class="${decimal?'decimal-comma':'group-comma'}" transform="translate(${x+5} 0)"><path d="M0 75 L25 50 L25 100 Z" fill="url(#paper)" fill-opacity="${decimal?.16:.75}" stroke="#37362e" stroke-width="1.5"/>${decimal?'<path d="M12 102v32 M12 120l-7 13" fill="none" stroke="#37362e" stroke-dasharray="1 4"/><circle cx="12" cy="120" r="2" fill="#37362e"/>':''}</g>`;}
+function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
+function termWidth(term){if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?160:0);}
 function termArt(term,camera,solvedValue=null) {
   const color=term.kind==='variable'?'green':term.value.n<0?'red':'blue';
   const digits=(number,y=0,scale=1)=>[...String(number)].map((d,i,all)=>`<g transform="translate(${i*160*scale} ${y}) scale(${scale})">${tray(Number(d),color,all.length-i-1,camera)}</g>`).join('');
   let result;
-  if(term.value.d!==1) {
+  const spec=numberSpec(term);
+  if(!spec) {
     const width=Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160;
     result=`${digits(Math.abs(term.value.n),-47,.64)}<line x1="-3" y1="56" x2="${width*.64}" y2="56" stroke="#171713" stroke-width="3"/>${digits(term.value.d,67,.64)}`;
-  } else result=digits(Math.abs(term.value.n));
+  } else result=specArt(spec,color,camera);
   if(term.kind==='variable') {
     if(Math.abs(term.value.n)===term.value.d)result=tray(solvedValue!==null?Math.min(9,Math.abs(solvedValue)):9,'green',0,camera,'X',solvedValue===null);
     else result+=`<g transform="translate(${termWidth(term)-160} 0)">${tray(9,'green',0,camera,'X',true)}</g>`;
@@ -68,11 +74,11 @@ export function layout(equation,{orientation='horizontal',camera='front',express
   if(expression){rows.right=[];width=rows.left.at(-1).x+rows.left.at(-1).w+margin;equal=null;height=220+margin*2;}
   return {terms:[...rows.left,...rows.right],width,height,equal,orientation};
 }
-export function stackUnit(x,y,color,exponent,camera='front',opacity=1){return `<use class="unit-stack" href="#stack-${color}-${exponent}-${camera}" data-place="${exponent}" data-cards="${placeMetadata(exponent).cardCount}" x="${round(x)}" y="${round(y)}" opacity="${opacity}"/>`;}
+export function stackUnit(x,y,color,exponent,camera='front',opacity=1){return `<use class="unit-stack" href="#stack-${color}-${String(exponent).replace('-','m')}-${camera}" data-place="${exponent}" data-cards="${placeMetadata(exponent).cardCount}" x="${round(x)}" y="${round(y)}" opacity="${opacity}"/>`;}
 const stackCache=new Map();
 function stackDefinitions(body){
- const ids=[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
- return '<defs>'+ids.map(id=>{if(stackCache.has(id))return stackCache.get(id);const [,color,exp,camera]=id.split('-'),meta=stackGeometry(Number(exp),camera);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`);const drawing=`<g id="${id}">${content}</g>`;stackCache.set(id,drawing);return drawing;}).join('')+'</defs>';
+ const ids=[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
+ return '<defs>'+ids.map(id=>{if(stackCache.has(id))return stackCache.get(id);const [,color,exp,camera]=id.split('-'),meta=stackGeometry(Number(exp.replace('m','-')),camera);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`);const drawing=`<g id="${id}">${content}</g>`;stackCache.set(id,drawing);return drawing;}).join('')+'</defs>';
 }
 function textures(){return `<defs>${[['blue',25],['red',23],['green',2],['paper',24]].map(([name,id])=>`<pattern id="${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('')}</defs>`;}
 function renderLayout(scene,options,overrides={}) {
@@ -163,31 +169,30 @@ function renderUnits(plan,t,options){
  const before=layout(plan.before,options),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
  const source=before.terms.find(s=>s.term.id===u.source),target=before.terms.find(s=>s.term.id===u.target);
  const result=after.terms.find(s=>s.term.id===u.target)||after.terms.find(s=>s.side===target.side);
- const digits=term=>Math.max(1,String(Math.abs(term.value.n)).length);
+ const spec=term=>numberSpec(term),digits=term=>spec(term).places.length;
+ const boundary=term=>-placeOffset(spec(term).maxPlace),shift=u.placeShift||0;
  const lerp=(a,b,q=p)=>a+(b-a)*q;
- const anchor={x:lerp(target.x+digits(target.term)*160,result.x+(result.term.placeholder?1:digits(result.term))*160),y:lerp(target.y,result.y)};
- const {phase,progress:q}=unitFrame(u,clamp(t/.9));
+ const anchor={x:lerp(target.x+boundary(target.term),result.x+boundary(result.term)),y:lerp(target.y,result.y)};
+ const frame=unitFrame(u,clamp(t/.9)),phase=frame.phase;
  const sourceOrigin=plan.origin||source;
  const sourceAt={x:sourceOrigin.x,y:sourceOrigin.y};
  const scene={...before,width:lerp(before.width,after.width),height:Math.max(before.height,after.height),terms:[...before.terms],equal:before.equal&&after.equal?{x:lerp(before.equal.x,after.equal.x),y:lerp(before.equal.y,after.equal.y)}:null};
- const maxPlace=Math.max(0,...u.initial.map(a=>a.place),...u.final.map(a=>a.place));
- function pos(token){const owner=token.owner===u.target?anchor:{x:sourceAt.x+digits(source.term)*160,y:sourceAt.y};const cell=token.cell;
-  return {x:owner.x-(token.place+1)*160+7+(cell<9?cell%3*47:47+(cell-9)*6),y:owner.y+7+(cell<9?Math.floor(cell/3)*47:47+(cell-9)*6)};
+ const maxPlace=Math.max(spec(target.term).maxPlace,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift)),minPlace=Math.min(spec(target.term).minPlace,spec(source.term).minPlace,0,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift));
+ function pos(token){const owner=token.owner===u.target?anchor:{x:sourceAt.x+boundary(source.term),y:sourceAt.y};const cell=token.cell;
+  return {x:owner.x+placeOffset(token.place+shift)+7+(cell<9?cell%3*47:47+(cell-9)*6),y:owner.y+7+(cell<9?Math.floor(cell/3)*47:47+(cell-9)*6)};
  }
  for(const slot of before.terms){const to=after.terms.find(s=>s.term.id===slot.term.id);if(to)overrides[slot.term.id]={x:lerp(slot.x,to.x),y:lerp(slot.y,to.y)};}
- const empty=(term,alpha)=>{let art='';for(let place=0;place<digits(term);place++)art+=`<g transform="translate(${(digits(term)-place-1)*160} 0)">${tray(0,'blue',place,options.camera,'')}</g>`;return `<g opacity="${alpha}">${art}</g>`;};
- const sourceBefore=phase?.before.filter(a=>a.owner===u.source).length||0,sourceAfter=phase?.after.filter(a=>a.owner===u.source).length||0;
- overrides[u.source]={x:sourceAt.x,y:sourceAt.y,opacity:sourceBefore?(sourceAfter?1:1-ease(q)):0,art:empty(source.term,1),labelOpacity:0};
- let boxes='';for(let place=0;place<=maxPlace;place++){const old=place<digits(target.term),opacity=(old?1:clamp(t*8))*(place>=digits(result.term)?1-ease((t-.9)/.1):1);boxes+=`<g opacity="${opacity}" transform="translate(${anchor.x-(place+1)*160-target.x} ${anchor.y-target.y})">${tray(0,'blue',place,options.camera,'')}</g>`;}
+ const empty=term=>specArt(spec(term),'blue',options.camera,false);
+ const sourceRemaining=frame.tokens.some(a=>a.owner===u.source)||frame.active.some(a=>a.phase.before.some(t=>a.phase.removed.includes(t.id)&&t.owner===u.source));
+ overrides[u.source]={x:sourceAt.x,y:sourceAt.y,term:plan.command.side?{...source.term,value:math.neg(source.term.value)}:source.term,opacity:sourceRemaining?1:0,art:empty(source.term),labelOpacity:0};
+ let boxes='';for(let place=minPlace;place<=maxPlace;place++){const old=place>=spec(target.term).minPlace&&place<=spec(target.term).maxPlace,final=place>=spec(result.term).minPlace&&place<=spec(result.term).maxPlace,opacity=(old?1:clamp(t*8))*(final?1:1-ease((t-.9)/.1));const x=anchor.x+placeOffset(place)-target.x;boxes+=`<g opacity="${opacity}" transform="translate(${x} ${anchor.y-target.y})">${tray(0,'blue',place,options.camera,'')}</g>`;if(place<maxPlace&&(place===-1||place>=0&&place%3===2||place<0&&place%3===0))boxes+=`<g transform="translate(0 ${anchor.y-target.y})">${commaTriangle(x-40,place===-1)}</g>`;}
  overrides[u.target]={x:target.x,y:target.y,term:t>.9?result.term:target.term,art:boxes,labelOpacity:0};
  let body=renderLayout(scene,options,overrides),particles='';
  const color=token=>target.term.kind==='variable'?'green':token.sign<0?'red':'blue';
- const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place,options.camera,opacity)}</g>`;
- if(!phase)particles=u.final.map(token=>draw(token,pos(token))).join('');
- else if(t>=.9)particles=u.final.map(token=>draw(token,pos(token))).join('');
- else {
-  const moving=new Set([...phase.removed,...phase.created]);
-  for(const token of phase.before)if(!moving.has(token.id)){const next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next||token);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});}
+ const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity)}</g>`;
+ for(const token of frame.tokens)particles+=draw(token,pos(token));
+ for(const {phase,progress:q} of frame.active){
+  if(phase.type==='settle')for(const token of phase.before){const next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next||token);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});}
   if(phase.type==='transfer'){
    const token=phase.before.find(a=>a.id===phase.removed[0]),next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});
   } else if(phase.type==='neutralize'){
@@ -196,12 +201,12 @@ function renderUnits(plan,t,options){
   } else if(phase.type==='carry'||phase.type==='borrow'){
    const carry=phase.type==='carry',many=(carry?phase.before:phase.after).filter(a=>(carry?phase.removed:phase.created).includes(a.id));
    const single=(carry?phase.after:phase.before).find(a=>a.id===(carry?phase.created[0]:phase.removed[0]));
-   const end=pos(single),pitch=cameras[options.camera].pitch,depth=placeMetadata(many[0].place).cardCount*pitch;
-   const f=carry?ease(q):1-ease(q),comma=single.place%3===0;
+   const end=pos(single),pitch=cameras[options.camera].pitch,depth=placeMetadata(many[0].place+shift).cardCount*pitch;
+   const f=carry?ease(q):1-ease(q),comma=(single.place+shift)%3===0||many[0].place+shift<0;
    // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
    // At a comma, compress the old depth group into the next inscribed face.
    for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,end.x+offset,f),y:lerp(start.y,end.y+offset,f)};
-    if(comma){const meta=stackGeometry(token.place,options.camera);let drawing='';for(let layer=meta.cardCount;layer>=1;layer--){const d=layer*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}particles+=`<g data-unit="${token.id}" opacity="${1-ease((f-.75)/.25)}">${drawing}</g>`;}
+    if(comma){const meta=stackGeometry(token.place+shift,options.camera);let drawing='';for(let layer=meta.cardCount;layer>=1;layer--){const d=layer*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}particles+=`<g data-unit="${token.id}" opacity="${1-ease((f-.75)/.25)}">${drawing}</g>`;}
     else particles+=draw(token,point);
    }
    if(comma)particles+=draw(single,end,ease((f-.75)/.25));
@@ -209,8 +214,9 @@ function renderUnits(plan,t,options){
  }
  // Numerals fade out at pickup and return only after the units reach their settled cells.
  let numerals='';const labels=t<.06?1-t/.06:t>.9?(t-.9)/.1:0;
- if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){if(!term.placeholder){const chars=[...String(Math.abs(term.value.n))];chars.forEach((char,i)=>{numerals+=`<text x="${slot.x+i*160+75}" y="${slot.y+121}" text-anchor="middle" font-size="131" opacity="${labels}">${char}</text>`;});}}}
+ if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){for(const digit of spec(term).places)numerals+=`<text x="${slot.x+digit.x+75}" y="${slot.y+75}" dominant-baseline="central" text-anchor="middle" font-size="124" opacity="${labels}">${digit.digit}</text>`;}}
+
  body+=`<g class="unit-animation" data-phase="${phase?.type||'settled'}" pointer-events="none">${particles}</g>`+numerals;
- const expand=ease(t/.15)*(1-ease((t-.9)/.1));scene.minX=Math.min(0,anchor.x-(maxPlace+1)*160-8)*expand;scene.minY=Math.min(0,sourceAt.y-20)*expand;scene.width=lerp(scene.width,Math.max(scene.width,sourceAt.x+source.w+stackGeometry(2,options.camera).depth+20),expand);scene.height=lerp(before.height,after.height,p)+Math.max(0,sourceAt.y+200+stackGeometry(2,options.camera).depth-before.height)*expand;
+ const expand=ease(t/.15)*(1-ease((t-.9)/.1));scene.minX=Math.min(0,anchor.x+placeOffset(maxPlace)-8)*expand;scene.minY=Math.min(0,sourceAt.y-20)*expand;scene.width=lerp(scene.width,Math.max(scene.width,sourceAt.x+source.w+stackGeometry(2,options.camera).depth+20),expand);scene.height=lerp(before.height,after.height,p)+Math.max(0,sourceAt.y+200+stackGeometry(2,options.camera).depth-before.height)*expand;
  return {scene,body};
 }

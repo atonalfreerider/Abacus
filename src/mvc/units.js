@@ -22,8 +22,9 @@ export function unitPlan(a,b,target,source){
   }
  }
  for(const token of initial.filter(t=>t.owner===source).sort((a,b)=>a.place-b.place)){
-  add('transfer',[token.id],[{...token,owner:target,cell:free(token.place)}]);normalize();
+  add('transfer',[token.id],[{...token,owner:target,cell:free(token.place)}]);
  }
+ normalize();
  const sign=total<0n?-1:1;
  // Borrow from the closest higher occupied place, splitting recursively through zeros.
  while(tokens.some(t=>t.sign!==sign)){
@@ -37,7 +38,29 @@ export function unitPlan(a,b,target,source){
  // Compact gaps left by cancellation without changing token identities or weights.
  const before=snapshot();for(let place=0;place<17;place++)bucket(place).sort((a,b)=>a.cell-b.cell).forEach((t,i)=>{t.cell=i;});
  if(before.some((t,i)=>t.cell!==tokens[i].cell))phases.push({type:'settle',before,after:snapshot(),removed:[],created:[]});
- return {initial,phases,final:snapshot(),target,source,total:String(total)};
+ const plan={initial,phases,final:snapshot(),target,source,total:String(total)};scheduleUnits(plan);return plan;
 }
-export function unitFrame(plan,progress){const position=Math.max(0,Math.min(.999999,progress))*plan.phases.length,index=Math.floor(position);return {phase:plan.phases[index],progress:position-index,index};}
+export function scheduleUnits(plan){
+ const ready=new Map();let end=0;
+ for(const phase of plan.phases){
+  const inputs=phase.type==='settle'?phase.before.map(t=>t.id):phase.removed;
+  phase.start=Math.max(0,...inputs.map(id=>ready.get(id)||0));
+  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:.45);
+  for(const id of (phase.type==='settle'?phase.after.map(t=>t.id):phase.created))ready.set(id,phase.end);
+  end=Math.max(end,phase.end);
+ }
+ plan.duration=end||.5;
+}
+export function unitFrame(plan,progress){
+ const time=Math.max(0,Math.min(1,progress))*plan.duration,tokens=new Map(plan.initial.map(t=>[t.id,t])),active=[];
+ for(const phase of [...plan.phases].sort((a,b)=>a.end-b.end))if(time>=phase.end){
+  if(phase.type==='settle'){tokens.clear();for(const t of phase.after)tokens.set(t.id,t);}
+  else {for(const id of phase.removed)tokens.delete(id);for(const id of phase.created)tokens.set(id,phase.after.find(t=>t.id===id));}
+ }
+ for(const phase of plan.phases)if(time>=phase.start&&time<phase.end){
+  for(const id of (phase.type==='settle'?phase.before.map(t=>t.id):phase.removed))tokens.delete(id);
+  active.push({phase,progress:(time-phase.start)/(phase.end-phase.start)});
+ }
+ return {tokens:[...tokens.values()],active,phase:active[0]?.phase,progress:active[0]?.progress||0};
+}
 

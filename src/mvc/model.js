@@ -23,11 +23,12 @@ export class EquationModel {
       if(index<0)throw Error('The card is not on that side.');
       const [item]=items.splice(index,1);items.splice(Math.max(0,Math.min(command.index,items.length)),0,item);
     } else if(command.type==='combine') {
+      if(command.side)after=math.transpose(after,command.id,command.side);
       const side=['left','right'].find(side=>after[side].some(t=>t.id===command.id)&&after[side].some(t=>t.id===command.target));
       if(!side || command.id===command.target)throw Error('Choose two terms on the same side.');
       const first=after[side].find(t=>t.id===command.target), second=after[side].find(t=>t.id===command.id);
       if(first.kind!==second.kind)throw Error('Only like terms can combine. Drop in a gap to rearrange.');
-      first.value=math.add(first.value,second.value);after[side]=after[side].filter(t=>t.id!==second.id && (t.id!==first.id||first.value.n!==0));
+      first.value=math.add(first.value,second.value);first.decimalPlaces=Math.max(first.decimalPlaces||0,second.decimalPlaces||0);first.notation=first.notation==='decimal'||second.notation==='decimal'?'decimal':first.notation==='fraction'||second.notation==='fraction'?'fraction':'auto';after[side]=after[side].filter(t=>t.id!==second.id && (t.id!==first.id||first.value.n!==0));
     } else if(command.type==='simplify') after=math.simplify(after);
     else if(command.type==='operate') after=math.operate(after,command.operation,math.parseScalar(command.amount));
     else throw Error('Unknown equation command.');

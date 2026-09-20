@@ -13,7 +13,7 @@ test('fractions are normalized and exact through operations',()=>{
 test('parser preserves additive blocks, handles decimals, fractions, unary signs and parentheses',()=>{
   assert.equal(equationText(parseEquation('2(x + 3) = 18')),'2x + 6 = 18');
   assert.equal(equationText(parseEquation('x/2 + 1/3 = 5/6')),'1/2x + 1/3 = 5/6');
-  assert.equal(equationText(parseEquation('-(x - 2) = .5')),'−x + 2 = 1/2');
+  assert.equal(equationText(parseEquation('-(x - 2) = .5')),'−x + 2 = 0.5');
   assert.deepEqual(parseScalar('0.1 + 0.2'),frac(3,10));
   assert.deepEqual(parseScalar('2 * (3 + 4)'),frac(14));
   assert.deepEqual(solution(parseEquation('3/4x − 1/2 = 1')), {type:'unique',value:frac(2)});

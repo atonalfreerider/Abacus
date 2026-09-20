@@ -18,7 +18,7 @@ export class Controller extends EventTarget {
   drop(id,side,target,index,now=performance.now(),origin=null) {
     const source=['left','right'].find(s=>this.model.state[s].some(t=>t.id===id));
     if(!source)throw Error('Unknown card.');
-    if(side!==source)return this.execute({type:'move',id,side},now,origin);
+    if(side!==source){const hit=this.model.state[side].find(t=>t.id===target),picked=this.model.state[source].find(t=>t.id===id);if(hit&&hit.kind===picked.kind)return this.execute({type:'combine',id,target,side},now,origin);return this.execute({type:'move',id,side},now,origin);}
     if(target&&target!==id)return this.execute({type:'combine',id,target},now,origin);
     if(Number.isInteger(index))return this.execute({type:'reorder',id,side,index},now,origin);
     this.render();return null;

@@ -1,3 +1,4 @@
+import {decimalText,numberSpec} from './mvc/numbers.js';
 // Exact, bounded rational arithmetic. BigInt intermediates prevent silent rounding.
 const LIMIT = BigInt(Number.MAX_SAFE_INTEGER);
 const gcd = (a, b) => { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) [a, b] = [b, a % b]; return a; };
@@ -20,7 +21,7 @@ const grouped = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 export const format = a => a.d === 1 ? grouped(a.n) : `${grouped(a.n)}/${grouped(a.d)}`;
 export const abs = a => frac(Math.abs(a.n), a.d);
 let sequence = 0;
-export const term = (kind, value) => ({ id: `t${++sequence}`, kind, value });
+export const term = (kind, value, notation="auto") => ({ id: `t${++sequence}`, kind, value, notation });
 
 function decimal(text) {
   const [whole, dec = ''] = text.split('.');
@@ -40,7 +41,7 @@ export function parseExpression(text) {
   const peek = () => tokens[index];
   const scalar = items => items.every(t => t.kind === 'constant');
   const sum = items => items.reduce((value, t) => add(value, t.value), frac(0));
-  const scale = (items, factor) => items.map(t => term(t.kind, mul(t.value, factor)));
+  const scale = (items, factor) => items.map(t => ({...term(t.kind, mul(t.value, factor),t.notation),decimalPlaces:t.decimalPlaces}));
   function primary() {
     const token = tokens[index++];
     if (token === '(') {
@@ -49,7 +50,7 @@ export function parseExpression(text) {
       return value;
     }
     if (token === 'x') return [term('variable', frac(1))];
-    if (token && /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) return [term('constant', decimal(token))];
+    if (token && /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) return [{...term('constant', decimal(token),token.includes('.')?'decimal':'auto'),...(token.includes('.')?{decimalPlaces:token.split('.')[1].length}:{})}];
     throw new Error('Use numbers, x, +, −, ×, ÷, and parentheses. Example: 2x + 3 = 11.');
   }
   function unary() {
@@ -64,8 +65,8 @@ export function parseExpression(text) {
       const right = unary();
       if (operator === '/') {
         if (!scalar(right)) throw new Error('This lab supports linear equations. Divide by a number, such as x/3.');
-        value = scale(value, div(frac(1), sum(right)));
-      } else if (scalar(right)) value = scale(value, sum(right));
+        value = scale(value, div(frac(1), sum(right))).map(t=>({...t,notation:t.notation==='decimal'||right.some(r=>r.notation==='decimal')?'decimal':'fraction'}));
+      } else if (scalar(right)) value = scale(value, sum(right)).map(t=>({...t,notation:t.notation==='decimal'||right.some(r=>r.notation==='decimal')?'decimal':t.notation}));
       else if (scalar(value)) value = scale(right, sum(value));
       else throw new Error('This lab supports linear equations with x. Try 3x instead of x × x.');
     }
@@ -84,7 +85,7 @@ export function parseExpression(text) {
   const result = expression();
   if (index < tokens.length) throw new Error(`“${tokens[index]}” is not supported. Use one variable, x, and arithmetic operations.`);
   if (result.length > 16) throw new Error('Use up to 16 terms on each side so the blocks have room.');
-  return result.filter(t => t.value.n !== 0);
+  return result.filter(t => t.value.n !== 0 || t.notation==='decimal');
 }
 export function parseEquation(text) {
   const sides = text.split('=');
@@ -127,7 +128,7 @@ export function cancelPair(equation, firstId, secondId) {
   throw new Error('Bring the opposite blocks to the same side first.');
 }
 export function simplify(equation) {
-  const combine = items => Object.entries(totals(items)).filter(([, value]) => value.n).map(([kind, value]) => term(kind, value));
+  const combine = items => Object.entries(totals(items)).filter(([, value]) => value.n).map(([kind, value]) => term(kind, value,items.some(t=>t.kind===kind&&t.notation==='decimal')?'decimal':items.some(t=>t.kind===kind&&t.notation==='fraction')?'fraction':'auto'));
   return { left: combine(equation.left), right: combine(equation.right) };
 }
 export function operate(equation, operation, amount) {
@@ -145,8 +146,9 @@ export function operate(equation, operation, amount) {
 }
 export function termText(t, absolute = false) {
   const value = absolute ? abs(t.value) : t.value;
-  if (t.kind === 'constant') return format(value);
-  return value.n === value.d ? 'x' : value.n === -value.d ? '−x' : `${format(value)}x`;
+  const text=t.notation==='decimal'?(numberSpec({...t,value})?.text??format(value)):format(value);
+  if (t.kind === 'constant') return text;
+  return value.n === value.d ? 'x' : value.n === -value.d ? '−x' : `${text}x`;
 }
 export function sideText(items) {
   return items.map((t, index) => `${index ? t.value.n < 0 ? ' − ' : ' + ' : t.value.n < 0 ? '−' : ''}${termText(t, true)}`).join('') || '0';
