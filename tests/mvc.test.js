@@ -34,10 +34,10 @@ test('contradictions and identities are distinct; illegal edits fail without com
  const m=new EquationModel('x+3=7'),before=m.state;assert.throws(()=>m.dispatch({type:'combine',id:m.state.left[0].id,target:m.state.left[1].id}));assert.equal(m.state,before);
  assert.equal(preservesResidual(math.parseEquation('1=2'),math.parseEquation('1=3'),{type:'simplify'}),false);
 });
-test('stack geometry has 10 and 100 faces, exact 10x depth, down-left projection and comma reset',()=>{
+test('stack geometry has 10 and 100 faces, exact 10x depth, down-right projection and comma reset',()=>{
  for(const camera of ['front','depth','spread'])for(let group=0;group<4;group++){
   const ten=stackGeometry(group*3+1,camera),hundred=stackGeometry(group*3+2,camera);
-  assert.equal(ten.cardCount,10);assert.equal(hundred.cardCount,100);assert.ok(Math.abs(hundred.depth/ten.depth-10)<1e-12);assert.ok(hundred.dx<0&&hundred.dy>0);assert.equal(stackGeometry(group*3,camera).cardCount,1);
+  assert.equal(ten.cardCount,10);assert.equal(hundred.cardCount,100);assert.ok(Math.abs(hundred.depth/ten.depth-10)<1e-12);assert.ok(hundred.dx>0&&hundred.dy>0);assert.equal(stackGeometry(group*3,camera).cardCount,1);
  }
 });
 test('all cards carry k/M/B marks and progressively thick nested outlines',()=>{

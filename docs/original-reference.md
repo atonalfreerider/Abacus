@@ -1,4 +1,6 @@
-# Original SWF inspection and fidelity contract
+# Original SWF inspection and historical fidelity contract
+
+This document records the earlier emulation build. The active application now uses native MVC rendering; see README.md and verification.md. The original SWF remains unchanged as the comparison reference. The current requested depth direction is down-right, with physical 1/10/100 card counts and k/M/B inscriptions.
 
 Source: C:\Users\johnb\Downloads\ABACUS.swf, 568,989 bytes, compressed SWF v15.
 SHA-256: c2749b7d0d685ea82c6b812de82ef469ec57843e037be16b2c8c278111e0b781.

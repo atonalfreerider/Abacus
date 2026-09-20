@@ -1,4 +1,5 @@
 import { math } from './model.js';
+import {unitPlan} from './units.js';
 export const clamp=t=>Math.max(0,Math.min(1,t));
 export const ease=t=>{t=clamp(t);return t*t*(3-2*t);};
 export function regroup(a,b) {
@@ -16,15 +17,15 @@ export function regroup(a,b) {
   return events;
 }
 export function planTransition(transaction) {
-  const {before,after,command}=transaction;let events=[];
+  const {before,after,command}=transaction;let events=[],units=null;
   if(command.type==='combine') {
     const terms=[...before.left,...before.right],a=terms.find(t=>t.id===command.id),b=terms.find(t=>t.id===command.target);
-    if(a.value.d===1&&b.value.d===1)events=regroup(a.value.n,b.value.n);
+    if(a.value.d===1&&b.value.d===1){events=regroup(a.value.n,b.value.n);units=unitPlan(b.value.n,a.value.n,b.id,a.id);}
     else events=[{type:'fraction',denominators:[a.value.d,b.value.d],result:math.add(a.value,b.value)}];
   }
   if(command.type==='move')events=[{type:'cross',id:command.id}];
   if(command.type==='operate')events=[{type:command.operation,amount:math.parseScalar(command.amount)}];
-  return {before,after,command,events,duration:events.some(e=>['carry','borrow'].includes(e.type))?Math.max(1800,events.length*900):events.length?1200:650};
+  return {before,after,command,events,units,duration:units?Math.max(1200,units.phases.length*500+500):events.length?1200:650};
 }
 export function operationGroups(plan) {
   const command=plan.command;

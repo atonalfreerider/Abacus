@@ -36,20 +36,21 @@ $('stage').addEventListener('pointerdown',event=>{
   event.preventDefault();const p=point(event);drag={id:term.dataset.term,side:term.dataset.side,start:p,base:[Number(term.dataset.x),Number(term.dataset.y)],node:term};
   selected=drag.id;term.classList.add('dragging');$('stage').setPointerCapture(event.pointerId);
 });
-$('stage').addEventListener('pointermove',event=>{if(!drag)return;const p=point(event);drag.node.setAttribute('transform',`translate(${drag.base[0]+p.x-drag.start.x} ${drag.base[1]+p.y-drag.start.y})`);});
+function dragPosition(event){const p=point(event),x=drag.base[0]+p.x-drag.start.x,y=drag.base[1]+p.y-drag.start.y;const scene=layout(controller.model.state,{...controller.options,expression:controller.model.expression}),slot=scene.terms.find(t=>t.term.id===drag.id);const side=controller.model.expression?'left':controller.options.orientation==='horizontal'?(x+slot.w/2<scene.equal.x?'left':'right'):(y+75<scene.equal.y?'left':'right');return {x,y,side};}
+$('stage').addEventListener('pointermove',event=>{if(!drag)return;const pose=dragPosition(event);controller.previewDrag(drag.id,pose.x,pose.y,pose.side);drag.node=document.querySelector(`[data-term="${drag.id}"]`);drag.node.classList.add('dragging');});
 $('stage').addEventListener('pointerup',event=>{
-  if(!drag)return;const current=drag,p=point(event);drag=null;current.node.style.pointerEvents='none';
+  if(!drag)return;const origin=dragPosition(event),current=drag,p=point(event);drag=null;delete controller.options.drag;current.node.style.pointerEvents='none';
   const under=document.elementFromPoint(event.clientX,event.clientY),target=under?.closest('[data-term]'),gap=under?.closest('[data-insert]');
   const scene=layout(controller.model.state,{...controller.options,expression:controller.model.expression});
-  const side=controller.model.expression?'left':controller.options.orientation==='horizontal'?(p.x<scene.equal.x?'left':'right'):(p.y<scene.equal.y?'left':'right');
+  const side=origin.side;
   const moved=Math.hypot(p.x-current.start.x,p.y-current.start.y)>5;
   safe(()=>{if(!moved){controller.render();message('Selected. Arrow keys move across; Shift + arrows rearrange.');return;}
     const sideTerms=scene.terms.filter(t=>t.side===side&&!t.term.placeholder&&t.term.id!==current.id);
     const index=gap?Number(gap.dataset.insert):sideTerms.filter(t=>p.x>t.x+t.w/2).length;
-    controller.drop(current.id,side,event.shiftKey?null:target?.dataset.term,index);
+    controller.drop(current.id,side,event.shiftKey?null:target?.dataset.term,index,performance.now(),{x:origin.x,y:origin.y});
   });
 });
-$('stage').addEventListener('pointercancel',()=>{drag=null;controller.render();});
+$('stage').addEventListener('pointercancel',()=>{drag=null;delete controller.options.drag;controller.render();});
 $('stage').addEventListener('keydown',event=>{
   const term=event.target.closest('[data-term]');if(!term)return;selected=term.dataset.term;
   if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
