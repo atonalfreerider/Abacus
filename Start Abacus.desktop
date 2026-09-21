@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Start Abacus
+Comment=Open Abacus in your default web browser
+Exec=/home/john/Desktop/Abacus/Start Abacus.sh
+Icon=accessories-calculator
+Terminal=true
+Categories=Education;

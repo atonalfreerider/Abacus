@@ -29,5 +29,10 @@ if(process.argv.includes('--stop')){
  }
  const url='http://127.0.0.1:'+state.port+'/';
  console.log('Abacus is ready at '+url);
- if(!process.argv.includes('--no-browser')){const browser=spawn('explorer.exe',[url],{detached:true,windowsHide:true,stdio:'ignore'});browser.on('error',error=>console.error('Open '+url+' in your browser. '+error.message));browser.unref();}
+ if(!process.argv.includes('--no-browser')){
+  const opener=process.platform==='win32'?'explorer.exe':process.platform==='darwin'?'open':'xdg-open';
+  const browser=spawn(opener,[url],{detached:true,windowsHide:true,stdio:'ignore'});
+  browser.on('error',error=>console.error('Open '+url+' in your browser. '+error.message));
+  browser.unref();
+ }
 }
