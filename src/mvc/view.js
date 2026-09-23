@@ -171,6 +171,13 @@ function overlay(plan,t,scene,options) {
   const label=event.type==='carry'?`10 → 1 next place`:event.type==='borrow'?'1 → 10 previous place':event.type==='neutralize'?'−1 + 1 = 0':event.type==='fraction'?'Common denominator':event.type==='multiply'?'Equal groups':'Share equally';
   return `<g class="motion-overlay" pointer-events="none">${body}<text x="${x+75}" y="${y-12}" text-anchor="middle" font-size="15">${label}</text></g>`;
 }
+// A drag release hands over where every card and the mirror were when it let go.
+function applyOrigin(scene,origin){
+  if(!origin)return scene;
+  for(const slot of scene.terms){const at=origin.positions?.[slot.term.id];if(at){slot.x=at.x;slot.y=at.y;}}
+  if(origin.equal&&scene.equal)scene.equal={...scene.equal,...origin.equal};
+  return scene;
+}
 export function renderEquation(equation,options={},plan=null,progress=1) {
   const frame=renderScene(equation,options,plan,progress);
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" id="equation-svg" viewBox="${frame.viewBox}" data-orientation="${frame.orientation}" data-camera="${frame.camera}" data-progress="${round(progress)}" aria-label="${esc(frame.label)}">${textures()}${stackDefinitions(frame.body)}${frame.body}</svg>`;
@@ -183,7 +190,7 @@ export function renderScene(equation,options={},plan=null,progress=1) {
   if(plan?.op&&progress<1){const frame=renderOperation(plan,progress,options);scene=frame.scene;body=frame.body;}
   else if(plan?.units&&progress<1){const frame=renderUnits(plan,progress,options);scene=frame.scene;body=frame.body;}
   else if(plan&&progress<1) {
-    const before=layout(plan.before,options),p=ease(progress);
+    const before=applyOrigin(layout(plan.before,options),plan.origin),p=ease(progress);
     if(plan.origin){const picked=before.terms.find(t=>t.term.id===plan.command.id);if(picked){picked.x=plan.origin.x;picked.y=plan.origin.y;}}
     const equal=before.equal&&after.equal?{x:before.equal.x+(after.equal.x-before.equal.x)*p,y:before.equal.y+(after.equal.y-before.equal.y)*p}:after.equal;
     scene={...before,equal,width:before.width+(after.width-before.width)*p,height:before.height+(after.height-before.height)*p,terms:[...before.terms]};
@@ -243,7 +250,7 @@ export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
  return particles;
 }
 function renderUnits(plan,t,options){
- const before=layout(plan.before,options),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
+ const before=applyOrigin(layout(plan.before,options),plan.origin),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
  const source=before.terms.find(s=>s.term.id===u.source),target=before.terms.find(s=>s.term.id===u.target);
  const result=after.terms.find(s=>s.term.id===u.target)||after.terms.find(s=>s.side===target.side);
  const spec=term=>numberSpec(term),digits=term=>spec(term).places.length;

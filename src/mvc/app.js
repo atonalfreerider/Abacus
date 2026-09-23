@@ -1,94 +1,129 @@
 import {EquationEntry} from './entry.js';
 import { Controller } from './controller.js';
 import { math } from './model.js';
-import { layout } from './view.js';
 import { Surface } from './surface.js';
+import { Dragger } from './drag.js';
+import { Tutor,lessons,narrate,feedback,finished } from './tutor.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
-let controller,drag=null,selected=null,director=null,lessonIndex=0,practice=false,baseline=null;
-const lessons=[
-  {title:'Across the mirror',equation:'x+3=7'},
-  {title:'Moving negatives',equation:'x-4=5'},
-  {title:'Equal groups',equation:'3x+2=14'},
-  {title:'Variables on both sides',equation:'3x+1=x+9'},
-  {title:'Fractions',equation:'x/2+1/3=5/6'},
-  {title:'Carry across a comma',equation:'999+1=1000'},
-  {title:'Borrow',equation:'1000-1=999'},
-];
 const surface=new Surface($('stage'));
-const view={render(state,options,plan,p){surface.draw(state,options,plan,p);$('stage').style.setProperty('--zoom',options.zoom);}};
-controller=new Controller(view);
+let tutor=null,playing=false,playTimer=0,hint=null;
+const view={render(state,options,plan,p){surface.draw(state,options,plan,p);$('stage').style.setProperty('--zoom',options.zoom);decorate();}};
+const controller=new Controller(view);
 const message=text=>{$('feedback').textContent=text;};
-const safe=fn=>{message('');try{fn();}catch(e){controller.render();message(e.message);}};
-function hint(command) {
-  if(!command)return controller.status();
-  return command.type==='move'?'Drag the term across the equals mirror to change its sign.':command.type==='combine'?'Drop like terms together. Red and blue units neutralize.':`Divide both sides by ${command.amount} to isolate x.`;
+const safe=fn=>{message('');try{return fn();}catch(e){controller.render();message(e.message);}};
+const terms=()=>[...controller.model.state.left,...controller.model.state.right];
+// Hint highlights survive re-renders: they are reapplied after every frame.
+function decorate(){
+ if(!hint||controller.busy)return;
+ const node=id=>document.querySelector(`#equation-svg [data-term="${CSS.escape(id)}"]`),card=node(hint.id);if(!card)return;
+ card.classList.add('hinted');const target=hint.target&&node(hint.target);target?.classList.add('hint-target');
+ // A guide arrow: across the mirror for a move, onto the partner for a combination.
+ const box=n=>{const w=Number(n.querySelector('.hit').getAttribute('width'))-12;return {x:Number(n.dataset.x)+w/2,y:Number(n.dataset.y)};};
+ const from=box(card),mirror=document.querySelector('#equation-svg .equals-mirror text'),vertical=controller.options.orientation==='vertical';
+ let to=target?box(target):null;
+ if(!to&&hint.type==='move'&&mirror){const mx=Number(mirror.getAttribute('x'));to=vertical?{x:from.x,y:from.y+(hint.side==='right'?300:-300)}:{x:2*mx-from.x,y:from.y};}
+ if(!to)return;
+ const lift=vertical?0:-70-Math.min(120,Math.abs(to.x-from.x)*.12),path=vertical?`M${from.x+90} ${from.y+75}C${from.x+200} ${from.y+75} ${to.x+200} ${to.y+75} ${to.x+90} ${to.y+75}`:`M${from.x} ${from.y-18}C${from.x} ${from.y+lift} ${to.x} ${to.y+lift} ${to.x} ${to.y-18}`;
+ document.querySelector('#equation-svg .scene-root').insertAdjacentHTML('beforeend',`<g class="hint-arrow" pointer-events="none"><path d="${path}"/><circle cx="${vertical?to.x+90:to.x}" cy="${vertical?to.y+75:to.y-18}" r="7"/></g>`);
 }
 function refresh() {
-  $('equation-status').textContent=controller.status();
-  $('progress').value=controller.clock.progress;
-  $('pause').textContent=controller.clock.playing?'Pause':'Play';
-  for(const id of ['combine','solve','multiply','divide','watch','try'])$(id).disabled=controller.busy;
-  $('undo').disabled=!controller.model.past.length;$('redo').disabled=!controller.model.future.length;
-  if(director && !controller.busy){$('director-prompt').textContent=(practice?'Your turn: ':'')+hint(controller.model.nextStep());if(math.isSolved(controller.model.state))$('director-prompt').textContent=controller.status();}
+ $('equation-status').textContent=controller.status();
+ $('progress').value=controller.clock.progress;
+ $('pause').textContent=controller.clock.playing?'Pause':'Play';
+ for(const id of ['combine','solve','multiply','divide','tutor-step','tutor-hint','tutor-show','tutor-action'])$(id).disabled=controller.busy;
+ $('undo').disabled=!controller.model.past.length;$('redo').disabled=!controller.model.future.length;
+ if(tutor)refreshTutor();
 }
-controller.addEventListener('change',refresh);refresh();surface.prewarm(controller.options.camera);
-function tick(now){controller.frame(now);requestAnimationFrame(tick);}requestAnimationFrame(tick);
-function point(event) {const svg=$('equation-svg'),p=svg.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());}
-$('stage').addEventListener('pointerdown',event=>{
-  const term=event.target.closest('[data-term]');if(!term||term.classList.contains('placeholder')||controller.busy)return;
-  event.preventDefault();entry.active=false;const p=point(event);drag={id:term.dataset.term,side:term.dataset.side,start:p,base:[Number(term.dataset.x),Number(term.dataset.y)],node:term};
-  selected=drag.id;term.classList.add('dragging');$('stage').setPointerCapture(event.pointerId);
+controller.addEventListener('change',refresh);
+const dragger=new Dragger($('stage'),controller,{
+ onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t))return controller.evaluate(t.id);controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
+ onCommit:(id,drop,origin)=>safe(()=>controller.drop(id,drop.side,drop.target,drop.index,performance.now(),origin)),
 });
-function dragPosition(event){const p=point(event),x=drag.base[0]+p.x-drag.start.x,y=drag.base[1]+p.y-drag.start.y;const scene=layout(controller.model.state,{...controller.options,expression:controller.model.expression}),slot=scene.terms.find(t=>t.term.id===drag.id);const side=controller.model.expression?'left':controller.options.orientation==='horizontal'?(x+slot.w/2<scene.equal.x?'left':'right'):(y+75<scene.equal.y?'left':'right');return {x,y,side};}
-$('stage').addEventListener('pointermove',event=>{if(!drag)return;const pose=dragPosition(event);controller.previewDrag(drag.id,pose.x,pose.y,pose.side);drag.node=document.querySelector(`[data-term="${drag.id}"]`);drag.node.classList.add('dragging');});
-$('stage').addEventListener('pointerup',event=>{
-  if(!drag)return;const origin=dragPosition(event),current=drag,p=point(event);drag=null;delete controller.options.drag;current.node.style.pointerEvents='none';
-  const under=document.elementFromPoint(event.clientX,event.clientY),target=under?.closest('[data-term]'),gap=under?.closest('[data-insert]');
-  const scene=layout(controller.model.state,{...controller.options,expression:controller.model.expression});
-  const side=origin.side;
-  const moved=Math.hypot(p.x-current.start.x,p.y-current.start.y)>5;
-  safe(()=>{if(!moved){const picked=[...controller.model.state.left,...controller.model.state.right].find(t=>t.id===current.id);if(picked&&math.evaluable(picked)){controller.evaluate(picked.id);return;}controller.render();message('Selected. Arrow keys move across; Shift + arrows rearrange.');return;}
-    const sideTerms=scene.terms.filter(t=>t.side===side&&!t.term.placeholder&&t.term.id!==current.id);
-    const index=gap?Number(gap.dataset.insert):sideTerms.filter(t=>p.x>t.x+t.w/2).length;
-    const picked=scene.terms.find(t=>t.term.id===current.id);const collision=sideTerms.filter(t=>t.term.kind===picked.term.kind).map(t=>({id:t.term.id,area:Math.max(0,Math.min(origin.x+picked.w,t.x+t.w)-Math.max(origin.x,t.x))*Math.max(0,Math.min(origin.y+150,t.y+150)-Math.max(origin.y,t.y))})).filter(t=>t.area>0).sort((a,b)=>b.area-a.area)[0];
-    controller.drop(current.id,side,event.shiftKey?null:(target?.dataset.term||collision?.id),index,performance.now(),{x:origin.x,y:origin.y});
-  });
-});
-$('stage').addEventListener('pointercancel',()=>{drag=null;delete controller.options.drag;controller.render();});
+refresh();surface.prewarm(controller.options.camera);
+function tick(now){controller.frame(now);dragger.frame(now);requestAnimationFrame(tick);}requestAnimationFrame(tick);
+$('stage').addEventListener('pointerdown',event=>{if(dragger.down(event)){entry.active=false;$('entry-bar').hidden=true;}});
+$('stage').addEventListener('pointermove',event=>dragger.move(event));
+$('stage').addEventListener('pointerup',event=>dragger.up(event));
+$('stage').addEventListener('pointercancel',()=>dragger.cancel());
 $('stage').addEventListener('keydown',event=>{
-  const term=event.target.closest('[data-term]');if(!term)return;selected=term.dataset.term;
-  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
-    event.preventDefault();safe(()=>{
-      const direction=['ArrowLeft','ArrowUp'].includes(event.key)?-1:1;
-      if(event.shiftKey)controller.execute({type:'reorder',id:selected,side:term.dataset.side,index:Number(term.dataset.index)+direction});
-      else controller.drop(selected,direction<0?'left':'right',null,null);
-    });
-  }
+ const term=event.target.closest('[data-term]');if(!term||term.classList.contains('placeholder'))return;const id=term.dataset.term;
+ if(['Enter',' '].includes(event.key)){const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){event.preventDefault();safe(()=>controller.evaluate(id));}return;}
+ if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
+  event.preventDefault();safe(()=>{
+   const direction=['ArrowLeft','ArrowUp'].includes(event.key)?-1:1;
+   if(event.shiftKey)controller.execute({type:'reorder',id,side:term.dataset.side,index:Number(term.dataset.index)+direction});
+   else controller.drop(id,direction<0?'left':'right',null,null);
+  });
+ }
 });
 $('open-equation').onclick=()=>{$('equation-input').value=math.equationText(controller.model.state);$('equation-dialog').showModal();$('equation-input').focus();};
-$('equation-form').onsubmit=event=>{event.preventDefault();safe(()=>{controller.load($('equation-input').value);entry.active=false;$('entry-bar').hidden=true;$('equation-dialog').close();director=null;$('director-bar').hidden=true;});};
+$('equation-form').onsubmit=event=>{event.preventDefault();safe(()=>{controller.load($('equation-input').value);entry.active=false;$('entry-bar').hidden=true;$('equation-dialog').close();leaveTutor();});};
 for(const button of document.querySelectorAll('[data-close]'))button.onclick=()=>button.closest('dialog').close();
 $('open-view').onclick=()=>$('view-dialog').showModal();
 $('camera').onchange=event=>{controller.camera(event.target.value);surface.prewarm(event.target.value);};
 $('orientation').onchange=event=>{if(event.target.value==='auto')autoLayout();else controller.orientation(event.target.value);};
 $('zoom').oninput=event=>{controller.options.zoom=Number(event.target.value);controller.render();};
-function autoLayout(){if($('orientation').value==='auto')controller.orientation(window.innerWidth<700?'vertical':'horizontal');}
+function autoLayout(){if($('orientation').value==='auto'&&!dragger.active){const next=window.innerWidth<700?'vertical':'horizontal';if(next!==controller.options.orientation)controller.orientation(next);}}
 window.addEventListener('resize',autoLayout);autoLayout();
-$('undo').onclick=()=>controller.undo();$('redo').onclick=()=>controller.redo();
-$('combine').onclick=()=>safe(()=>{entry.active=false;$('entry-bar').hidden=true;const step=controller.model.nextStep();if(step?.type==='combine')controller.execute(step);else controller.execute({type:'simplify'});});
-$('solve').onclick=()=>safe(()=>{if(!controller.step())message(controller.status());});
+$('undo').onclick=()=>{controller.undo();hint=null;};$('redo').onclick=()=>controller.redo();
+$('combine').onclick=()=>safe(()=>{entry.active=false;$('entry-bar').hidden=true;const step=controller.model.nextStep();if(step?.type==='combine'||step?.type==='evaluate')controller.as('solver',()=>controller.execute(step));else controller.as('solver',()=>controller.execute({type:'simplify'}));});
+$('solve').onclick=()=>safe(()=>{if(!controller.as('solver',()=>controller.step()))message(controller.status());});
 for(const operation of ['multiply','divide'])$(operation).onclick=()=>safe(()=>controller.execute({type:'operate',operation,amount:$('factor').value}));
 $('pause').onclick=()=>{if(controller.clock.playing)controller.seek(controller.clock.progress);else controller.clock.resume(performance.now());refresh();};
 $('skip').onclick=()=>controller.finish();$('progress').oninput=event=>controller.seek(Number(event.target.value));
-$('open-director').onclick=()=>$('lesson-dialog').showModal();
-for(const lesson of lessons){const b=document.createElement('button');b.textContent=`${lesson.title} · ${lesson.equation}`;b.onclick=()=>{entry.active=false;$('entry-bar').hidden=true;director=lesson;practice=false;controller.load(lesson.equation);baseline=lesson.equation;$('lesson-dialog').close();$('director-bar').hidden=false;$('director-title').textContent=lesson.title;refresh();};$('lessons').append(b);}
-$('watch').onclick=()=>safe(()=>{baseline=math.equationText(controller.model.state);practice=false;controller.step();});
-$('try').onclick=()=>{if(baseline)controller.load(baseline);practice=true;refresh();};
-$('leave-director').onclick=()=>{director=null;$('director-bar').hidden=true;};
+
+// Tutor: a worked example step by step, then a fresh problem of the same shape.
+$('open-tutor').onclick=()=>$('lesson-dialog').showModal();
+{let group='';for(const lesson of lessons){
+ if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
+ const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${lesson.example.replace(/\*/g,' × ').replace(/÷/g,' ÷ ')}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
+}}
+function startLesson(lesson){
+ stopPlaying();tutor=new Tutor(lesson);hint=null;entry.active=false;$('entry-bar').hidden=true;
+ safe(()=>controller.load(lesson.example));
+ $('tutor-bar').hidden=false;$('tutor-title').textContent=lesson.title;
+ say(`${lesson.intro} Watch: press Next step, or Play all.`);refresh();
+}
+function say(text,tone=''){$('tutor-prompt').textContent=text;$('tutor-prompt').dataset.tone=tone;}
+function leaveTutor(){stopPlaying();tutor=null;hint=null;$('tutor-bar').hidden=true;controller.render();}
+function refreshTutor(){
+ const example=tutor.phase==='example',done=finished(controller.model);
+ $('tutor-phase').textContent=example?'Example':'Your turn';$('tutor-phase').dataset.phase=tutor.phase;
+ for(const [id,show] of [['tutor-step',example],['tutor-play',example],['tutor-turn',example],['tutor-hint',!example&&!done],['tutor-show',!example&&!done],['tutor-new',!example],['tutor-next',!example&&done]])$(id).hidden=!show;
+ $('tutor-step').disabled=controller.busy||done;$('tutor-play').disabled=done&&!playing;$('tutor-turn').classList.toggle('ready',done);
+ const next=controller.model.nextStep(),action=!example&&!done&&next?.type==='operate'?next:null;
+ $('tutor-action').hidden=!action;if(action)$('tutor-action').textContent=`${action.operation==='divide'?'÷':'×'} both sides by ${action.amount}`;$('tutor-action').onclick=()=>safe(()=>controller.execute(action));
+}
+function exampleStep(){
+ const command=controller.model.nextStep();
+ if(!command){say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');stopPlaying();refresh();return false;}
+ say(narrate(command,controller.model.state));
+ safe(()=>controller.as('tutor',()=>controller.execute(command)));return true;
+}
+$('tutor-step').onclick=()=>{stopPlaying();exampleStep();};
+function stopPlaying(){playing=false;clearTimeout(playTimer);$('tutor-play').setAttribute('aria-pressed','false');$('tutor-play').textContent='Play all';}
+$('tutor-play').onclick=()=>{if(playing)return stopPlaying();playing=true;$('tutor-play').setAttribute('aria-pressed','true');$('tutor-play').textContent='Pause';exampleStep();};
+// While playing, advance once each animation settles, with a pause to read the narration.
+controller.addEventListener('change',()=>{
+ if(tutor?.phase==='example'&&!controller.busy&&finished(controller.model)&&!tutor.announced){tutor.announced=true;stopPlaying();say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');refresh();}
+ if(playing&&!controller.busy&&!playTimer)playTimer=setTimeout(()=>{playTimer=0;if(playing&&!controller.busy)exampleStep();},1100);
+});
+function practice(){stopPlaying();hint=null;const problem=tutor.practice();safe(()=>controller.load(problem));say(`Your turn: ${math.equationText(controller.model.state).replace(/ = 0$/,'')}. ${controller.model.expression?'Tap the product to work it out, or drag like cards together.':'Drag cards to get x alone.'} Ask for a hint any time.`);refresh();}
+$('tutor-turn').onclick=practice;$('tutor-new').onclick=practice;
+$('tutor-next').onclick=()=>{const i=lessons.indexOf(tutor.lesson);startLesson(lessons[(i+1)%lessons.length]);};
+$('tutor-close').onclick=leaveTutor;
+$('tutor-hint').onclick=()=>{const command=controller.model.nextStep();if(!command)return;tutor.hints++;hint=command.type==='operate'?null:command;controller.render();say(`Hint: ${narrate(command,controller.model.state)}`,'hint');};
+$('tutor-show').onclick=()=>{const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
+controller.addEventListener('commit',event=>{
+ hint=null;if(!tutor||tutor.phase!=='practice')return;
+ const {transaction,source}=event.detail;if(source!=='learner'&&!finished(controller.model))return;
+ const result=feedback(controller.model,transaction.before);say(result.tone==='done'?`${result.text} Well done — New problem for another, or Next lesson.`:result.text,result.tone);
+});
+
 // Pad and hardware keys stage the same input; the up triangle deploys it.
 function enterKey(key){
- if(drag||['Enter','ArrowUp'].includes(key)&&!entry.active)return;
+ if(dragger.active||['Enter','ArrowUp'].includes(key)&&!entry.active)return;
  const text=entry.key(key);if(key==='Escape')$('entry-bar').hidden=true;if(text===null)return;
  $('entry-text').textContent=entry.text||'0';$('entry-bar').hidden=!entry.active;
  if(['Enter','ArrowUp'].includes(key)){try{controller.load(text||'0');message('');}catch(e){entry.active=true;$('entry-bar').hidden=false;message(e.message);}return;}

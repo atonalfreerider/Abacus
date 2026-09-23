@@ -23,3 +23,24 @@
 .original-dock #keypad button{background:#efede5 url('../../textures/swf-12.png') center/50px}.original-dock #keypad button.lit{background-image:url('../../textures/swf-18.jpg');background-size:150px}
 .original-dock .parentheses{gap:4px}.original-dock .parentheses button{min-width:0;flex:1}
 .term.operation{cursor:pointer}.term.operation:hover .operation-frame{stroke:#2f5d6b;fill-opacity:.6}
+/* Tutor: worked example, then the learner's turn. */
+#tutor-bar{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:6px 12px;border:1px solid #6d6655;border-radius:14px;background:#fffaf0d9;font-size:15px}
+.tutor-head{display:flex;align-items:center;gap:8px}#tutor-title{font-weight:normal;color:#4a463b}
+#tutor-phase{font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:10px;background:#3b6c78;color:#fff}#tutor-phase[data-phase=practice]{background:#8a5a14}
+#tutor-prompt{flex:1 1 320px;margin:0;line-height:1.35}#tutor-prompt[data-tone=good],#tutor-prompt[data-tone=done]{color:#1f5e3a}#tutor-prompt[data-tone=done]{font-weight:bold}#tutor-prompt[data-tone=detour]{color:#8c4a12}#tutor-prompt[data-tone=hint]{color:#2f5d6b}
+.tutor-actions{display:flex;gap:6px;flex-wrap:wrap}.tutor-actions button{font-size:14px;padding:5px 10px}.tutor-actions .primary{background:#3b6c78;color:#fff;border-color:#2f5d6b}.tutor-actions .primary.ready{animation:beckon 1.2s ease-in-out infinite}
+#tutor-action{background:#fff3d6;border-color:#b07a1d}
+#lesson-dialog{max-height:88vh}#lessons h2{font-size:13px;font-weight:normal;color:#7a7263;margin:10px 0 0;text-transform:uppercase;letter-spacing:.07em}#lessons button{display:flex;justify-content:space-between;gap:12px}#lessons small{color:#7a7263;font-variant-numeric:lining-nums}
+/* Drag guidance: like cards are outlined, a snap shows cancel (red) or combine (teal), a ghost shows where the card lands. */
+.drag-active .reorder-gap{display:none}.drag-active .equals-mirror text{opacity:0}
+.equals-mirror .balance-bars path{stroke:#25241e;stroke-width:5.5;stroke-linecap:round;stroke-dasharray:none;fill:none}
+.drag-active .term.candidate .hit{stroke:#3b6c78;stroke-width:2;stroke-dasharray:6 7;stroke-opacity:.55}
+.term.snap-cancel .hit,.term.snap-combine .hit{stroke-width:5;fill:#ffffff38;stroke-dasharray:none;stroke-opacity:1}.term.snap-cancel .hit{stroke:#b8321f}.term.snap-combine .hit{stroke:#2f5d6b}
+.landing-ghost{fill:#3b6c7812;stroke:#3b6c78;stroke-width:2.5;stroke-dasharray:8 8;pointer-events:none}
+.term.hinted .hit{stroke:#d18a1c;stroke-width:5;animation:hint-pulse 1.1s ease-in-out infinite}.term.hint-target .hit{stroke:#d18a1c;stroke-width:3;stroke-dasharray:6 6}
+.operation-caption{font-family:Georgia,serif}
+@keyframes hint-pulse{50%{stroke-opacity:.25}}@keyframes beckon{50%{box-shadow:0 0 0 5px #3b6c7840}}
+@media(prefers-reduced-motion:reduce){.term.hinted .hit,.tutor-actions .primary.ready{animation:none}}
+@media(max-width:700px){#tutor-bar{font-size:13px;padding:5px 8px}.tutor-actions button{font-size:12px;padding:4px 7px}#tutor-prompt{flex-basis:100%}}
+.hint-arrow path{fill:none;stroke:#d18a1c;stroke-width:4;stroke-dasharray:10 9;stroke-linecap:round;animation:hint-flow 1s linear infinite}.hint-arrow circle{fill:#d18a1c}
+@keyframes hint-flow{to{stroke-dashoffset:-19}}@media(prefers-reduced-motion:reduce){.hint-arrow path{animation:none}}
