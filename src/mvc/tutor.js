@@ -42,7 +42,27 @@ export const lessons = [
     make: r => { const p = r(1, 9), q = r(10 - p, 9); return `${r(1, 8)}${p}+${r(1, 8)}${q}`; } },
   { id: 'borrow', group: 'Adding', title: 'Borrowing', example: '503-78', intro: 'A card unstacks into ten of the place below so the red cards have partners.',
     make: r => { const a = r(3, 9) * 100 + r(0, 9), b = r(11, 99); return `${a}-${b}`; } },
+  // Graph lessons: the learner drags the point to the goal (a crossing or a root).
+  { id: 'graph-system', group: 'Graphs', title: 'Solve a system by graphing', graph: true, goal: 'solution', example: ['y = x + 1', 'y = -x + 5'],
+    intro: 'Each line holds every point that solves its equation. Where the lines cross, both equations are true at once.',
+    watch: p => `The lines cross at (${p}). Its cards stand there: both equations check out, so that point is the solution.`,
+    hint: 'Slide the point along one line until the other equation also shows ✓: that is where the lines cross.',
+    make: r => { const x = r(-3, 4), y = r(-2, 5), slopes = [-3, -2, -1, 1, 2, 3], m1 = pick(r, slopes); let m2 = pick(r, slopes); while (m2 === m1) m2 = pick(r, slopes); return [line(m1, y - m1 * x), r(0, 1) ? line(m2, y - m2 * x) : standard(r, x, y, m1)]; } },
+  { id: 'graph-roots', group: 'Graphs', title: 'Where a parabola meets zero', graph: true, goal: 'root', example: ['y = x^2 - 2x - 3'],
+    intro: 'At a root the column of y cards vanishes: the point sits on the x axis.',
+    watch: p => `At (${p}) the point touches the x axis: zero y cards, so x is a root.`,
+    hint: 'Drag the point along the curve until the red or blue column shrinks to nothing.',
+    make: r => { const p = r(-4, 2), q = r(p + 1, 5); return [`y = x^2 ${term(-(p + q), 'x')} ${term(p * q)}`.replace(/\s+/g, ' ')]; } },
+  { id: 'graph-both-sides', group: 'Graphs', title: 'Graph both sides', graph: true, goal: 'solution', example: ['3x + 1 = x + 9'],
+    intro: 'Graph each side as its own line. Where they cross, the two sides are equal, and that x solves the equation.',
+    watch: p => `The two sides meet at (${p}): there both sides equal the same number of cards.`,
+    hint: 'Drag the point along either line to where the two lines meet.',
+    make: r => { const a = r(2, 5), c = r(1, a - 1), x = r(1, 6), b = r(1, 9); return [`${a}x + ${b} = ${c === 1 ? '' : c}x + ${(a - c) * x + b}`]; } },
 ];
+const term = (n, v = '') => n === 0 ? '' : `${n < 0 ? '-' : '+'} ${Math.abs(n) === 1 && v ? '' : Math.abs(n)}${v}`;
+const line = (m, b) => `y = ${m === 1 ? '' : m === -1 ? '-' : m}x ${term(b)}`.trim();
+// a·x + b·y = c through (x, y), with a slope −a/b different from the other line's.
+const standard = (r, x, y, avoid) => { let a, b; do { a = r(1, 3); b = pick(r, [1, 2, 3, -1, -2]); } while (-a / b === avoid); return `${a === 1 ? '' : a}x ${b < 0 ? '-' : '+'} ${Math.abs(b) === 1 ? '' : Math.abs(b)}y = ${a * x + b * y}`; };
 
 const text = t => math.termText(t);
 const typeset = s => s.replace(/(^|[\s(])-(?=[\dx])/g, '$1−');

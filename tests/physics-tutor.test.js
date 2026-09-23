@@ -43,8 +43,18 @@ test('other cards open a gap where the held card will land',()=>{
  assert.ok(body.world.get(x.term.id).x>x.x+100,'x slid right to make room');
  for(let i=0;i<200&&!body.settle(1/60);i++);assert.ok(Math.abs(body.pos.x-two.x)<1,'released without a change, the card springs home');
 });
+test('every graph lesson example and 200 generated problems have an exact goal point',async()=>{
+ const {parseCurves,specialPoints}=await import('../src/graph/polynomial.js');
+ for(const lesson of lessons.filter(l=>l.graph)){
+  const tutor=new Tutor(lesson,23),seen=new Set();
+  for(let i=0;i<=200;i++){const equations=i?tutor.practice():lesson.example;seen.add(equations.join(';'));
+   const goals=specialPoints(equations.flatMap(parseCurves)).filter(p=>p.kind===lesson.goal);
+   assert.ok(goals.length>=1,`${lesson.id}: ${equations.join(' ; ')}`);assert.ok(goals.every(p=>p.exact),`${lesson.id}: exact goal for ${equations}`);}
+  assert.ok(seen.size>20,`${lesson.id} varies`);
+ }
+});
 test('every lesson example and 200 generated problems solve, with a sentence for each step',()=>{
- for(const lesson of lessons){
+ for(const lesson of lessons.filter(l=>!l.graph)){
   const tutor=new Tutor(lesson,17),seen=new Set();
   for(let i=0;i<=200;i++){
    const problem=i?tutor.practice():lesson.example;seen.add(problem);

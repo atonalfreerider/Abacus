@@ -1,6 +1,7 @@
 // Real-browser interaction checks (headless Chrome): pointer drags through the
-// mirror membrane, snapping, springing home, tapping products, keyboard moves and
-// the tutor flow. Usage: npm run test:browser
+// mirror membrane, snapping, springing home, tapping products, keyboard moves, the
+// tutor flow, and graph mode (tracer detents, systems, the area sweep).
+// Usage: npm run test:browser
 import {spawn} from 'node:child_process';
 import {launch,chromePath} from './browser.mjs';
 if(!chromePath()){console.log('SKIP: Chrome not found (set CHROME=/path/to/chrome).');process.exit(0);}
@@ -62,6 +63,39 @@ try{
   await load('987654+123456-555555=x+999');const all=await terms(),card=all[1],m=await mirror();
   await page.eval(`window.__frames=[];(function f(t){window.__frames.push(t);if(window.__frames.length<400)requestAnimationFrame(f);})(performance.now())`);
   await drag(card,{x:m.x+40,y:card.y+30},50);
+  const ms=await page.eval(`(()=>{const f=window.__frames,d=f.slice(1).map((t,i)=>t-f[i]).sort((a,b)=>a-b);return d[Math.floor(d.length*.9)];})()`);
+  const budget=Number(process.env.FRAME_BUDGET_MS||34);if(ms>budget)throw Error(`p90 frame ${ms.toFixed(1)} ms exceeds ${budget} ms`);
+ });
+ // ---------- graph mode ----------
+ const openGraph=async()=>{await page.eval(`document.getElementById('open-graph').click()`);await wait(900);};
+ const graphRect=sel=>page.eval(`(()=>{const r=document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+ const readout=()=>page.eval(`document.getElementById('graph-readout').innerText`);
+ await check('graph: dragging the point along the parabola settles on a root with no y cards',async()=>{
+  await openGraph();const from=await graphRect('#graph-svg .tracer circle'),root=await page.eval(`(()=>{const c=[...document.querySelectorAll('#graph-svg .special circle')].map(n=>n.getBoundingClientRect()).sort((a,b)=>b.x-a.x)[0];return {x:c.x+c.width/2,y:c.y+c.height/2};})()`);
+  await drag(from,{x:root.x+4,y:root.y-3},40);await wait(500);
+  const text=await readout();if(!/At the root/.test(text)||!/\(x, y\) = \(3, 0\)/.test(text))throw Error('readout: '+text.slice(0,120));
+  expect(await page.eval(`!document.querySelector('#graph-svg .card-column')&&!!document.querySelector('#graph-svg .card-row')`),true,'y column gone, x row of 3 cards');
+ });
+ await check('graph: a system of two lines is solved where they cross',async()=>{
+  await openGraph();await page.eval(`(()=>{const s=document.getElementById('graph-examples');s.value='2';s.dispatchEvent(new Event('change'));document.getElementById('graph-solve').click();})()`);await wait(800);
+  const text=await readout();if(!/\(3, 2\) solves every equation/.test(text))throw Error(text.slice(0,200));
+ });
+ await check('graph (advanced): the area sweep gathers card strips and compares with the exact integral',async()=>{
+  await openGraph();await page.eval(`(()=>{const t=document.getElementById('graph-area-toggle');t.checked=true;t.dispatchEvent(new Event('change'));const b=document.getElementById('area-b');b.value='4';b.dispatchEvent(new Event('change'));const d=document.getElementById('area-dx');d.value='1/2';d.dispatchEvent(new Event('change'));document.getElementById('area-sweep').click();})()`);
+  for(let t=0;t<9000&&!/Exact area/.test(await page.eval(`document.getElementById('area-result').innerText`));t+=250)await wait(250);
+  const text=await page.eval(`document.getElementById('area-result').innerText`);if(!/Strips add up to\s+−8\.5/.test(text)||!/−20\/3/.test(text))throw Error(text);
+  expect(await page.eval(`!!document.querySelector('#graph-svg .exact-mark')`),true,'exact integral marked on the gathered stack');
+ });
+ await check('tutor graph lesson: example, then the learner drags to the crossing',async()=>{
+  await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`[...document.querySelectorAll('#lessons button')].find(b=>b.textContent.includes('Solve a system by graphing')).click()`);await wait(1200);
+  await page.eval(`document.getElementById('tutor-step').click()`);await wait(600);await page.eval(`document.getElementById('tutor-turn').click()`);await wait(900);
+  const from=await graphRect('#graph-svg .tracer circle'),to=await graphRect('#graph-svg .special.solution circle');await drag(from,to,40);await wait(500);
+  const text=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Found it/.test(text))throw Error(text);
+ });
+ await check('graph: dragging the point stays at frame rate',async()=>{
+  await openGraph();const from=await graphRect('#graph-svg .tracer circle');
+  await page.eval(`window.__frames=[];(function f(t){window.__frames.push(t);if(window.__frames.length<300)requestAnimationFrame(f);})(performance.now())`);
+  await drag(from,{x:from.x+220,y:from.y-120},60);
   const ms=await page.eval(`(()=>{const f=window.__frames,d=f.slice(1).map((t,i)=>t-f[i]).sort((a,b)=>a-b);return d[Math.floor(d.length*.9)];})()`);
   const budget=Number(process.env.FRAME_BUDGET_MS||34);if(ms>budget)throw Error(`p90 frame ${ms.toFixed(1)} ms exceeds ${budget} ms`);
  });

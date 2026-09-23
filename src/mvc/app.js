@@ -77,25 +77,29 @@ $('skip').onclick=()=>controller.finish();$('progress').oninput=event=>controlle
 $('open-tutor').onclick=()=>$('lesson-dialog').showModal();
 {let group='';for(const lesson of lessons){
  if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
- const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${lesson.example.replace(/\*/g,' × ').replace(/÷/g,' ÷ ')}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
+ const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${[lesson.example].flat().join(' and ').replace(/\*/g,' × ').replace(/÷/g,' ÷ ').replace(/\^2/g,'²')}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
 }}
-function startLesson(lesson){
+async function startLesson(lesson){
  stopPlaying();tutor=new Tutor(lesson);hint=null;entry.active=false;$('entry-bar').hidden=true;
- safe(()=>controller.load(lesson.example));
+ $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);
+ if(lesson.graph){(await showGraph(true)).setEquations(lesson.example);}
+ else{if(!$('graph-mode').hidden)showGraph(false);safe(()=>controller.load(lesson.example));}
  $('tutor-bar').hidden=false;$('tutor-title').textContent=lesson.title;
  say(`${lesson.intro} Watch: press Next step, or Play all.`);refresh();
 }
 function say(text,tone=''){$('tutor-prompt').textContent=text;$('tutor-prompt').dataset.tone=tone;}
-function leaveTutor(){stopPlaying();tutor=null;hint=null;$('tutor-bar').hidden=true;controller.render();}
+function leaveTutor(){stopPlaying();tutor=null;hint=null;$('tutor-bar').hidden=true;$('tutor-bar').classList.remove('graph-lesson');controller.render();}
+const lessonDone=()=>tutor.lesson.graph?(tutor.phase==='example'?!!tutor.shown:!!tutor.solved):finished(controller.model);
 function refreshTutor(){
- const example=tutor.phase==='example',done=finished(controller.model);
+ const example=tutor.phase==='example',done=lessonDone();
  $('tutor-phase').textContent=example?'Example':'Your turn';$('tutor-phase').dataset.phase=tutor.phase;
  for(const [id,show] of [['tutor-step',example],['tutor-play',example],['tutor-turn',example],['tutor-hint',!example&&!done],['tutor-show',!example&&!done],['tutor-new',!example],['tutor-next',!example&&done]])$(id).hidden=!show;
- $('tutor-step').disabled=controller.busy||done;$('tutor-play').disabled=done&&!playing;$('tutor-turn').classList.toggle('ready',done);
- const next=controller.model.nextStep(),action=!example&&!done&&next?.type==='operate'?next:null;
+ $('tutor-step').disabled=controller.busy||done;$('tutor-play').disabled=done&&!playing;$('tutor-turn').classList.toggle('ready',done);$('tutor-play').hidden||=!!tutor.lesson.graph;
+ const next=tutor.lesson.graph?null:controller.model.nextStep(),action=!example&&!done&&next?.type==='operate'?next:null;
  $('tutor-action').hidden=!action;if(action)$('tutor-action').textContent=`${action.operation==='divide'?'÷':'×'} both sides by ${action.amount}`;$('tutor-action').onclick=()=>safe(()=>controller.execute(action));
 }
 function exampleStep(){
+ if(tutor.lesson.graph){const goal=graph.goal(tutor.lesson.goal);if(goal)graph.goTo(goal);tutor.shown=true;say(`${goal?tutor.lesson.watch(graph.pointText(goal)).replace(/-/g,'−'):'Nothing to find.'} Now try one yourself: press Your turn.`,'done');refresh();return false;}
  const command=controller.model.nextStep();
  if(!command){say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');stopPlaying();refresh();return false;}
  say(narrate(command,controller.model.state));
@@ -110,12 +114,14 @@ controller.addEventListener('change',()=>{
  if(tutor?.phase==='example'&&!controller.busy&&finished(controller.model)&&!tutor.announced){tutor.announced=true;stopPlaying();say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');refresh();}
  if(playing&&!controller.busy&&!playTimer)playTimer=setTimeout(()=>{playTimer=0;if(playing&&!controller.busy&&!dragger.active)exampleStep();else if(playing)controller.dispatchEvent(new Event('change'));},1100);
 });
-function practice(){stopPlaying();hint=null;const problem=tutor.practice();safe(()=>controller.load(problem));say(`Your turn: ${math.equationText(controller.model.state).replace(/ = 0$/,'')}. ${controller.model.expression?'Tap the product to work it out, or drag like cards together.':'Drag cards to get x alone.'} Ask for a hint any time.`);refresh();}
+function practice(){
+ if(tutor.lesson.graph){tutor.solved=true;const equations=tutor.practice();graph.setEquations(equations);tutor.solved=false;say(`Your turn: ${equations.join('  and  ').replace(/\*/g,'×').replace(/-/g,'−')}. ${tutor.lesson.goal==='root'?'Drag the point to where the curve meets the x axis.':'Drag the point along a line to where the lines cross.'}`);refresh();return;}
+ stopPlaying();hint=null;const problem=tutor.practice();safe(()=>controller.load(problem));say(`Your turn: ${math.equationText(controller.model.state).replace(/ = 0$/,'')}. ${controller.model.expression?'Tap the product to work it out, or drag like cards together.':'Drag cards to get x alone.'} Ask for a hint any time.`);refresh();}
 $('tutor-turn').onclick=practice;$('tutor-new').onclick=practice;
 $('tutor-next').onclick=()=>{const i=lessons.indexOf(tutor.lesson);startLesson(lessons[(i+1)%lessons.length]);};
 $('tutor-close').onclick=leaveTutor;
-$('tutor-hint').onclick=()=>{const command=controller.model.nextStep();if(!command)return;tutor.hints++;hint=command.type==='operate'?null:command;controller.render();say(`Hint: ${narrate(command,controller.model.state)}`,'hint');};
-$('tutor-show').onclick=()=>{const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
+$('tutor-hint').onclick=()=>{if(tutor.lesson.graph){tutor.hints++;say(`Hint: ${tutor.lesson.hint}`,'hint');return;}const command=controller.model.nextStep();if(!command)return;tutor.hints++;hint=command.type==='operate'?null:command;controller.render();say(`Hint: ${narrate(command,controller.model.state)}`,'hint');};
+$('tutor-show').onclick=()=>{if(tutor.lesson.graph){const goal=graph.goal(tutor.lesson.goal);tutor.solved=true;if(goal){graph.goTo(goal);say(`Here it is: (${graph.pointText(goal).replace(/-/g,'−')}). Try New problem to find one yourself.`,'hint');}refresh();return;}const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
 controller.addEventListener('commit',event=>{
  hint=null;if(!tutor||tutor.phase!=='practice')return;
  const {transaction,source}=event.detail;if(source!=='learner'&&!finished(controller.model))return;
@@ -136,6 +142,23 @@ for(let n=1;n<=9;n++){const b=document.createElement('button');b.dataset.inputKe
 $('keypad').onpointerleave=()=>illuminate(0);
 for(const b of document.querySelectorAll('[data-input-key]'))b.onclick=()=>enterKey(b.dataset.inputKey);
 $('entry-done').onclick=()=>enterKey('ArrowUp');
-document.addEventListener('keydown',event=>{if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
+document.addEventListener('keydown',event=>{if(document.body.classList.contains('graph-active')||event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
 $('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>{controller.load('0');leaveTutor();});};
 $('open-tests').onclick=()=>location.href='./tests.html';
+// Graph mode loads on first use and shares the page; card-space input pauses while it is open.
+let graph=null;
+async function showGraph(on){
+ document.body.classList.toggle('graph-active',on);$('graph-mode').hidden=!on;$('open-graph').setAttribute('aria-pressed',String(on));
+ if(on){entry.active=false;$('entry-bar').hidden=true;if(tutor&&!tutor.lesson.graph)leaveTutor();if(!graph){const {Graph}=await import('../graph/graph-app.js');graph=new Graph({cardsEquation:()=>math.equationText(controller.model.state)});graph.addEventListener('point',graphPoint);}graph.show();}
+ else{graph?.hide();if(tutor?.lesson.graph)leaveTutor();controller.render();}
+ return graph;
+}
+// A graph lesson is done when the learner's point reaches its goal (a crossing or a root).
+function graphPoint(event){
+ if(!tutor?.lesson.graph||tutor.phase!=='practice'||tutor.solved)return;
+ const {kinds,exact,x,y}=event.detail;if(!kinds.includes(tutor.lesson.goal))return;
+ tutor.solved=true;const at=exact?`${exact.x.d===1?exact.x.n:math.format(exact.x)}, ${exact.y.d===1?exact.y.n:math.format(exact.y)}`:`${x}, ${y}`;
+ say(`Found it: (${at.replace(/-/g,'−')}). ${tutor.lesson.goal==='root'?'Zero y cards: that x is a root.':'Every equation checks out here.'} Well done: New problem for another, or Next lesson.`,'done');refresh();
+}
+$('open-graph').onclick=()=>showGraph($('graph-mode').hidden);
+for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);});
