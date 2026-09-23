@@ -78,11 +78,14 @@ export function layout(equation,{orientation='horizontal',camera='front',express
 }
 export function stackUnit(x,y,color,exponent,camera='front',opacity=1){return `<use class="unit-stack" href="#stack-${color}-${String(exponent).replace('-','m')}-${camera}" data-place="${exponent}" data-cards="${placeMetadata(exponent).cardCount}" x="${round(x)}" y="${round(y)}" opacity="${opacity}"/>`;}
 const stackCache=new Map();
-function stackDefinitions(body){
- const ids=[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
- return '<defs>'+ids.map(id=>{if(stackCache.has(id))return stackCache.get(id);const [,color,exp,camera]=id.split('-'),meta=stackGeometry(Number(exp.replace('m','-')),camera);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`);const drawing=`<g id="${id}">${content}</g>`;stackCache.set(id,drawing);return drawing;}).join('')+'</defs>';
-}
-function textures(){return `<defs>${[['blue',25],['red',23],['green',2],['paper',24]].map(([name,id])=>`<pattern id="${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('')}</defs>`;}
+export const stackIds=body=>[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
+export function parseStackId(id){const [,color,exp,camera]=id.split('-');return {color,camera,meta:stackGeometry(Number(exp.replace('m','-')),camera)};}
+// Vector card faces for one cached stack; the browser may swap in a raster of the same drawing.
+export function stackContent(id){if(stackCache.has(id))return stackCache.get(id);const {color,meta}=parseStackId(id);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`);stackCache.set(id,content);return content;}
+function stackDefinitions(body){return '<defs>'+stackIds(body).map(id=>`<g id="${id}">${stackContent(id)}</g>`).join('')+'</defs>';}
+export const textureSources=[['blue',25],['red',23],['green',2],['paper',24]];
+export function textureDefs(){return textureSources.map(([name,id])=>`<pattern id="${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('');}
+function textures(){return `<defs>${textureDefs()}</defs>`;}
 function renderLayout(scene,options,overrides={}) {
   let body='';
   for(const slot of [...scene.terms].sort((a,b)=>Number(a.term.id===options.foreground)-Number(b.term.id===options.foreground))) {
@@ -138,6 +141,11 @@ function overlay(plan,t,scene,options) {
   return `<g class="motion-overlay" pointer-events="none">${body}<text x="${x+75}" y="${y-12}" text-anchor="middle" font-size="15">${label}</text></g>`;
 }
 export function renderEquation(equation,options={},plan=null,progress=1) {
+  const frame=renderScene(equation,options,plan,progress);
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" id="equation-svg" viewBox="${frame.viewBox}" data-orientation="${frame.orientation}" data-camera="${frame.camera}" data-progress="${round(progress)}" aria-label="${esc(frame.label)}">${textures()}${stackDefinitions(frame.body)}${frame.body}</svg>`;
+}
+// Scene body without shared definitions, for a persistent SVG that keeps textures and stacks decoded.
+export function renderScene(equation,options={},plan=null,progress=1) {
   options={orientation:'horizontal',camera:'front',expression:false,...options};options.foreground=options.drag?.id||(plan?.origin?plan.command.id:null);
   if((!plan||progress>=.78)&&math.isSolved(equation))options.solvedValue=math.numeric(math.solution(equation).value);
   const after=layout(equation,options);let scene=after,body='';
@@ -165,7 +173,7 @@ export function renderEquation(equation,options={},plan=null,progress=1) {
     body=renderLayout(scene,options,overrides);
     body+=overlay(plan,progress,before,options);
   } else {const overrides={};if(options.drag){const d=options.drag,slot=scene.terms.find(t=>t.term.id===d.id);if(slot)overrides[d.id]={x:d.x,y:d.y,term:slot.side===d.side?slot.term:{...slot.term,value:math.neg(slot.term.value)}};}body=renderLayout(scene,options,overrides);}
-  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" id="equation-svg" viewBox="${round(scene.minX||0)} ${round(scene.minY||0)} ${round(scene.width-(scene.minX||0))} ${round(scene.height-(scene.minY||0))}" data-orientation="${options.orientation}" data-camera="${options.camera}" data-progress="${round(progress)}" aria-label="${esc(math.equationText(equation))}">${textures()}${stackDefinitions(body)}${body}</svg>`;
+  return {viewBox:`${round(scene.minX||0)} ${round(scene.minY||0)} ${round(scene.width-(scene.minX||0))} ${round(scene.height-(scene.minY||0))}`,orientation:options.orientation,camera:options.camera,label:math.equationText(equation),body,scene};
 }
 function renderUnits(plan,t,options){
  const before=layout(plan.before,options),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
@@ -208,7 +216,13 @@ function renderUnits(plan,t,options){
    // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
    // At a comma, compress the old depth group into the next inscribed face.
    for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,end.x+offset,f),y:lerp(start.y,end.y+offset,f)};
-    if(comma){const meta=stackGeometry(token.place+shift,options.camera);let drawing='';for(let layer=meta.cardCount;layer>=1;layer--){const d=layer*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}particles+=`<g data-unit="${token.id}" opacity="${1-ease((f-.75)/.25)}">${drawing}</g>`;}
+    if(comma&&compression>.98)particles+=`<g opacity="${round(1-ease((f-.75)/.25))}">${draw(token,point)}</g>`;
+    else if(comma){
+     // Faces closer than ~1.2px read as one edge band, so draw only that many layers.
+     const meta=stackGeometry(token.place+shift,options.camera),layers=Math.min(meta.cardCount,Math.max(1,Math.ceil(meta.cardCount*pitch*compression/1.2)));let drawing='';
+     for(let k=layers;k>=1;k--){const d=(k/layers)*meta.cardCount*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}
+     particles+=`<g data-unit="${token.id}" opacity="${round(1-ease((f-.75)/.25))}">${drawing}</g>`;
+    }
     else particles+=draw(token,point);
    }
    if(comma)particles+=draw(single,end,ease((f-.75)/.25));

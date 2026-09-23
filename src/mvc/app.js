@@ -1,7 +1,8 @@
 import {EquationEntry} from './entry.js';
 import { Controller } from './controller.js';
 import { math } from './model.js';
-import { renderEquation,layout } from './view.js';
+import { layout } from './view.js';
+import { Surface } from './surface.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
 let controller,drag=null,selected=null,director=null,lessonIndex=0,practice=false,baseline=null;
@@ -14,7 +15,8 @@ const lessons=[
   {title:'Carry across a comma',equation:'999+1=1000'},
   {title:'Borrow',equation:'1000-1=999'},
 ];
-const view={render(state,options,plan,p){$('stage').innerHTML=renderEquation(state,options,plan,p);$('stage').style.setProperty('--zoom',options.zoom);}};
+const surface=new Surface($('stage'));
+const view={render(state,options,plan,p){surface.draw(state,options,plan,p);$('stage').style.setProperty('--zoom',options.zoom);}};
 controller=new Controller(view);
 const message=text=>{$('feedback').textContent=text;};
 const safe=fn=>{message('');try{fn();}catch(e){controller.render();message(e.message);}};
@@ -30,7 +32,7 @@ function refresh() {
   $('undo').disabled=!controller.model.past.length;$('redo').disabled=!controller.model.future.length;
   if(director && !controller.busy){$('director-prompt').textContent=(practice?'Your turn: ':'')+hint(controller.model.nextStep());if(math.isSolved(controller.model.state))$('director-prompt').textContent=controller.status();}
 }
-controller.addEventListener('change',refresh);refresh();
+controller.addEventListener('change',refresh);refresh();surface.prewarm(controller.options.camera);
 function tick(now){controller.frame(now);requestAnimationFrame(tick);}requestAnimationFrame(tick);
 function point(event) {const svg=$('equation-svg'),p=svg.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());}
 $('stage').addEventListener('pointerdown',event=>{
@@ -68,7 +70,7 @@ $('open-equation').onclick=()=>{$('equation-input').value=math.equationText(cont
 $('equation-form').onsubmit=event=>{event.preventDefault();safe(()=>{controller.load($('equation-input').value);entry.active=false;$('entry-bar').hidden=true;$('equation-dialog').close();director=null;$('director-bar').hidden=true;});};
 for(const button of document.querySelectorAll('[data-close]'))button.onclick=()=>button.closest('dialog').close();
 $('open-view').onclick=()=>$('view-dialog').showModal();
-$('camera').onchange=event=>controller.camera(event.target.value);
+$('camera').onchange=event=>{controller.camera(event.target.value);surface.prewarm(event.target.value);};
 $('orientation').onchange=event=>{if(event.target.value==='auto')autoLayout();else controller.orientation(event.target.value);};
 $('zoom').oninput=event=>{controller.options.zoom=Number(event.target.value);controller.render();};
 function autoLayout(){if($('orientation').value==='auto')controller.orientation(window.innerWidth<700?'vertical':'horizontal');}

@@ -12,7 +12,10 @@
     "test": "node --test tests/*.test.js",
     "test:visual": "node tools/visual-tests.mjs",
     "test:visual:update": "node tools/visual-tests.mjs --update",
-    "preview": "node tools/serve.mjs dist"
+    "preview": "node tools/serve.mjs dist",
+    "perf": "node tools/perf.mjs"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }
