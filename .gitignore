@@ -10,3 +10,4 @@ public/textures/contact-sheet.jpg
 public/pixel-baselines/
 
 .runtime/
+.claude/

@@ -5,6 +5,8 @@ import { placeMetadata } from '../place-value.js';
 import { ease,clamp,operationGroups } from './animation.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const round=n=>Math.round(n*1000)/1000;
+// Exact place-value text such as 0.001; 10**-3 prints differently across engines.
+const decimalUnit=exponent=>exponent<0?'0.'+'0'.repeat(-exponent-1)+'1':String(10**exponent);
 export const cameras={front:{pitch:.35},depth:{pitch:1},spread:{pitch:2.5}};
 export function stackGeometry(exponent,camera='front') {
   const meta=placeMetadata(exponent),pitch=cameras[camera].pitch;
@@ -12,7 +14,7 @@ export function stackGeometry(exponent,camera='front') {
 }
 export function face(x,y,size,color,meta,attributes='') {
   const border=1+meta.group*.55;
-  if(meta.exponent<0){const inner=size*meta.innerScale,inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="#191a16" stroke-width="1"/><rect data-inner-area="${10**meta.exponent}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
+  if(meta.exponent<0){const inner=round(size*meta.innerScale),inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="#191a16" stroke-width="1"/><rect data-inner-area="${decimalUnit(meta.exponent)}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
 
   let svg=`<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#${color})" stroke="#191a16" stroke-width="${border}"/>`;
   for(let level=0;level<meta.group;level++) {const inset=3+level*3;svg+=`<rect x="${round(x+inset)}" y="${round(y+inset)}" width="${size-2*inset}" height="${size-2*inset}" rx="3" fill="none" stroke="#17271c" stroke-width="${1.2+meta.group*.55}"/>`;}
