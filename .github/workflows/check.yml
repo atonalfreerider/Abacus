@@ -12,6 +12,13 @@ jobs:
           node-version: '22'
       - run: node --test tests/*.test.js
       - run: node tools/visual-tests.mjs
+      # Real pointer drags, tutor flow and frame times in headless Chrome (preinstalled on ubuntu-latest).
+      - run: node tools/interaction-tests.mjs
+        env:
+          FRAME_BUDGET_MS: '50'
+      - run: node tools/perf.mjs
+        env:
+          FRAME_BUDGET_MS: '50'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -16,7 +16,7 @@ try{
   const surface=new Surface(document.getElementById('stage'));const out=[];
   for(const [input,type,camera] of ${JSON.stringify(scenes)}){
    let c;try{c=new Controller({render(state,options,plan,p){surface.draw(state,options,plan,p);}},input);}catch(e){out.push({input,skipped:e.message});continue;}
-   c.options.camera=camera;c.render();await new Promise(r=>setTimeout(r,500));
+   c.options.camera=camera;c.render();surface.prewarm(camera);await new Promise(r=>setTimeout(r,900));
    const left=c.model.state.left;
    const command=type==='combine'?{type,id:left[1].id,target:left[0].id}:{type,id:left[0].id};
    try{c.execute(command,performance.now());}catch(e){out.push({input,skipped:e.message});continue;}

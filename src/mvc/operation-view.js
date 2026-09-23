@@ -87,9 +87,11 @@ function multiplyStage({op,S,slot,time,camera,orientation}){
  const resultAnchor={x:slot.x+boundary(resultSpec),y:slot.y};
  const q=clamp((time-op.sumStart)/units.duration),frame=time<op.sumStart?{tokens:units.initial,active:[]}:unitFrame(units,q);
  const owner=name=>Number(name.slice(5));
- const copyDone=i=>op.sumStart+Math.max(0,...units.phases.filter(ph=>ph.type==='transfer'&&ph.before.find(tk=>tk.id===ph.removed[0])?.owner===op.copies[i].owner).map(ph=>ph.end));
- const fadeCopy=i=>1-clamp((time-copyDone(i))/.3);
- const pos=token=>{if(token.owner==='result')return {...cardAt(resultAnchor,token.place+shift,token.cell),scale:1};const c=copyAt(owner(token.owner));return {...cardAt(c.anchor,token.place+shift,token.cell,c.scale),scale:c.scale};};
+ // When each copy's last card has left (cached on the plan: it never changes).
+ const done=op.done??=op.copies.map(c=>op.sumStart+Math.max(0,...units.phases.filter(ph=>ph.type==='transfer'&&ph.before.find(tk=>tk.id===ph.removed[0])?.owner===c.owner).map(ph=>ph.end)));
+ const fadeCopy=i=>1-clamp((time-done[i])/.3);
+ const copies=op.copies.map((_,i)=>copyAt(i));
+ const pos=token=>{if(token.owner==='result')return {...cardAt(resultAnchor,token.place+shift,token.cell),scale:1};const c=copies[owner(token.owner)];return {...cardAt(c.anchor,token.place+shift,token.cell,c.scale),scale:c.scale};};
  let art='';
  // The factors' own trays, frame and × sign lift away as the copies leave.
  art+=place(operationArt(term,camera),S.x,S.y,1,1-ease(clamp(time/.45)));
@@ -98,12 +100,12 @@ function multiplyStage({op,S,slot,time,camera,orientation}){
  const lineRule=dir<0?lineY+43*scale+14:lineY-14;
  if(n)art+=`<path d="M${round(x0-20)} ${round(lineRule)}h${round(raw*scale+40)}" stroke="#3d3a30" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round" opacity="${round(Math.min(1,time/.4)*(1-ease(clamp((time-op.sumStart-.2)/.4))))}"/>`;
  lineCards.forEach((c,i)=>{if(i>=n)return;const k=out(i),home=cardAt(lineHome,c.place,c.cell),to={x:centers[i]-21.5*scale,y:lineY};art+=card({x:lerp(home.x,to.x,k),y:lerp(home.y,to.y,k)},lineColor,c.place,camera,lerp(1,scale,k),time<.05?0:fadeCopy(i),`data-line-card="${i}"`);});
- op.copies.forEach((c,i)=>{const at=copyAt(i);art+=place(specArt(c.spec,color,camera,false),at.anchor.x-boundary(c.spec)*at.scale,at.anchor.y,at.scale,Math.min(at.k*3,1)*fadeCopy(i));});
+ op.copies.forEach((c,i)=>{const at=copies[i];art+=place(specArt(c.spec,color,camera,false),at.anchor.x-boundary(c.spec)*at.scale,at.anchor.y,at.scale,Math.min(at.k*3,1)*fadeCopy(i));});
  // Answer trays appear before the first card arrives; places the answer does not keep fade at the end.
  const places=[...units.initial,...units.final].map(tk=>tk.place+shift),low=Math.min(resultSpec.minPlace,...places),high=Math.max(resultSpec.maxPlace,...places);
  art+=trays(resultAnchor,low,high,camera,pl=>ease(clamp((time-op.sumStart+.35)/.35))*(pl>=resultSpec.minPlace&&pl<=resultSpec.maxPlace?1:1-ease(clamp((time-op.duration+.6)/.3))));
  const draw=(token,point,opacity=1,sc=1)=>card(point,color,token.place+shift,camera,sc,opacity,`data-unit="${token.id}"`);
- const tokenFade=token=>token.owner==='result'?1:clamp(copyAt(owner(token.owner)).k*4);
+ const tokenFade=token=>token.owner==='result'?1:clamp(copies[owner(token.owner)].k*4);
  const settle=1-clamp((time-(op.duration-.3))/.3);
  let particles='';
  for(const token of frame.tokens){const at=pos(token);particles+=draw(token,at,tokenFade(token),at.scale);}
@@ -132,8 +134,8 @@ function divideStage({op,S,slot,time,camera,orientation}){
   if(g)return {left,top,scale:gs};return {left:lerp(left,slot.x,g0),top:lerp(top,slot.y,g0),scale:lerp(gs,1,g0)};};
  const groupAnchor=g=>{const b=box(g);return {x:b.left+boundary(op.groupSpec)*b.scale,y:b.top,scale:b.scale,sliceLeft:b.left+wholeWidth*b.scale};};
  const groupFade=g=>g?1-ease(clamp((time-op.gather)/.4)):1;
- const events=op.events,deal=new Map(),unstack=new Map(),born=new Map(),slice=new Map();
- for(const e of events){if(e.type==='deal')deal.set(e.id,e);if(e.type==='unstack'){unstack.set(e.id,e);for(const c of e.children)born.set(c.id,e);}if(e.type==='slice')slice.set(e.id,e);}
+ const events=op.events,deal=new Map(),unstack=new Map(),born=new Map(),slice=new Map(),strips=new Map();
+ for(const e of events){if(e.type==='deal')deal.set(e.id,e);if(e.type==='unstack'){unstack.set(e.id,e);for(const c of e.children)born.set(c.id,e);}if(e.type==='slice')slice.set(e.id,e);if(e.type==='strip')strips.set(e.id,e);}
  const low=Math.min(op.dividendSpec.minPlace,...events.filter(e=>e.type==='unstack').map(e=>e.place-1)),high=op.dividendSpec.maxPlace;
  const firstUse=pl=>{const e=events.find(e=>e.type==='unstack'&&e.place-1===pl);return e?e.start:0;};
  let art='';
@@ -167,7 +169,7 @@ function divideStage({op,S,slot,time,camera,orientation}){
   const at=pilePos(e),spread=ease(clamp((time-e.start)/(e.end-e.start)));
   for(const s of e.strips){
    const rest={x:at.x+s.index*43/d+(s.index-(d-1)/2)*8*spread,y:at.y};
-   const move=events.find(x=>x.type==='strip'&&x.id===s.id);
+   const move=strips.get(s.id);
    if(!move||time<move.start){particles+=strip(rest.x,rest.y,1,1);continue;}
    const a=groupAnchor(move.group),k=ease(clamp((time-move.start)/(move.end-move.start))),to={x:a.sliceLeft+(7+move.slot*43/d)*a.scale,y:a.y+7*a.scale};
    particles+=strip(lerp(rest.x,to.x,k),lerp(rest.y,to.y,k)-Math.sin(Math.PI*k)*30,lerp(1,a.scale,k),groupFade(move.group));

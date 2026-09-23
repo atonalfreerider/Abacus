@@ -1,9 +1,9 @@
 {
   "name": "abacus-equation-lab",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "ABACUS equation space with exact rational algebra, MVC rendering, and deterministic animation tests.",
+  "description": "ABACUS equation space: exact rational algebra, card animations for addition, multiplication and long division, drag physics, and a guided tutor.",
   "scripts": {
     "dev": "node tools/serve.mjs",
     "start": "node tools/serve.mjs",
@@ -12,6 +12,7 @@
     "test": "node --test tests/*.test.js",
     "test:visual": "node tools/visual-tests.mjs",
     "test:visual:update": "node tools/visual-tests.mjs --update",
+    "test:browser": "node tools/interaction-tests.mjs",
     "preview": "node tools/serve.mjs dist",
     "perf": "node tools/perf.mjs"
   },
