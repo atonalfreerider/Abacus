@@ -8,7 +8,8 @@ if (path.relative(root, out) !== 'dist') throw new Error('Output must remain ins
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
 fs.copyFileSync('index.html', path.join(out, 'index.html'));
-for (const file of ['main.js', 'lessons.js', 'styles.css', 'ruffle-config.js', 'reference.js']) fs.copyFileSync('src/' + file, path.join(out, 'src', file));
+// The SWF comparison page (reference.html) keeps its own stylesheet and loader.
+for (const file of ['styles.css', 'ruffle-config.js', 'reference.js']) fs.copyFileSync('src/' + file, path.join(out, 'src', file));
 for (const file of ['engine.js','place-value.js']) fs.copyFileSync('src/'+file,path.join(out,'src',file));
 fs.cpSync('src/mvc',path.join(out,'src/mvc'),{recursive:true});
 fs.mkdirSync(path.join(out,'textures'),{recursive:true});
