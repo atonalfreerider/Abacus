@@ -28,6 +28,7 @@ try{
  await check('a card released inside the membrane springs home unchanged',async()=>{
   const [,three]=await terms(),m=await mirror();await drag(three,{x:m.x-three.w*.55,y:three.y});await wait(900);
   expect(await status(),'x + 3 = 7','status');expect(await page.eval(`document.getElementById('undo').disabled`),true,'nothing committed');
+  expect(await page.eval(`(()=>{const svg=document.getElementById('equation-svg');return !svg.classList.contains('drag-active')&&getComputedStyle(svg.querySelector('.equals-mirror text')).opacity==='1';})()`),true,'the = sign is visible again');
  });
  await check('a card dropped past the mirror in open space moves with its sign flipped',async()=>{
   const [,three,seven]=await terms();await drag(three,{x:seven.x+seven.w*1.3,y:seven.y+10});await idle();expect(await status(),'x = 7 − 3','status');

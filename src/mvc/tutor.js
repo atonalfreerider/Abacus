@@ -39,7 +39,7 @@ export const lessons = [
   { id: 'fraction-divisor', group: 'Dividing', title: 'Dividing by a fraction', example: '6÷1/2', intro: 'How many halves fit in 6? Turn the fraction over and multiply.',
     make: r => `${r(2, 9)}÷1/${r(2, 5)}` },
   { id: 'carry', group: 'Adding', title: 'Carrying', example: '58+67', intro: 'Ten cards in one place stack into one card of the next place.',
-    make: r => { const a = r(15, 89), b = r(15, 89); return (a % 10) + (b % 10) < 10 ? `${a}+${b + (10 - (a % 10 + b % 10))}` : `${a}+${b}`; } },
+    make: r => { const p = r(1, 9), q = r(10 - p, 9); return `${r(1, 8)}${p}+${r(1, 8)}${q}`; } },
   { id: 'borrow', group: 'Adding', title: 'Borrowing', example: '503-78', intro: 'A card unstacks into ten of the place below so the red cards have partners.',
     make: r => { const a = r(3, 9) * 100 + r(0, 9), b = r(11, 99); return `${a}-${b}`; } },
 ];

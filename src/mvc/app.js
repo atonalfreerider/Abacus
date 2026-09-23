@@ -41,7 +41,7 @@ const dragger=new Dragger($('stage'),controller,{
  onCommit:(id,drop,origin)=>safe(()=>controller.drop(id,drop.side,drop.target,drop.index,performance.now(),origin)),
 });
 refresh();surface.prewarm(controller.options.camera);
-function tick(now){controller.frame(now);dragger.frame(now);requestAnimationFrame(tick);}requestAnimationFrame(tick);
+function tick(now){requestAnimationFrame(tick);try{controller.frame(now);dragger.frame(now);}catch(error){console.error(error);controller.finish();message(error.message);}}requestAnimationFrame(tick);
 $('stage').addEventListener('pointerdown',event=>{if(dragger.down(event)){entry.active=false;$('entry-bar').hidden=true;}});
 $('stage').addEventListener('pointermove',event=>dragger.move(event));
 $('stage').addEventListener('pointerup',event=>dragger.up(event));
@@ -66,7 +66,7 @@ $('orientation').onchange=event=>{if(event.target.value==='auto')autoLayout();el
 $('zoom').oninput=event=>{controller.options.zoom=Number(event.target.value);controller.render();};
 function autoLayout(){if($('orientation').value==='auto'&&!dragger.active){const next=window.innerWidth<700?'vertical':'horizontal';if(next!==controller.options.orientation)controller.orientation(next);}}
 window.addEventListener('resize',autoLayout);autoLayout();
-$('undo').onclick=()=>{controller.undo();hint=null;};$('redo').onclick=()=>controller.redo();
+$('undo').onclick=()=>{hint=null;controller.undo();};$('redo').onclick=()=>controller.redo();
 $('combine').onclick=()=>safe(()=>{entry.active=false;$('entry-bar').hidden=true;const step=controller.model.nextStep();if(step?.type==='combine'||step?.type==='evaluate')controller.as('solver',()=>controller.execute(step));else controller.as('solver',()=>controller.execute({type:'simplify'}));});
 $('solve').onclick=()=>safe(()=>{if(!controller.as('solver',()=>controller.step()))message(controller.status());});
 for(const operation of ['multiply','divide'])$(operation).onclick=()=>safe(()=>controller.execute({type:'operate',operation,amount:$('factor').value}));
@@ -102,12 +102,13 @@ function exampleStep(){
  safe(()=>controller.as('tutor',()=>controller.execute(command)));return true;
 }
 $('tutor-step').onclick=()=>{stopPlaying();exampleStep();};
-function stopPlaying(){playing=false;clearTimeout(playTimer);$('tutor-play').setAttribute('aria-pressed','false');$('tutor-play').textContent='Play all';}
+function stopPlaying(){playing=false;clearTimeout(playTimer);playTimer=0;$('tutor-play').setAttribute('aria-pressed','false');$('tutor-play').textContent='Play all';}
 $('tutor-play').onclick=()=>{if(playing)return stopPlaying();playing=true;$('tutor-play').setAttribute('aria-pressed','true');$('tutor-play').textContent='Pause';exampleStep();};
 // While playing, advance once each animation settles, with a pause to read the narration.
 controller.addEventListener('change',()=>{
+ if(tutor&&!controller.busy&&!finished(controller.model))tutor.announced=false;
  if(tutor?.phase==='example'&&!controller.busy&&finished(controller.model)&&!tutor.announced){tutor.announced=true;stopPlaying();say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');refresh();}
- if(playing&&!controller.busy&&!playTimer)playTimer=setTimeout(()=>{playTimer=0;if(playing&&!controller.busy)exampleStep();},1100);
+ if(playing&&!controller.busy&&!playTimer)playTimer=setTimeout(()=>{playTimer=0;if(playing&&!controller.busy&&!dragger.active)exampleStep();else if(playing)controller.dispatchEvent(new Event('change'));},1100);
 });
 function practice(){stopPlaying();hint=null;const problem=tutor.practice();safe(()=>controller.load(problem));say(`Your turn: ${math.equationText(controller.model.state).replace(/ = 0$/,'')}. ${controller.model.expression?'Tap the product to work it out, or drag like cards together.':'Drag cards to get x alone.'} Ask for a hint any time.`);refresh();}
 $('tutor-turn').onclick=practice;$('tutor-new').onclick=practice;
@@ -126,7 +127,7 @@ function enterKey(key){
  if(dragger.active||['Enter','ArrowUp'].includes(key)&&!entry.active)return;
  const text=entry.key(key);if(key==='Escape')$('entry-bar').hidden=true;if(text===null)return;
  $('entry-text').textContent=entry.text||'0';$('entry-bar').hidden=!entry.active;
- if(['Enter','ArrowUp'].includes(key)){try{controller.load(text||'0');message('');}catch(e){entry.active=true;$('entry-bar').hidden=false;message(e.message);}return;}
+ if(['Enter','ArrowUp'].includes(key)){try{controller.load(text||'0');leaveTutor();message('');}catch(e){entry.active=true;$('entry-bar').hidden=false;message(e.message);}return;}
  message('');
 }
 const cells=[];
@@ -136,5 +137,5 @@ $('keypad').onpointerleave=()=>illuminate(0);
 for(const b of document.querySelectorAll('[data-input-key]'))b.onclick=()=>enterKey(b.dataset.inputKey);
 $('entry-done').onclick=()=>enterKey('ArrowUp');
 document.addEventListener('keydown',event=>{if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
-$('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>controller.load('0'));};
+$('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>{controller.load('0');leaveTutor();});};
 $('open-tests').onclick=()=>location.href='./tests.html';

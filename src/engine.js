@@ -40,6 +40,7 @@ export function scaleTerm(t, factor, op = '×') {
   if (eq(factor, frac(-1)) && op === '×') return negateTerm(t);
   const value = op === '×' ? mul(t.value, factor) : div(t.value, factor);
   if (!t.expr) return { ...t, value };
+  if (t.expr.operands.length >= 6) { const { expr, ...plain } = t; return { ...plain, value, notation: value.d === 1 ? 'auto' : 'fraction' }; }
   return { ...t, value, expr: { operands: [...t.expr.operands, { value: factor, notation: factor.d === 1 ? 'auto' : 'fraction' }], ops: [...t.expr.ops, op] } };
 }
 // Result notation: decimals stay decimals, fractions stay fractions, and a division
@@ -110,6 +111,13 @@ export function parseExpression(text) {
     while (['*', '/', '÷', 'x', '('].includes(peek())) {
       ops.push(['*', '/', '÷'].includes(peek()) ? tokens[index++] : '*');
       factors.push(unary());
+    }
+    // A slash between two plain numbers is a fraction bar and binds first (x ÷ 1/2 = x ÷ ½),
+    // except after another slash, which keeps x/2/3 = x/6 read left to right.
+    const number = items => items.length === 1 && items[0].kind === 'constant' && !items[0].expr;
+    for (let i = 0; i < ops.length; i++) if (ops[i] === '/' && number(factors[i]) && number(factors[i + 1]) && (i === 0 || ops[i - 1] !== '/') && !factors.every(scalar)) {
+      const [a, b] = [factors[i][0], factors[i + 1][0]];
+      factors.splice(i, 2, [{ ...term('constant', div(a.value, b.value), a.notation === 'decimal' || b.notation === 'decimal' ? 'decimal' : 'fraction') }]); ops.splice(i, 1); i--;
     }
     if (ops.length && factors.every(scalar)) return [chain(factors, ops)];
     let value = factors[0];

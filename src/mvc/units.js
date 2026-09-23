@@ -31,7 +31,8 @@ export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
   for(const token of initial.filter(t=>t.owner===owner).sort((a,b)=>a.place-b.place)){
    add('transfer',[token.id],[{...token,owner:target,cell:free(token.place)}]);if(delay)phases.at(-1).delay=delay;if(waits.length)phases.at(-1).waits=waits;
   }
-  if(sequential){const first=phases.length;normalize();waits=phases.slice(first).map((_,i)=>first+i);if(!waits.length)waits=[];}
+  // The next source waits for this one to start moving and for any regrouping it caused.
+  if(sequential){const moved=phases.length-initial.filter(t=>t.owner===owner).length,first=phases.length;normalize();waits=phases.map((_,i)=>i).slice(moved);}
  }
  normalize();
  const sign=total<0n?-1:1;

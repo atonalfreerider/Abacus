@@ -114,6 +114,14 @@ export class Dragger {
     }
     this.onChange();
   }
-  cancel(event) { if (event && event.pointerId !== this.pointerId) return; if (this.body) { this.settling = this.body; this.body = null; } this.pending = null; }
-  finishSettling() { this.settling = null; delete this.controller.options.drag; this.controller.render(); this.onChange(); }
+  cancel(event) {
+    if (event && event.pointerId !== this.pointerId) return;
+    const body = this.body; this.body = null; this.pending = null;
+    if (!body) return;
+    this.settling = body;
+    if (body.crossed) { this.controller.previewDrag(body.id, body.pos.x, body.pos.y, body.home); this.install(); }
+    this.onChange();
+  }
+  // The SVG persists between frames, so drag styling must be removed explicitly.
+  finishSettling() { this.settling = null; this.svg?.classList.remove('drag-active'); delete this.controller.options.drag; this.controller.render(); this.onChange(); }
 }

@@ -51,6 +51,7 @@ export function divisionPlan(term, result) {
   if (mixed && sa.minPlace < 0) return null;
   const whole = mixed ? math.frac(Math.floor(quotient.n / quotient.d)) : null;
   const groupSpec = mixed ? (whole.n ? numberSpec({ kind: 'constant', value: whole, notation: 'auto' }) : null) : resultSpec;
+  if (!mixed && !groupSpec) return null; // a fraction answer has no card layout; use the symbolic transition
   const lowest = mixed ? 0 : Math.min(sa.minPlace, groupSpec.minPlace);
   if (lowest < -6) return null;
   let serial = 0;
@@ -59,7 +60,7 @@ export function divisionPlan(term, result) {
   for (const p of sa.places) for (let k = 0; k < p.digit; k++) tokens.push({ id: id(), place: p.exponent, cell: nextCell(p.exponent) });
   const dividend = tokens.map(t => ({ ...t })), initial = tokens.map(t => ({ ...t }));
   const rounds = sa.places.reduce((n, p) => n + p.digit, 0) > 40 ? .09 : .14, flight = .42, unstack = .45;
-  let time = .7;
+  let time = .7, pieces = d;
   for (let place = sa.maxPlace; place >= lowest; place--) {
     const here = dividend.filter(t => t.place === place && !t.gone);
     const each = Math.floor(here.length / d);
@@ -79,17 +80,21 @@ export function divisionPlan(term, result) {
       }
       time += unstack + .08;
     } else if (mixed) {
+      // Each leftover card is cut into q equal strips, q = d / gcd(leftover, d), so every
+      // group receives the reduced fraction of a card: 8 ÷ 6 deals thirds, not sixths.
+      const gcd = (a, b) => b ? gcd(b, a % b) : a, q = d / gcd(left.length, d);
       left.forEach((parent, i) => {
-        const strips = Array.from({ length: d }, (_, k) => ({ id: id(), index: k }));
+        const strips = Array.from({ length: q }, (_, k) => ({ id: id(), index: k }));
         events.push({ type: 'slice', id: parent.id, place, cell: parent.cell, strips, start: time, end: time + .5 });
-        strips.forEach((strip, k) => events.push({ type: 'strip', id: strip.id, parent: parent.id, group: k, slot: i, index: k, start: time + .55 + i * rounds, end: time + .55 + i * rounds + flight }));
+        strips.forEach((strip, k) => { const j = i * q + k; events.push({ type: 'strip', id: strip.id, parent: parent.id, group: j % d, slot: Math.floor(j / d), index: k, start: time + .55 + Math.floor(j / d) * rounds, end: time + .55 + Math.floor(j / d) * rounds + flight }); });
         parent.gone = true;
       });
+      pieces = q;
       time += .55 + (left.length - 1) * rounds + flight + .08;
     } else return null;
   }
   const gather = time + .25;
-  return { kind: 'divide', d, sign: Math.sign(a.value.n) * Math.sign(b.value.n) || 1, dividendSpec: sa, groupSpec, mixed, remainder: mixed ? quotient.n % quotient.d : 0, tokens: initial, events, gather, duration: gather + 1.1 };
+  return { kind: 'divide', d, sign: Math.sign(a.value.n) * Math.sign(b.value.n) || 1, dividendSpec: sa, groupSpec, mixed, pieces, remainder: mixed ? quotient.n % quotient.d : 0, tokens: initial, events, gather, duration: gather + 1.1 };
 }
 
 export function operationPlan(transaction) {

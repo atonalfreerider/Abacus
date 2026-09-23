@@ -126,7 +126,7 @@ function multiplyStage({op,S,slot,time,camera,orientation}){
 
 function divideStage({op,S,slot,time,camera,orientation}){
  const term=S.term,d=op.d,offsets=operandOffsets(term),dir=orientation==='vertical'&&S.side==='left'?-1:1;
- const dividend=term.expr.operands[0],color=colorOf(Math.sign(dividend.value.n));
+ const dividend=term.expr.operands[0],color=colorOf(Math.sign(dividend.value.n)),resultColor=colorOf(op.sign);
  const home={x:S.x+boundary(op.dividendSpec),y:S.y},divisorAt={x:S.x+offsets[1]+75,y:S.y+75};
  const gs=d<=2?.62:d<=4?.52:d<=6?.44:.38,perRow=d<=6?d:Math.ceil(d/2),rows=Math.ceil(d/perRow);
  const wholeWidth=op.groupSpec?.width||0,gw=wholeWidth+(op.mixed?160:0),colGap=46,rowH=160*gs+50;
@@ -150,7 +150,7 @@ function divideStage({op,S,slot,time,camera,orientation}){
  const groupPos=(g,pl,cell)=>{const a=groupAnchor(g);return {...cardAt(a,pl,cell,a.scale),scale:a.scale};};
  const settle=1-clamp((time-(op.duration-.3))/.3);
  let particles='';
- const draw=(token,point,opacity=1,sc=1)=>card(point,color,token.place,camera,sc,opacity*settle,`data-card="${token.id}"`);
+ const draw=(token,point,opacity=1,sc=1,group=-1)=>card(point,group===0&&gather>0?resultColor:color,token.place,camera,sc,opacity*settle,`data-card="${token.id}"`);
  const tokens=[...op.tokens,...[...unstack.values()].flatMap(e=>e.children)];
  for(const token of tokens){
   const origin=born.get(token.id);if(origin&&time<origin.end)continue;
@@ -158,23 +158,23 @@ function divideStage({op,S,slot,time,camera,orientation}){
   const e=deal.get(token.id);
   if(!e||time<e.start){particles+=draw(token,pilePos(token));continue;}
   const to=groupPos(e.group,e.place,e.cell),k=ease(clamp((time-e.start)/(e.end-e.start))),from=pilePos(token);
-  particles+=draw(token,{x:lerp(from.x,to.x,k),y:lerp(from.y,to.y,k)-Math.sin(Math.PI*k)*30},groupFade(e.group),lerp(1,to.scale,k));
+  particles+=draw(token,{x:lerp(from.x,to.x,k),y:lerp(from.y,to.y,k)-Math.sin(Math.PI*k)*30},groupFade(e.group),lerp(1,to.scale,k),e.group);
  }
  for(const e of unstack.values())if(time>=e.start&&time<e.end){
   const parent={id:e.id,place:e.place,cell:e.cell,sign:1};
   particles+=phaseParticles([{phase:{type:'borrow',before:[parent],after:e.children.map(c=>({...c,sign:1})),removed:[e.id],created:e.children.map(c=>c.id)},progress:(time-e.start)/(e.end-e.start)}],{pos:pilePos,draw:(token,point,opacity=1)=>draw(token,point,opacity),color:()=>color,camera});
  }
  // Slices: a leftover card splits into d strips; strip k goes to group k.
- const strip=(x,y,scale,opacity)=>`<rect class="card-strip" x="${round(x)}" y="${round(y)}" width="${round(43/d*scale)}" height="${round(43*scale)}" fill="url(#${color})" stroke="#191a16" stroke-width=".8" opacity="${round(opacity*settle)}"/>`;
+ const q=op.pieces||d,strip=(x,y,scale,opacity,group=-1)=>`<rect class="card-strip" x="${round(x)}" y="${round(y)}" width="${round(43/q*scale)}" height="${round(43*scale)}" fill="url(#${group===0&&gather>0?resultColor:color})" stroke="#191a16" stroke-width=".8" opacity="${round(opacity*settle)}"/>`;
  for(const e of slice.values()){
   if(time<e.start)continue;
   const at=pilePos(e),spread=ease(clamp((time-e.start)/(e.end-e.start)));
   for(const s of e.strips){
-   const rest={x:at.x+s.index*43/d+(s.index-(d-1)/2)*8*spread,y:at.y};
+   const rest={x:at.x+s.index*43/q+(s.index-(q-1)/2)*8*spread,y:at.y};
    const move=strips.get(s.id);
    if(!move||time<move.start){particles+=strip(rest.x,rest.y,1,1);continue;}
-   const a=groupAnchor(move.group),k=ease(clamp((time-move.start)/(move.end-move.start))),to={x:a.sliceLeft+(7+move.slot*43/d)*a.scale,y:a.y+7*a.scale};
-   particles+=strip(lerp(rest.x,to.x,k),lerp(rest.y,to.y,k)-Math.sin(Math.PI*k)*30,lerp(1,a.scale,k),groupFade(move.group));
+   const a=groupAnchor(move.group),k=ease(clamp((time-move.start)/(move.end-move.start))),to={x:a.sliceLeft+(7+move.slot*43/q)*a.scale,y:a.y+7*a.scale};
+   particles+=strip(lerp(rest.x,to.x,k),lerp(rest.y,to.y,k)-Math.sin(Math.PI*k)*30,lerp(1,a.scale,k),groupFade(move.group),move.group);
   }
  }
  art+=particles;

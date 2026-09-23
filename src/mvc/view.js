@@ -39,14 +39,14 @@ export function tray(digit,color,exponent=0,camera='front',label=String(digit),u
 }
 export function commaTriangle(x,decimal=false){return `<g class="${decimal?'decimal-comma':'group-comma'}" transform="translate(${x+5} 0)"><path d="M0 75 L25 50 L25 100 Z" fill="url(#paper)" fill-opacity="${decimal?.16:.75}" stroke="#37362e" stroke-width="1.5"/>${decimal?'<path d="M12 102v32 M12 120l-7 13" fill="none" stroke="#37362e" stroke-dasharray="1 4"/><circle cx="12" cy="120" r="2" fill="#37362e"/>':''}</g>`;}
 export function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
-export const OPERATOR_GAP=110;
+export const OPERATOR_GAP=110,DOT_GAP=46;
 // Operands of a product render as constants coloured by their own sign.
 export const operandTerm=o=>({kind:'constant',value:math.abs(o.value),notation:o.notation,decimalPlaces:o.decimalPlaces,negative:o.value.n<0});
 export function mixedParts(value){const n=Math.abs(value.n),d=value.d;return {whole:Math.floor(n/d),remainder:n%d,denominator:d};}
 export function termWidth(term){
   if(term.expr)return term.expr.operands.reduce((w,o)=>w+termWidth(operandTerm(o)),0)+OPERATOR_GAP*term.expr.ops.length;
   if(term.notation==='mixed'&&term.value.d!==1){const {whole}=mixedParts(term.value);return (whole?String(whole).length*160:0)+160;}
-  if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?160:0);}
+  if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?DOT_GAP+160:0);}
 // A card cut into equal vertical slices; `count` of them remain.
 export function sliceTray(count,denominator,color,camera,label=`${count}/${denominator}`){
   let art=tray(count/denominator,color,0,camera,'');
@@ -70,7 +70,7 @@ export function operationArt(term,camera,from=0){
 }
 export function termArt(term,camera,solvedValue=null) {
   if(term.expr)return operationArt(term,camera);
-  const color=term.kind==='variable'?'green':term.value.n<0||term.negative?'red':'blue';
+  const color=term.value.n<0||term.negative?'red':'blue';
   if(term.notation==='mixed'&&term.value.d!==1){const {whole,remainder,denominator}=mixedParts(term.value),spec=whole?numberSpec({kind:'constant',value:math.frac(whole),notation:'auto'}):null;return (spec?specArt(spec,color,camera):'')+`<g transform="translate(${spec?spec.width:0} 0)">${sliceTray(remainder,denominator,color,camera)}</g>`;}
   const digits=(number,y=0,scale=1)=>[...String(number)].map((d,i,all)=>`<g transform="translate(${i*160*scale} ${y}) scale(${scale})">${tray(Number(d),color,all.length-i-1,camera)}</g>`).join('');
   let result;
@@ -81,7 +81,8 @@ export function termArt(term,camera,solvedValue=null) {
   } else result=specArt(spec,color,camera);
   if(term.kind==='variable') {
     if(Math.abs(term.value.n)===term.value.d)result=tray(solvedValue!==null?Math.min(9,Math.abs(solvedValue)):9,'green',0,camera,'X',solvedValue===null);
-    else result+=`<g transform="translate(${termWidth(term)-160} 0)">${tray(9,'green',0,camera,'X',true)}</g>`;
+    // A coefficient multiplies x: a dot sits between the number cards and the x tray.
+    else result+=`<circle class="multiplier-dot" cx="${termWidth(term)-160-DOT_GAP/2}" cy="75" r="7" fill="#25241e"/><g transform="translate(${termWidth(term)-160} 0)">${tray(9,'green',0,camera,'X',true)}</g>`;
   }
   return result;
 }
@@ -252,7 +253,8 @@ export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
 function renderUnits(plan,t,options){
  const before=applyOrigin(layout(plan.before,options),plan.origin),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
  const source=before.terms.find(s=>s.term.id===u.source),target=before.terms.find(s=>s.term.id===u.target);
- const result=after.terms.find(s=>s.term.id===u.target)||after.terms.find(s=>s.side===target.side);
+ // A target that cancels to zero has no slot afterwards; its cards vanish where they were.
+ const result=after.terms.find(s=>s.term.id===u.target)||after.terms.find(s=>s.side===target.side&&numberSpec(s.term))||{...target,term:{kind:'constant',value:math.frac(0),notation:'auto'}};
  const spec=term=>numberSpec(term),digits=term=>spec(term).places.length;
  const boundary=term=>-placeOffset(spec(term).maxPlace),shift=u.placeShift||0;
  const lerp=(a,b,q=p)=>a+(b-a)*q;
@@ -272,7 +274,7 @@ function renderUnits(plan,t,options){
  let boxes='';for(let place=minPlace;place<=maxPlace;place++){const old=place>=spec(target.term).minPlace&&place<=spec(target.term).maxPlace,final=place>=spec(result.term).minPlace&&place<=spec(result.term).maxPlace,opacity=(old?1:clamp(t*8))*(final?1:1-ease((t-.9)/.1));const x=anchor.x+placeOffset(place)-target.x;boxes+=`<g opacity="${opacity}" transform="translate(${x} ${anchor.y-target.y})">${tray(0,'blue',place,options.camera,'')}</g>`;if(place<maxPlace&&(place===-1||place>=0&&place%3===2||place<0&&place%3===0))boxes+=`<g transform="translate(0 ${anchor.y-target.y})">${commaTriangle(x-40,place===-1)}</g>`;}
  overrides[u.target]={x:target.x,y:target.y,term:t>.9?result.term:target.term,art:boxes,labelOpacity:0};
  let body=renderLayout(scene,options,overrides),particles='';
- const color=token=>target.term.kind==='variable'?'green':token.sign<0?'red':'blue';
+ const color=token=>token.sign<0?'red':'blue';
  const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity)}</g>`;
  for(const token of frame.tokens)particles+=draw(token,pos(token));
  particles+=phaseParticles(frame.active,{pos,draw,color,camera:options.camera,shift});

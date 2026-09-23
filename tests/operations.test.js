@@ -96,3 +96,30 @@ test('operation animations render every frame in both layouts and all cameras',(
 test('in an expression the planner only works out and combines; it never moves cards to the hidden side',()=>{
  for(const input of ['x+3','2x+3x-4','23*4+x']){const m=new EquationModel(input);let command;while((command=m.nextStep())){assert.notEqual(command.type,'move',input);m.dispatch(command);}assert.equal(m.state.right.length,0,input);assert.ok(math.isSimplified(m.state.left),input);}
 });
+test('copies start in order and no two cards ever share an answer cell',()=>{
+ let checked=0;
+ for(let a=1;a<=99;a++)for(let b=1;b<=19;b++){
+  const plan=multiplicationPlan(math.parseExpression(`${a}*${b}`)[0]);if(!plan)continue;const u=plan.units;checked++;
+  const starts=plan.copies.map(c=>Math.min(...u.phases.filter(p=>p.type==='transfer'&&p.before.find(t=>t.id===p.removed[0]).owner===c.owner).map(p=>p.start)));
+  for(let i=1;i<starts.length;i++)assert.ok(starts[i]>=starts[i-1]-1e-9,`${a}×${b}: copy ${i} starts before copy ${i-1}`);
+  // Occupancy of each answer cell: from arrival (or creation) until the phase that removes the card starts.
+  const arrive=new Map(),leave=new Map(),cell=new Map();
+  for(const p of u.phases){
+   if(p.type==='transfer'){const t=p.after.find(t=>t.id===p.removed[0]);arrive.set(t.id,p.end);cell.set(t.id,`${t.place}:${t.cell}`);}
+   else if(p.type==='carry'){for(const id of p.removed)leave.set(id,Math.min(leave.get(id)??Infinity,p.start));for(const id of p.created){const t=p.after.find(t=>t.id===id);arrive.set(id,p.end);cell.set(id,`${t.place}:${t.cell}`);}}
+  }
+  const settle=u.phases.find(p=>p.type==='settle');const spans=[...cell].map(([id,key])=>({key,from:arrive.get(id),to:leave.get(id)??(settle?.start??Infinity)}));
+  for(let i=0;i<spans.length;i++)for(let j=i+1;j<spans.length;j++)if(spans[i].key===spans[j].key)assert.ok(spans[i].to<=spans[j].from+1e-9||spans[j].to<=spans[i].from+1e-9,`${a}×${b}: two cards in cell ${spans[i].key}`);
+ }
+ assert.ok(checked>1500);
+});
+test('a slash between numbers is a fraction bar with or without x, and long chains stay re-enterable',()=>{
+ for(const [input,answer] of [['x÷1/2=4','2'],['x/2/3=1','6'],['x*3/4=3','4'],['2x/3=2','3'],['6÷1/2=x','12']])assert.deepEqual(new EquationModel(input).result().value,math.parseScalar(answer),input);
+ const m=new EquationModel('x=2*3');for(let i=0;i<6;i++)m.dispatch({type:'operate',operation:'multiply',amount:'2'});
+ assert.doesNotThrow(()=>new EquationModel(math.equationText(m.state).replace(/−/g,'-')));assert.deepEqual(m.result().value,math.frac(6));
+});
+test('division plans fall back for fraction answers and deal reduced strips',()=>{
+ assert.equal(divisionPlan(math.parseExpression('6/2÷4')[0],math.evaluateStep(math.parseExpression('6/2÷4')[0])),null);
+ const t=math.parseExpression('8÷6')[0],plan=divisionPlan(t,math.evaluateStep(t));assert.equal(plan.pieces,3,'8 ÷ 6 deals thirds, matching 1⅓');
+ const c=new Controller({render(){}},'3-3+1/2=x');c.step(0);for(const p of [0,.5,.9])assert.doesNotMatch(renderEquation(c.model.state,{},c.clock.plan,p),/NaN|undefined/);
+});
