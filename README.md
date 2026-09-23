@@ -1,6 +1,6 @@
 # ABACUS
 
-A browser equation workspace built from the original ABACUS SWF's textures, face-on 3×3 trays and equals mirror. Numbers are physical cards: each occupied cell holds 1, 10 or 100 card faces, so place value is visible as stack depth. Addition carries and borrows card by card, positive and negative cards cancel in zero pairs, multiplication copies cards, and long division deals them into equal groups. A tutor shows worked examples and then deals the learner fresh problems. The original SWF remains available at `reference.html` for comparison.
+A browser equation workspace built from the original ABACUS SWF's textures, face-on 3×3 trays and equals mirror. Numbers are physical cards: each occupied cell holds 1, 10 or 100 card faces, so place value is visible as stack depth. Addition carries and borrows card by card, positive and negative cards cancel in zero pairs, multiplication copies cards, and long division deals them into equal groups. In graph mode, a point dragged along a curve shows its coordinates as card stacks, and systems of equations are solved where curves cross. An advanced module sweeps card strips under a curve to build an integral. A tutor shows worked examples and then deals the learner fresh problems. The original SWF remains available at `reference.html` for comparison.
 
 ## Run
 
@@ -35,7 +35,17 @@ Stop development before previewing on the same port, or set PORT. `dist` is a st
 - Tapping a fraction divides it out into a decimal (`3/4 → 0.75`) or a mixed number.
 - Visual plans cover divisors up to 12, up to 24 copies and dividends up to six digits. Larger or fractional cases use an exact symbolic transition.
 
-**Tutor.** Choose a lesson (moving cards, zero pairs, equal groups, x on both sides, fractions, products, multiplying by copying, two-digit lines, decimal copies, long division, remainders as decimals or fractions, dividing by a fraction, carrying, borrowing). The tutor plays a worked example step by step, or with Play all, narrating each step, then deals a new problem of the same shape. Hint highlights the card to move and draws a guide arrow; Show me performs the step; feedback says whether a move helped, was a balanced detour, or solved it. Solve and Combine use the same step planner.
+**Graph mode** (header: Graph) plots up to three equations in x and y:
+- `y =` a polynomial in x up to degree 4, such as `y = x^2 - 2x - 3` or `y = (x+2)(x-1)(x-3)/2`;
+- linear equations such as `2x + 3y = 12`;
+- vertical lines such as `x = 3`;
+- one-variable equations, graphed as both sides (`x^2 = 4` becomes `y = x²` and `y = 4`).
+
+Drag the point along a curve. Its coordinates stand as cards: a column of y cards rises from the x axis to the point, and a row of x cards runs from the y axis to it. Cards are blue when positive and red when negative, cut exactly at fractions, and every ten are outlined as a group. The point moves on a spring, steps in friendly fractions (arrow keys also step it), and settles into detents at roots, the y-intercept, turning points and crossings. These are exact where rational and marked ≈ otherwise. Each equation is checked by substituting the point. At a system's crossing every equation holds; parallel and identical lines are explained. **From the cards** graphs both sides of the card-space equation; their crossing is its solution. Pan by dragging the background, and zoom with the wheel or a pinch.
+
+**Area (advanced).** Tick *Area*, choose [a, b], a strip width Δx and where each strip takes its height, then **Sweep**. The point moves across and stacks a column of card strips at each step. Every column then slides beside b and becomes whole cards (same area), and red cancels blue. The resulting stack is marked against the exact integral, computed from the antiderivative. **Thinner strips** halves Δx, and the sum approaches the integral.
+
+**Tutor.** Choose a lesson (moving cards, zero pairs, equal groups, x on both sides, fractions, products, multiplying by copying, two-digit lines, decimal copies, long division, remainders as decimals or fractions, dividing by a fraction, carrying, borrowing, and three graph lessons: solve a system by graphing, where a parabola meets zero, graph both sides). The tutor plays a worked example step by step, or with Play all, narrating each step, then deals a new problem of the same shape. Hint highlights the card to move and draws a guide arrow; Show me performs the step; feedback says whether a move helped, was a balanced detour, or solved it. Solve and Combine use the same step planner.
 
 **View** offers horizontal, vertical and automatic layouts, front/depth/spread stack cameras, and zoom. Animations can be paused, scrubbed and finished; undo/redo restore exact states.
 
@@ -49,14 +59,15 @@ Stop development before previewing on the same port, or set PORT. `dist` is a st
 - `src/mvc/operations.js` and `operation-view.js`: card plans and frames for multiplication (copies over a line of cards) and long division (dealing, unstacking, slicing).
 - `src/mvc/physics.js` and `drag.js`: drag physics (spring, membrane, magnets, reflow, balance tilt) and the DOM glue that writes transforms each frame.
 - `src/mvc/tutor.js`: lessons, problem generators, narration and feedback. `app.js` wires input, dialogs and the tutor bar.
+- `src/graph/polynomial.js`: exact polynomial parsing in x and y, roots (rational root theorem, then bracketed numeric roots), intersections, Riemann sums and exact integrals. `graph-view.js` renders deterministic SVG; `graph-app.js` handles the tracer, detents, pan/zoom, substitution checks and the area sweep.
 
 Supported scope: one-variable linear equations and expressions in x, with parentheses/distribution, fractions, decimals, variables on both sides, identities and contradictions. Rational components must fit safe integers; overflow is rejected, as are nonlinear terms, variable denominators and multiplying or dividing both sides by zero. This is not a universal computer algebra system. The original JPEG textures are reused; typography and animation paths are reconstructions, not SWF playback. Solved variable trays show up to nine green units; larger answers remain fully represented on the constant side.
 
 ## Tests and regression infrastructure
 
-- `npm test`: exact arithmetic, parser and operation chains, planner termination and residual preservation, 150 random products and every division plan checked for conservation, drag physics (membrane, hysteresis, snapping, reflow), 200 generated problems per tutor lesson, stack geometry, clock behaviour, and SWF provenance, including a full AVM2 decode of the original.
+- `npm test`: exact arithmetic, parser and operation chains, planner termination and residual preservation, 150 random products and every division plan checked for conservation, drag physics (membrane, hysteresis, snapping, reflow), 200 generated problems per tutor lesson (graph lessons: an exact goal point each), polynomial parsing, 200 random root sets recovered exactly, systems, strip sums converging to exact integrals, stack geometry, clock behaviour, and SWF provenance, including a full AVM2 decode of the original.
 - `npm run test:visual`: 720 deterministic SVG snapshots (24 scenes × 2 layouts × 3 cameras × 5 timestamps) against reviewed hashes; outputs go to `artifacts/visual`. `npm run test:visual:update` records new hashes after visual review.
-- `npm run test:browser`: headless Chrome with DevTools pointer and key events. It drags through the mirror onto a like card, releases inside the membrane, drops in open space and in gaps, taps a product, runs Solve through long division, uses the keyboard and the vertical layout, runs the tutor flow, and checks p90 frame time while dragging.
+- `npm run test:browser`: headless Chrome with DevTools pointer and key events. It drags through the mirror onto a like card, releases inside the membrane, drops in open space and in gaps, taps a product, runs Solve through long division, uses the keyboard and the vertical layout, and runs the tutor flow. In graph mode it drags the point into a root's detent, solves a system, runs the area sweep and completes a graph lesson. It also checks p90 frame time while dragging in both modes.
 - `npm run perf`: median/p95 frame times for heavy scenes, failing above `FRAME_BUDGET_MS` (34 ms by default). Scenes hold a 16.7 ms median; the heaviest spread-camera products and divisions reach 33 ms at p95.
 - The test bench (`tests.html`) scrubs any scene, layout, camera and frame, runs geometry assertions and compares local pixel baselines. Pixel baselines are Git-ignored and recorded per machine.
 
@@ -68,7 +79,7 @@ CI runs unit, snapshot, browser and frame-time checks (the last two with a 50 ms
 
 ## Decimal and original input/display conventions
 
-Decimal input keeps decimal notation and entered trailing zeros; explicit slash fractions stay fractions; values are exact reduced rationals either way. Terminating decimals use scaled integer units for carry and borrow.
+Known numbers are blue (positive) or red (negative), coefficients included; only the unknown x's tray is green, and a dot between a coefficient and x marks the multiplication. Decimal input keeps decimal notation and entered trailing zeros; explicit slash fractions stay fractions; values are exact reduced rationals either way. Terminating decimals use scaled integer units for carry and borrow.
 
 Whole-number group commas are triangles; the decimal boundary uses the original triangle and dotted mark. Following the SWF's magnitude reset, a group comma follows tenths and hundredths (before thousandths) and repeats before millionths. A decimal unit's textured inner area shrinks by ten for each smaller place. Faces carry k, M, B (and higher) inscriptions with progressively thicker nested outlines. Tray fill is 16% opaque, so a stack passing behind an adjacent tray stays visible.
 

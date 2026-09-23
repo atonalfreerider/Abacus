@@ -58,3 +58,11 @@ Automated: 61 Node tests, 720 SVG snapshots and 10 headless-Chrome interaction c
 - **Review found and fixed:** a same-side drop onto an unlike term raised an error instead of rearranging; `nextStep` in expression mode moved terms onto the hidden right side; `0 × 5` vanished at parse time; the drag preview negated only a product's value, not its first operand; sign text for products with a negative later factor printed as subtraction.
 
 Limits: visual multiplication and division have size limits (see README), beyond which exact symbolic transitions are used. Browser checks run in Chromium only. Pixel baselines remain local.
+
+## Graph mode and review fixes (2026-09)
+
+Automated: 71 Node tests, 720 SVG snapshots and 15 headless-Chrome checks pass.
+
+- **Graph core.** Tests cover parsing and its error messages, exact rational roots (200 random products of linear factors), approximate irrational roots, vertices, systems (unique, parallel, same line), graphing both sides, strip sums that converge to the exact integral, and render sanity for tracer stacks and the area sweep.
+- **Browser.** The point dragged along y = x² − 2x − 3 settles on the root (3, 0), where the y column vanishes. The two-line system shows the crossing (3, 2) with both equations checked. The area sweep on [0, 4] with Δx = ½ sums to exactly −8.5 against the exact −20/3. A graph lesson is completed by dragging, and graph-mode dragging stays within the frame budget.
+- **Review fixes.** An independent review confirmed nine defects plus a crash already on main; all are fixed with tests. The = sign hidden after a spring-home drag (also user-reported) now has a browser check. Copies no longer run out of order or share a cell (all a ≤ 99, b ≤ 19 checked), and slash parsing is consistent (`x ÷ 1/2` = 2x). Animations that fail to plan fall back without breaking the app.
