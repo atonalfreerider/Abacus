@@ -45,7 +45,7 @@ function tick(now){controller.frame(now);dragger.frame(now);requestAnimationFram
 $('stage').addEventListener('pointerdown',event=>{if(dragger.down(event)){entry.active=false;$('entry-bar').hidden=true;}});
 $('stage').addEventListener('pointermove',event=>dragger.move(event));
 $('stage').addEventListener('pointerup',event=>dragger.up(event));
-$('stage').addEventListener('pointercancel',()=>dragger.cancel());
+$('stage').addEventListener('pointercancel',event=>dragger.cancel(event));
 $('stage').addEventListener('keydown',event=>{
  const term=event.target.closest('[data-term]');if(!term||term.classList.contains('placeholder'))return;const id=term.dataset.term;
  if(['Enter',' '].includes(event.key)){const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){event.preventDefault();safe(()=>controller.evaluate(id));}return;}

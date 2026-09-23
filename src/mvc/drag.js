@@ -18,16 +18,17 @@ export class Dragger {
   }
   down(event) {
     const node = event.target.closest('[data-term]');
-    if (!node || node.classList.contains('placeholder') || this.controller.busy || event.button > 0) return false;
+    if (!node || node.classList.contains('placeholder') || this.controller.busy || event.button > 0 || this.body || this.pending) return false;
     event.preventDefault();
     if (this.settling) this.finishSettling();
-    this.pending = { id: node.dataset.term, start: this.point(event) };
-    this.pointer = this.pending.start;
+    this.pending = { id: node.dataset.term, start: this.point(event), pointerId: event.pointerId };
+    this.pointer = this.pending.start; this.pointerId = event.pointerId;
     this.stage.setPointerCapture(event.pointerId);
     return true;
   }
+  // Only the pointer that picked the card up steers it (a second finger is ignored).
   move(event) {
-    if (!this.pending && !this.body) return;
+    if (!this.pending && !this.body || event.pointerId !== this.pointerId) return;
     this.pointer = this.point(event);
     if (!this.body && Math.hypot(this.pointer.x - this.pending.start.x, this.pointer.y - this.pending.start.y) > 6) this.begin();
   }
@@ -93,6 +94,7 @@ export class Dragger {
     if (landing) { this.ghost.setAttribute('x', r(landing.x - 10)); this.ghost.setAttribute('y', r(landing.y - 10)); this.ghost.setAttribute('width', r(landing.w + 20)); this.ghost.setAttribute('height', '170'); }
   }
   up(event) {
+    if (event.pointerId !== this.pointerId) return;
     try { this.stage.releasePointerCapture(event.pointerId); } catch {}
     if (this.pending && !this.body) { const id = this.pending.id; this.pending = null; this.onTap(id); return; }
     const body = this.body; this.pending = null;
@@ -112,6 +114,6 @@ export class Dragger {
     }
     this.onChange();
   }
-  cancel() { if (this.body) { this.settling = this.body; this.body = null; } this.pending = null; }
+  cancel(event) { if (event && event.pointerId !== this.pointerId) return; if (this.body) { this.settling = this.body; this.body = null; } this.pending = null; }
   finishSettling() { this.settling = null; delete this.controller.options.drag; this.controller.render(); this.onChange(); }
 }
