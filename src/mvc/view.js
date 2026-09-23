@@ -3,8 +3,9 @@ import { math } from './model.js';
 import {unitFrame} from './units.js';
 import { placeMetadata } from '../place-value.js';
 import { ease,clamp,operationGroups } from './animation.js';
-const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-const round=n=>Math.round(n*1000)/1000;
+import { renderOperation } from './operation-view.js';
+export const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+export const round=n=>Math.round(n*1000)/1000;
 // Exact place-value text such as 0.001; 10**-3 prints differently across engines.
 const decimalUnit=exponent=>exponent<0?'0.'+'0'.repeat(-exponent-1)+'1':String(10**exponent);
 export const cameras={front:{pitch:.35},depth:{pitch:1},spread:{pitch:2.5}};
@@ -37,7 +38,7 @@ export function tray(digit,color,exponent=0,camera='front',label=String(digit),u
   return `<g class="digit-tray" data-cards="${meta.cardCount}" data-stack-depth="${meta.depth}" data-exponent="${exponent}">${svg}</g>`;
 }
 export function commaTriangle(x,decimal=false){return `<g class="${decimal?'decimal-comma':'group-comma'}" transform="translate(${x+5} 0)"><path d="M0 75 L25 50 L25 100 Z" fill="url(#paper)" fill-opacity="${decimal?.16:.75}" stroke="#37362e" stroke-width="1.5"/>${decimal?'<path d="M12 102v32 M12 120l-7 13" fill="none" stroke="#37362e" stroke-dasharray="1 4"/><circle cx="12" cy="120" r="2" fill="#37362e"/>':''}</g>`;}
-function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
+export function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
 export const OPERATOR_GAP=110;
 // Operands of a product render as constants coloured by their own sign.
 export const operandTerm=o=>({kind:'constant',value:math.abs(o.value),notation:o.notation,decimalPlaces:o.decimalPlaces,negative:o.value.n<0});
@@ -53,16 +54,21 @@ export function sliceTray(count,denominator,color,camera,label=`${count}/${denom
   if(denominator<=24)for(let k=1;k<denominator;k++)art+=`<line x1="${round(7+k*slice)}" y1="9" x2="${round(7+k*slice)}" y2="48" stroke="#25241e" stroke-opacity=".5" stroke-width="${k<count?1:.6}"/>`;
   return art+`<text x="75" y="104" dominant-baseline="central" text-anchor="middle" class="numeral slice-label" font-size="58" fill="#050504" pointer-events="none">${esc(label)}</text>`;
 }
-function operationArt(term,camera){
+// Operand offsets inside a product term, from its left edge.
+export const operandOffsets=term=>{let x=0;return term.expr.operands.map((o,i)=>{if(i)x+=OPERATOR_GAP;const at=x;x+=termWidth(operandTerm(o));return at;});};
+// `from` omits leading operands, for a chain whose first pair is being worked out.
+export function operationArt(term,camera,from=0){
   let x=0,art='';
   term.expr.operands.forEach((o,i)=>{
+    if(i<from){x+=termWidth(operandTerm(o))+(i?OPERATOR_GAP:0);return;}
     if(i){art+=`<text x="${x+OPERATOR_GAP/2}" y="97" text-anchor="middle" font-size="76" class="operator" pointer-events="none">${term.expr.ops[i-1]}</text>`;x+=OPERATOR_GAP;
       if(o.value.n<0)art+=`<text x="${x-10}" y="62" text-anchor="middle" font-size="54" fill="#8c2a17" pointer-events="none">−</text>`;}
     const operand=operandTerm(o);art+=`<g class="operand" data-operand="${i}" transform="translate(${x} 0)">${termArt(operand,camera)}</g>`;x+=termWidth(operand);
   });
-  return `<rect class="operation-frame" x="-16" y="-14" width="${x+32}" height="178" rx="20" fill="#fffdf2" fill-opacity=".35" stroke="#6d6655" stroke-width="2" stroke-dasharray="7 6"/>`+art;
+  const left=from?operandOffsets(term)[from]-OPERATOR_GAP:0;
+  return `<rect class="operation-frame" x="${left-16}" y="-14" width="${x-left+32}" height="178" rx="20" fill="#fffdf2" fill-opacity=".35" stroke="#6d6655" stroke-width="2" stroke-dasharray="7 6"/>`+art;
 }
-function termArt(term,camera,solvedValue=null) {
+export function termArt(term,camera,solvedValue=null) {
   if(term.expr)return operationArt(term,camera);
   const color=term.kind==='variable'?'green':term.value.n<0||term.negative?'red':'blue';
   if(term.notation==='mixed'&&term.value.d!==1){const {whole,remainder,denominator}=mixedParts(term.value),spec=whole?numberSpec({kind:'constant',value:math.frac(whole),notation:'auto'}):null;return (spec?specArt(spec,color,camera):'')+`<g transform="translate(${spec?spec.width:0} 0)">${sliceTray(remainder,denominator,color,camera)}</g>`;}
@@ -111,7 +117,7 @@ function stackDefinitions(body){return '<defs>'+stackIds(body).map(id=>`<g id="$
 export const textureSources=[['blue',25],['red',23],['green',2],['paper',24]];
 export function textureDefs(){return textureSources.map(([name,id])=>`<pattern id="${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('');}
 function textures(){return `<defs>${textureDefs()}</defs>`;}
-function renderLayout(scene,options,overrides={}) {
+export function renderLayout(scene,options,overrides={}) {
   let body='';
   for(const slot of [...scene.terms].sort((a,b)=>Number(a.term.id===options.foreground)-Number(b.term.id===options.foreground))) {
     const {term,side,index,w,h}=slot,override=overrides[term.id]||{},x=override.x??slot.x,y=override.y??slot.y,opacity=override.opacity??1;
@@ -174,7 +180,8 @@ export function renderScene(equation,options={},plan=null,progress=1) {
   options={orientation:'horizontal',camera:'front',expression:false,...options};options.foreground=options.drag?.id||(plan?.origin?plan.command.id:null);
   if((!plan||progress>=.78)&&math.isSolved(equation))options.solvedValue=math.numeric(math.solution(equation).value);
   const after=layout(equation,options);let scene=after,body='';
-  if(plan?.units&&progress<1){const frame=renderUnits(plan,progress,options);scene=frame.scene;body=frame.body;}
+  if(plan?.op&&progress<1){const frame=renderOperation(plan,progress,options);scene=frame.scene;body=frame.body;}
+  else if(plan?.units&&progress<1){const frame=renderUnits(plan,progress,options);scene=frame.scene;body=frame.body;}
   else if(plan&&progress<1) {
     const before=layout(plan.before,options),p=ease(progress);
     if(plan.origin){const picked=before.terms.find(t=>t.term.id===plan.command.id);if(picked){picked.x=plan.origin.x;picked.y=plan.origin.y;}}
@@ -199,6 +206,41 @@ export function renderScene(equation,options={},plan=null,progress=1) {
     body+=overlay(plan,progress,before,options);
   } else {const overrides={};if(options.drag){const d=options.drag,slot=scene.terms.find(t=>t.term.id===d.id);if(slot)overrides[d.id]={x:d.x,y:d.y,term:slot.side===d.side?slot.term:{...slot.term,value:math.neg(slot.term.value)}};}body=renderLayout(scene,options,overrides);}
   return {viewBox:`${round(scene.minX||0)} ${round(scene.minY||0)} ${round(scene.width-(scene.minX||0))} ${round(scene.height-(scene.minY||0))}`,orientation:options.orientation,camera:options.camera,label:math.equationText(equation),body,scene};
+}
+// Particles for active ledger phases; shared by addition and the operation scenes.
+export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
+ let particles='';const lerp=(a,b,q)=>a+(b-a)*q;
+ for(const {phase,progress:q} of active){
+  if(phase.type==='settle')for(const token of phase.before){const next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next||token);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});}
+  if(phase.type==='transfer'){
+   const token=phase.before.find(a=>a.id===phase.removed[0]),next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});
+  } else if(phase.type==='neutralize'){
+   // Both cards already coincide on the receiver; they collapse together into a small burst.
+   const pair=phase.before.filter(a=>phase.removed.includes(a.id)),at=pos(phase.receiver),k=ease((q-.4)/.6),c={x:at.x+21.5,y:at.y+21.5},scale=round(1-.75*k);
+   const squeeze=`translate(${round(c.x*(1-scale))} ${round(c.y*(1-scale))}) scale(${scale})`;
+   for(const token of pair)particles+=`<g data-cancel-target="${phase.receiver.id}" data-target-cell="${phase.receiver.cell}" transform="${squeeze}">${draw(token,at,round(1-k))}</g>`;
+   if(q>.4)particles+=`<circle class="cancel-burst" cx="${round(c.x)}" cy="${round(c.y)}" r="${round(8+30*k)}" fill="none" stroke="#fffbe6" stroke-width="${round(6*(1-k)+.5)}" opacity="${round(.9*(1-k))}"/>`;
+  } else if(phase.type==='carry'||phase.type==='borrow'){
+   const carry=phase.type==='carry',many=(carry?phase.before:phase.after).filter(a=>(carry?phase.removed:phase.created).includes(a.id));
+   const single=(carry?phase.after:phase.before).find(a=>a.id===(carry?phase.created[0]:phase.removed[0]));
+   const end=pos(single),pitch=cameras[camera].pitch,depth=placeMetadata(many[0].place+shift).cardCount*pitch;
+   const f=carry?ease(q):1-ease(q),comma=(single.place+shift)%3===0||many[0].place+shift<0;
+   // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
+   // At a comma, compress the old depth group into the next inscribed face.
+   for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,end.x+offset,f),y:lerp(start.y,end.y+offset,f)};
+    if(comma&&compression>.98)particles+=`<g opacity="${round(1-ease((f-.75)/.25))}">${draw(token,point)}</g>`;
+    else if(comma){
+     // Faces closer than ~1.2px read as one edge band, so draw only that many layers.
+     const meta=stackGeometry(token.place+shift,camera),layers=Math.min(meta.cardCount,Math.max(1,Math.ceil(meta.cardCount*pitch*compression/1.2)));let drawing='';
+     for(let k=layers;k>=1;k--){const d=(k/layers)*meta.cardCount*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}
+     particles+=`<g data-unit="${token.id}" opacity="${round(1-ease((f-.75)/.25))}">${drawing}</g>`;
+    }
+    else particles+=draw(token,point);
+   }
+   if(comma)particles+=draw(single,end,ease((f-.75)/.25));
+  }
+ }
+ return particles;
 }
 function renderUnits(plan,t,options){
  const before=layout(plan.before,options),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
@@ -226,33 +268,7 @@ function renderUnits(plan,t,options){
  const color=token=>target.term.kind==='variable'?'green':token.sign<0?'red':'blue';
  const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity)}</g>`;
  for(const token of frame.tokens)particles+=draw(token,pos(token));
- for(const {phase,progress:q} of frame.active){
-  if(phase.type==='settle')for(const token of phase.before){const next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next||token);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});}
-  if(phase.type==='transfer'){
-   const token=phase.before.find(a=>a.id===phase.removed[0]),next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});
-  } else if(phase.type==='neutralize'){
-   const pair=phase.before.filter(a=>phase.removed.includes(a.id)),at=pos(phase.receiver);
-   for(const token of pair)particles+=`<g data-cancel-target="${phase.receiver.id}" data-target-cell="${phase.receiver.cell}">${draw(token,at,1-ease((q-.65)/.35))}</g>`;
-  } else if(phase.type==='carry'||phase.type==='borrow'){
-   const carry=phase.type==='carry',many=(carry?phase.before:phase.after).filter(a=>(carry?phase.removed:phase.created).includes(a.id));
-   const single=(carry?phase.after:phase.before).find(a=>a.id===(carry?phase.created[0]:phase.removed[0]));
-   const end=pos(single),pitch=cameras[options.camera].pitch,depth=placeMetadata(many[0].place+shift).cardCount*pitch;
-   const f=carry?ease(q):1-ease(q),comma=(single.place+shift)%3===0||many[0].place+shift<0;
-   // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
-   // At a comma, compress the old depth group into the next inscribed face.
-   for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,end.x+offset,f),y:lerp(start.y,end.y+offset,f)};
-    if(comma&&compression>.98)particles+=`<g opacity="${round(1-ease((f-.75)/.25))}">${draw(token,point)}</g>`;
-    else if(comma){
-     // Faces closer than ~1.2px read as one edge band, so draw only that many layers.
-     const meta=stackGeometry(token.place+shift,options.camera),layers=Math.min(meta.cardCount,Math.max(1,Math.ceil(meta.cardCount*pitch*compression/1.2)));let drawing='';
-     for(let k=layers;k>=1;k--){const d=(k/layers)*meta.cardCount*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}
-     particles+=`<g data-unit="${token.id}" opacity="${round(1-ease((f-.75)/.25))}">${drawing}</g>`;
-    }
-    else particles+=draw(token,point);
-   }
-   if(comma)particles+=draw(single,end,ease((f-.75)/.25));
-  }
- }
+ particles+=phaseParticles(frame.active,{pos,draw,color,camera:options.camera,shift});
  // Numerals fade out at pickup and return only after the units reach their settled cells.
  let numerals='';const labels=t<.06?1-t/.06:t>.9?(t-.9)/.1:0;
  if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){for(const digit of spec(term).places)numerals+=`<text x="${slot.x+digit.x+75}" y="${slot.y+75}" dominant-baseline="central" text-anchor="middle" font-size="124" opacity="${labels}">${digit.digit}</text>`;}}

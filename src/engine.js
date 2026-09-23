@@ -156,7 +156,7 @@ export function parseExpression(text) {
   const result = expression();
   if (index < tokens.length) throw new Error(`“${tokens[index]}” is not supported. Use one variable, x, and arithmetic operations.`);
   if (result.length > 16) throw new Error('Use up to 16 terms on each side so the blocks have room.');
-  return result.filter(t => t.value.n !== 0 || t.notation==='decimal');
+  return result.filter(t => t.value.n !== 0 || t.notation==='decimal' || t.expr);
 }
 export function parseEquation(text) {
   const sides = text.split('=');

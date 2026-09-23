@@ -20,5 +20,10 @@ export const scenarios=[
  {id:'decimal-borrow',input:'1-0.01=0.99',command:m=>({type:'combine',id:m.state.left[1].id,target:m.state.left[0].id})},
  {id:'decimal-commas',input:'1234.123456=1234.123456'},
  {id:'transparent-trays',input:'100=100'},
+ {id:'multiply-copies',input:'23*4=92',command:m=>({type:'evaluate',id:m.state.left[0].id})},
+ {id:'long-division',input:'156÷12=13',command:m=>({type:'evaluate',id:m.state.left[0].id})},
+ {id:'division-decimal',input:'7÷4=1.75',command:m=>({type:'evaluate',id:m.state.left[0].id})},
+ {id:'division-slices',input:'7÷3=x',command:m=>({type:'evaluate',id:m.state.left[0].id})},
+ {id:'fraction-divisor',input:'6÷1/2=12',command:m=>({type:'evaluate',id:m.state.left[0].id})},
 ];
 export function scenario(id){const spec=scenarios.find(s=>s.id===id);if(!spec)throw Error('Unknown test scene');const model=new EquationModel(spec.input);const plan=spec.command?planTransition(model.dispatch(spec.command(model))):null;return {model,plan};}

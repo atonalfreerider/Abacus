@@ -56,3 +56,40 @@ test('operation terms and mixed numbers render without invalid geometry',()=>{
  for(const input of ['23*4-3*(-2)+7÷3=x+156÷12','x=7/3','x=-7/3']){const m=new EquationModel(input);const svg=renderEquation(m.state);assert.doesNotMatch(svg,/NaN|undefined/);if(input.includes('*'))assert.match(svg,/class="operation-frame"/);}
  const mixed=new EquationModel('x=7÷3');mixed.dispatch(mixed.nextStep());const svg=renderEquation(mixed.state);assert.match(svg,/slice-label[^>]*>1\/3</);assert.match(svg,/>2</);
 });
+
+import {multiplicationPlan,divisionPlan} from '../src/mvc/operations.js';
+import {unitValue} from '../src/mvc/units.js';
+test('multiplication copies one factor once per card of the other and conserves the product',()=>{
+ let seed=7;const next=n=>{seed=(seed*1103515245+12345)%2147483648;return seed%n;};
+ for(let i=0;i<150;i++){
+  const a=next(999)+1,b=next(99)+1,sign=next(2)?-1:1,[term]=math.parseExpression(`${sign*a}*${b}`),plan=multiplicationPlan(term);
+  const sum=n=>[...String(n)].reduce((s,d)=>s+Number(d),0);
+  if(Math.min(sum(a),sum(b))>24){assert.equal(plan,null);continue;}
+  assert.equal(plan.copies.length,Math.min(sum(a),sum(b)));
+  assert.equal(unitValue(plan.units.final),BigInt(sign*a*b),`${sign*a}×${b}`);
+  for(const phase of plan.units.phases)assert.ok(phase.after.filter(t=>t.owner==='result').every(t=>t.cell<20),'a place never piles past 20 cards');
+ }
+ const decimal=multiplicationPlan(math.parseExpression('2.5*1.5')[0]);assert.equal(unitValue(decimal.units.final)*10n**0n,375n);assert.equal(decimal.units.placeShift,-2);
+ assert.equal(multiplicationPlan(math.parseExpression('1/3*2')[0]),null,'fractions use the symbolic transition');
+});
+test('long division deals equal groups, unstacks leftovers and slices the last remainder',()=>{
+ const shares=(input)=>{
+  const t=math.parseExpression(input)[0],result=math.evaluateStep(t),plan=divisionPlan(t,result);
+  const groups=Array.from({length:plan.d},()=>math.frac(0));
+  for(const e of plan.events){if(e.type==='deal')groups[e.group]=math.add(groups[e.group],e.place>=0?math.frac(10**e.place):math.frac(1,10**-e.place));if(e.type==='strip')groups[e.group]=math.add(groups[e.group],math.frac(1,plan.d));}
+  for(const g of groups)assert.deepEqual(g,math.abs(result.value),input);
+  // Every card is either dealt or unstacked/sliced; nothing is left in the dividend.
+  const made=[...plan.tokens.map(t=>t.id),...plan.events.filter(e=>e.type==='unstack').flatMap(e=>e.children.map(c=>c.id))];
+  const used=new Set(plan.events.filter(e=>['deal','unstack','slice'].includes(e.type)).map(e=>e.id));
+  assert.deepEqual(made.filter(id=>!used.has(id)),[],input);
+  return plan;
+ };
+ for(const input of ['156÷12','7÷4','7÷3','1÷3','999÷9','100÷8','12÷12','5÷1','0.9÷3','123456÷7']){const plan=shares(input);assert.ok(plan.duration<16,input+' duration '+plan.duration);}
+ assert.equal(divisionPlan(math.parseExpression('12÷13')[0],math.evaluateStep(math.parseExpression('12÷13')[0])),null,'13 groups use the symbolic transition');
+});
+test('operation animations render every frame in both layouts and all cameras',()=>{
+ for(const input of ['23*4','14*23=x','2.5*1.5','156÷12','7÷4','7÷3','6÷1/2','x=23*4*2','0*5','-3*4'])for(const orientation of ['horizontal','vertical'])for(const camera of ['front','spread']){
+  const c=new Controller({render(){}},input);c.orientation(orientation);c.camera(camera);const t=[...c.model.state.left,...c.model.state.right].find(t=>t.expr);c.evaluate(t.id,0);
+  for(const p of [0,.2,.4,.6,.8,.97,1]){const svg=renderEquation(c.model.state,c.options,c.clock.plan,p);assert.doesNotMatch(svg,/NaN|undefined|Infinity/,`${input} ${orientation} ${camera} ${p}`);}
+ }
+});

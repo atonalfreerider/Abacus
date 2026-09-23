@@ -1,10 +1,13 @@
 // Each token is one unit of its decimal place (a singleton, ten-stack, or hundred-stack).
 // Every phase conserves signed value. Geometry is assigned only by the view.
 export function unitValue(tokens){return tokens.reduce((sum,t)=>sum+BigInt(t.sign)*10n**BigInt(t.place),0n);}
-export function unitPlan(a,b,target,source){
- let serial=0,tokens=[];const phases=[];
+export function unitPlan(a,b,target,source){return unitPlanMany(a,target,[{value:b,owner:source}]);}
+// Several sources merge into one target (repeated addition). A source's transfers may
+// start after `delay` seconds; everything else follows the dependency schedule.
+export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
+ let serial=0,tokens=[];const phases=[],source=sources.length===1?sources[0].owner:null,owners=new Set(sources.map(s=>s.owner));
  const make=(sign,place,owner,cell)=>({id:`u${serial++}`,sign,place,owner,cell});
- for(const [value,owner] of [[a,target],[b,source]])[...String(Math.abs(value))].reverse().forEach((d,place)=>{for(let cell=0;cell<Number(d);cell++)tokens.push(make(Math.sign(value),place,owner,cell));});
+ for(const [value,owner] of [[a,target],...sources.map(s=>[s.value,s.owner])])[...String(Math.abs(value))].reverse().forEach((d,place)=>{for(let cell=0;cell<Number(d);cell++)tokens.push(make(Math.sign(value),place,owner,cell));});
  const initial=tokens.map(t=>({...t})),total=unitValue(tokens);
  const snapshot=()=>tokens.map(t=>({...t}));
  const add=(type,removed,created)=>{const before=snapshot();tokens=tokens.filter(t=>!removed.includes(t.id)).concat(created);if(unitValue(tokens)!==total)throw Error('Unit animation lost mathematical value.');phases.push({type,before,after:snapshot(),removed,created:created.map(t=>t.id)});};
@@ -21,8 +24,14 @@ export function unitPlan(a,b,target,source){
    }
   }
  }
- for(const token of initial.filter(t=>t.owner===source).sort((a,b)=>a.place-b.place)){
-  add('transfer',[token.id],[{...token,owner:target,cell:free(token.place)}]);
+ // Sequential sources regroup after each arrival; the next source waits until those
+ // regroupings have started, so it lands in vacated cells and a place never overflows.
+ let waits=[];
+ for(const {owner,delay=0} of sources){
+  for(const token of initial.filter(t=>t.owner===owner).sort((a,b)=>a.place-b.place)){
+   add('transfer',[token.id],[{...token,owner:target,cell:free(token.place)}]);if(delay)phases.at(-1).delay=delay;if(waits.length)phases.at(-1).waits=waits;
+  }
+  if(sequential){const first=phases.length;normalize();waits=phases.slice(first).map((_,i)=>first+i);if(!waits.length)waits=[];}
  }
  normalize();
  const sign=total<0n?-1:1;
@@ -44,19 +53,21 @@ export function unitPlan(a,b,target,source){
  const original=new Map(initial.map(t=>[t.id,t.owner]));
  for(const phase of phases.filter(p=>p.type==='neutralize')){
   const pair=phase.before.filter(t=>phase.removed.includes(t.id));
-  const receiver=pair.find(t=>original.get(t.id)===target)||pair.find(t=>original.get(t.id)!==source)||pair[0];
+  const receiver=pair.find(t=>original.get(t.id)===target)||pair.find(t=>!owners.has(original.get(t.id)))||pair[0];
   const mover=pair.find(t=>t.id!==receiver.id);
   phase.receiver={...receiver};phase.mover=mover.id;
   cancelTargets[mover.id]={...receiver};
  }
- const plan={initial,phases,final:snapshot(),target,source,total:String(total),cancelTargets};scheduleUnits(plan);return plan;
+ // Pairs in one place pop in reading order, a short ripple that can be counted.
+ const rank={};for(const phase of phases.filter(p=>p.type==='neutralize')){const place=phase.receiver.place;phase.lag=.06*(rank[place]=(rank[place]??-1)+1);}
+ const plan={initial,phases,final:snapshot(),target,source,total:String(total),cancelTargets,speed};scheduleUnits(plan);return plan;
 }
 export function scheduleUnits(plan){
  const ready=new Map();let end=0;
  for(const phase of plan.phases){
   const inputs=phase.type==='settle'?phase.before.map(t=>t.id):phase.removed;
-  phase.start=Math.max(phase.type==='settle'?end:0,...inputs.map(id=>ready.get(id)||0));
-  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:.45);
+  phase.start=Math.max(phase.type==='settle'?end:phase.delay||0,...inputs.map(id=>ready.get(id)||0),...(phase.waits||[]).map(i=>plan.phases[i].start))+(phase.lag||0);
+  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:.45)/(plan.speed||1);
   for(const id of (phase.type==='settle'?phase.after.map(t=>t.id):phase.created))ready.set(id,phase.end);
   end=Math.max(end,phase.end);
  }
