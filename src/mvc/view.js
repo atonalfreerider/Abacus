@@ -38,9 +38,34 @@ export function tray(digit,color,exponent=0,camera='front',label=String(digit),u
 }
 export function commaTriangle(x,decimal=false){return `<g class="${decimal?'decimal-comma':'group-comma'}" transform="translate(${x+5} 0)"><path d="M0 75 L25 50 L25 100 Z" fill="url(#paper)" fill-opacity="${decimal?.16:.75}" stroke="#37362e" stroke-width="1.5"/>${decimal?'<path d="M12 102v32 M12 120l-7 13" fill="none" stroke="#37362e" stroke-dasharray="1 4"/><circle cx="12" cy="120" r="2" fill="#37362e"/>':''}</g>`;}
 function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
-function termWidth(term){if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?160:0);}
+export const OPERATOR_GAP=110;
+// Operands of a product render as constants coloured by their own sign.
+export const operandTerm=o=>({kind:'constant',value:math.abs(o.value),notation:o.notation,decimalPlaces:o.decimalPlaces,negative:o.value.n<0});
+export function mixedParts(value){const n=Math.abs(value.n),d=value.d;return {whole:Math.floor(n/d),remainder:n%d,denominator:d};}
+export function termWidth(term){
+  if(term.expr)return term.expr.operands.reduce((w,o)=>w+termWidth(operandTerm(o)),0)+OPERATOR_GAP*term.expr.ops.length;
+  if(term.notation==='mixed'&&term.value.d!==1){const {whole}=mixedParts(term.value);return (whole?String(whole).length*160:0)+160;}
+  if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?160:0);}
+// A card cut into equal vertical slices; `count` of them remain.
+export function sliceTray(count,denominator,color,camera,label=`${count}/${denominator}`){
+  let art=tray(count/denominator,color,0,camera,'');
+  const slice=43/denominator;art+=`<rect x="7" y="7" width="43" height="43" rx="5" fill="none" stroke="#25241e" stroke-opacity=".55" stroke-dasharray="3 3"/>`;
+  if(denominator<=24)for(let k=1;k<denominator;k++)art+=`<line x1="${round(7+k*slice)}" y1="9" x2="${round(7+k*slice)}" y2="48" stroke="#25241e" stroke-opacity=".5" stroke-width="${k<count?1:.6}"/>`;
+  return art+`<text x="75" y="104" dominant-baseline="central" text-anchor="middle" class="numeral slice-label" font-size="58" fill="#050504" pointer-events="none">${esc(label)}</text>`;
+}
+function operationArt(term,camera){
+  let x=0,art='';
+  term.expr.operands.forEach((o,i)=>{
+    if(i){art+=`<text x="${x+OPERATOR_GAP/2}" y="97" text-anchor="middle" font-size="76" class="operator" pointer-events="none">${term.expr.ops[i-1]}</text>`;x+=OPERATOR_GAP;
+      if(o.value.n<0)art+=`<text x="${x-10}" y="62" text-anchor="middle" font-size="54" fill="#8c2a17" pointer-events="none">−</text>`;}
+    const operand=operandTerm(o);art+=`<g class="operand" data-operand="${i}" transform="translate(${x} 0)">${termArt(operand,camera)}</g>`;x+=termWidth(operand);
+  });
+  return `<rect class="operation-frame" x="-16" y="-14" width="${x+32}" height="178" rx="20" fill="#fffdf2" fill-opacity=".35" stroke="#6d6655" stroke-width="2" stroke-dasharray="7 6"/>`+art;
+}
 function termArt(term,camera,solvedValue=null) {
-  const color=term.kind==='variable'?'green':term.value.n<0?'red':'blue';
+  if(term.expr)return operationArt(term,camera);
+  const color=term.kind==='variable'?'green':term.value.n<0||term.negative?'red':'blue';
+  if(term.notation==='mixed'&&term.value.d!==1){const {whole,remainder,denominator}=mixedParts(term.value),spec=whole?numberSpec({kind:'constant',value:math.frac(whole),notation:'auto'}):null;return (spec?specArt(spec,color,camera):'')+`<g transform="translate(${spec?spec.width:0} 0)">${sliceTray(remainder,denominator,color,camera)}</g>`;}
   const digits=(number,y=0,scale=1)=>[...String(number)].map((d,i,all)=>`<g transform="translate(${i*160*scale} ${y}) scale(${scale})">${tray(Number(d),color,all.length-i-1,camera)}</g>`).join('');
   let result;
   const spec=numberSpec(term);
@@ -91,9 +116,9 @@ function renderLayout(scene,options,overrides={}) {
   for(const slot of [...scene.terms].sort((a,b)=>Number(a.term.id===options.foreground)-Number(b.term.id===options.foreground))) {
     const {term,side,index,w,h}=slot,override=overrides[term.id]||{},x=override.x??slot.x,y=override.y??slot.y,opacity=override.opacity??1;
     const actual=override.term||term;
-    body+=`<g class="term ${term.placeholder?'placeholder':''}" data-term="${esc(term.id)}" data-side="${side}" data-index="${index}" data-x="${round(x)}" data-y="${round(y)}" transform="translate(${round(x)} ${round(y)})" opacity="${opacity}" role="button" tabindex="${term.placeholder?-1:0}" aria-label="${esc(math.termText(actual))}, ${side} side">`;
+    body+=`<g class="term ${term.placeholder?'placeholder':''}${actual.expr?' operation':''}" data-term="${esc(term.id)}" data-side="${side}" data-index="${index}" data-x="${round(x)}" data-y="${round(y)}" transform="translate(${round(x)} ${round(y)})" opacity="${opacity}" role="button" tabindex="${term.placeholder?-1:0}" aria-label="${esc(math.termText(actual))}, ${side} side">`;
     body+=`<rect class="hit" x="-6" y="-15" width="${w+12}" height="${h+15}" fill="transparent"/>`;
-    if(index>0||actual.value.n<0)body+=`<text x="-47" y="97" text-anchor="middle" font-size="72" pointer-events="none">${actual.value.n<0?'−':'+'}</text>`;
+    if(index>0||math.negative(actual))body+=`<text x="-47" y="97" text-anchor="middle" font-size="72" pointer-events="none">${math.negative(actual)?'−':'+'}</text>`;
     body+=(override.art??termArt(actual,options.camera,options.solvedValue)).replaceAll('class="numeral"',`class="numeral" opacity="${override.labelOpacity??1}"`)+'</g>';
     body+=`<rect class="reorder-gap" data-side="${side}" data-insert="${index}" x="${slot.x-65}" y="${slot.y-25}" width="34" height="210" rx="10" fill="transparent"/>`;
   }

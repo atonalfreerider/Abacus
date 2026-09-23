@@ -48,7 +48,7 @@ $('stage').addEventListener('pointerup',event=>{
   const scene=layout(controller.model.state,{...controller.options,expression:controller.model.expression});
   const side=origin.side;
   const moved=Math.hypot(p.x-current.start.x,p.y-current.start.y)>5;
-  safe(()=>{if(!moved){controller.render();message('Selected. Arrow keys move across; Shift + arrows rearrange.');return;}
+  safe(()=>{if(!moved){const picked=[...controller.model.state.left,...controller.model.state.right].find(t=>t.id===current.id);if(picked&&math.evaluable(picked)){controller.evaluate(picked.id);return;}controller.render();message('Selected. Arrow keys move across; Shift + arrows rearrange.');return;}
     const sideTerms=scene.terms.filter(t=>t.side===side&&!t.term.placeholder&&t.term.id!==current.id);
     const index=gap?Number(gap.dataset.insert):sideTerms.filter(t=>p.x>t.x+t.w/2).length;
     const picked=scene.terms.find(t=>t.term.id===current.id);const collision=sideTerms.filter(t=>t.term.kind===picked.term.kind).map(t=>({id:t.term.id,area:Math.max(0,Math.min(origin.x+picked.w,t.x+t.w)-Math.max(origin.x,t.x))*Math.max(0,Math.min(origin.y+150,t.y+150)-Math.max(origin.y,t.y))})).filter(t=>t.area>0).sort((a,b)=>b.area-a.area)[0];
@@ -100,6 +100,6 @@ for(let n=1;n<=9;n++){const b=document.createElement('button');b.dataset.inputKe
 $('keypad').onpointerleave=()=>illuminate(0);
 for(const b of document.querySelectorAll('[data-input-key]'))b.onclick=()=>enterKey(b.dataset.inputKey);
 $('entry-done').onclick=()=>enterKey('ArrowUp');
-document.addEventListener('keydown',event=>{if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
+document.addEventListener('keydown',event=>{if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
 $('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>controller.load('0'));};
 $('open-tests').onclick=()=>location.href='./tests.html';

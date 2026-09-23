@@ -15,13 +15,17 @@ export class Controller extends EventTarget {
   undo(){this.clock.finish();this.clock.plan=null;this.model.undo();this.render();}
   redo(){this.clock.finish();this.clock.plan=null;this.model.redo();this.render();}
   step(now=performance.now()){const command=this.model.nextStep();if(command)return this.execute(command,now);return null;}
+  // A drop combines only with a like, worked-out term; otherwise it moves or rearranges.
   drop(id,side,target,index,now=performance.now(),origin=null) {
     const source=['left','right'].find(s=>this.model.state[s].some(t=>t.id===id));
     if(!source)throw Error('Unknown card.');
-    if(side!==source){const hit=this.model.state[side].find(t=>t.id===target),picked=this.model.state[source].find(t=>t.id===id);if(hit&&hit.kind===picked.kind)return this.execute({type:'combine',id,target,side},now,origin);return this.execute({type:'move',id,side},now,origin);}
-    if(target&&target!==id)return this.execute({type:'combine',id,target},now,origin);
-    if(Number.isInteger(index))return this.execute({type:'reorder',id,side,index},now,origin);
+    const picked=this.model.state[source].find(t=>t.id===id),hit=this.model.state[side].find(t=>t.id===target&&t.id!==id);
+    const combines=hit&&hit.kind===picked.kind&&!hit.expr&&!picked.expr;
+    if(side!==source){if(combines)return this.execute({type:'combine',id,target,side},now,origin);return this.execute({type:'move',id,side,...(Number.isInteger(index)?{index}:{})},now,origin);}
+    if(combines)return this.execute({type:'combine',id,target},now,origin);
+    if(Number.isInteger(index)&&index!==this.model.state[side].findIndex(t=>t.id===id))return this.execute({type:'reorder',id,side,index},now,origin);
     this.render();return null;
   }
+  evaluate(id,now=performance.now()){return this.execute({type:'evaluate',id},now);}
   status(){const r=this.model.result();if(!this.model.hasVariable&&!this.model.expression)return `${r.type==='identity'?'Equal':'Not equal'}: ${math.equationText(this.model.state)}`;return this.model.expression?math.sideText(this.model.state.left):r.type==='identity'?'True for every x':r.type==='impossible'?'No solution':math.isSolved(this.model.state)?`Solved: x = ${math.format(r.value)}`:math.equationText(this.model.state);}
 }

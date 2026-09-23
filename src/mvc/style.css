@@ -21,3 +21,5 @@
 @media(max-width:600px){.original-dock{--key:28px;gap:7px;padding:10px;width:auto;border-radius:45px}.dock-long{width:52px}.original-dock button,.dock-long>button{font-size:19px}.dock-operators,.dock-long,.parentheses{gap:3px}.original-dock .decimal-fold{width:21px;height:21px;font-size:12px;padding:4px 0 0 8px}.original-dock .deploy-triangle{height:19px}}
 @media(max-height:520px){.original-dock{--key:25px;gap:12px;padding:5px 20px;margin-top:20px}.original-dock button{font-size:18px}.dock-long{width:70px}.original-dock .deploy-triangle{height:18px}#transport{min-height:20px}}
 .original-dock #keypad button{background:#efede5 url('../../textures/swf-12.png') center/50px}.original-dock #keypad button.lit{background-image:url('../../textures/swf-18.jpg');background-size:150px}
+.original-dock .parentheses{gap:4px}.original-dock .parentheses button{min-width:0;flex:1}
+.term.operation{cursor:pointer}.term.operation:hover .operation-frame{stroke:#2f5d6b;fill-opacity:.6}

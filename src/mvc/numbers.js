@@ -7,7 +7,7 @@ export function decimalText(value){
  return (value.n<0?'-':'')+text;
 }
 export function numberSpec(term){
- const decimal=term.notation==='fraction'&&term.value.d!==1?null:decimalText(term.value);
+ const decimal=(term.notation==='fraction'||term.notation==='mixed')&&term.value.d!==1?null:decimalText(term.value);
  if(decimal===null)return null;
  const [whole,rawFraction='']=decimal.replace('-','').split('.'),fraction=rawFraction.padEnd(term.decimalPlaces||0,'0'),places=[],markers=[];let x=0;
  const chars=whole+fraction;

@@ -17,7 +17,7 @@ export class EquationModel {
   load(input) { const next=math.parseEquation(input.includes('=')?input:input+'=0'); this.expression=!input.includes('=');this.hasVariable=[...next.left,...next.right].some(t=>t.kind==='variable');this.state=freeze(next);this.past=[];this.future=[];return this.state; }
   dispatch(command) {
     const before=this.state; let after=clone(before);
-    if(command.type==='move') after=math.transpose(after,command.id,command.side);
+    if(command.type==='move') after=math.transpose(after,command.id,command.side,command.index);
     else if(command.type==='reorder') {
       const items=after[command.side], index=items.findIndex(t=>t.id===command.id);
       if(index<0)throw Error('The card is not on that side.');
@@ -28,7 +28,14 @@ export class EquationModel {
       if(!side || command.id===command.target)throw Error('Choose two terms on the same side.');
       const first=after[side].find(t=>t.id===command.target), second=after[side].find(t=>t.id===command.id);
       if(first.kind!==second.kind)throw Error('Only like terms can combine. Drop in a gap to rearrange.');
+      const pending=[first,second].find(t=>t.expr);if(pending)throw Error(`Work out ${math.termText(pending,true)} first: tap it.`);
       first.value=math.add(first.value,second.value);first.decimalPlaces=Math.max(first.decimalPlaces||0,second.decimalPlaces||0);first.notation=first.notation==='decimal'||second.notation==='decimal'?'decimal':first.notation==='fraction'||second.notation==='fraction'?'fraction':'auto';after[side]=after[side].filter(t=>t.id!==second.id && (t.id!==first.id||first.value.n!==0));
+    } else if(command.type==='evaluate') {
+      const side=['left','right'].find(side=>after[side].some(t=>t.id===command.id));
+      if(!side)throw Error('The card is not in the equation.');
+      const index=after[side].findIndex(t=>t.id===command.id),next=math.evaluateStep(after[side][index]);
+      if(!next)throw Error('That number is already worked out.');
+      after[side][index]=next;
     } else if(command.type==='simplify') after=math.simplify(after);
     else if(command.type==='operate') after=math.operate(after,command.operation,math.parseScalar(command.amount));
     else throw Error('Unknown equation command.');
@@ -38,19 +45,34 @@ export class EquationModel {
   }
   undo(){if(!this.past.length)return;this.future.push(this.state);this.state=this.past.pop();return this.state;}
   redo(){if(!this.future.length)return;this.past.push(this.state);this.state=this.future.pop();return this.state;}
+  // Planner for Solve and the tutor: products first, then zero pairs, then like terms,
+  // then gather x on the side where its coefficient stays positive, then scale to one x.
   nextStep() {
-    if(math.isSolved(this.state))return null;
     const e=this.state;
-    const combine=side=>{for(let i=0;i<e[side].length;i++)for(let j=i+1;j<e[side].length;j++)if(e[side][i].kind===e[side][j].kind)return {type:'combine',id:e[side][j].id,target:e[side][i].id};};
-    const pair=combine('left')||combine('right');if(pair)return pair;
-    if(![...e.left,...e.right].some(t=>t.kind==='variable'))return null;
-    const rightVariable=e.right.find(t=>t.kind==='variable');
-    if(rightVariable)return {type:'move',id:rightVariable.id,side:'left'};
-    const leftConstant=e.left.find(t=>t.kind==='constant');
-    if(leftConstant)return {type:'move',id:leftConstant.id,side:'right'};
-    const coefficient=math.totals(e.left).variable;
-    if(coefficient.n && !math.eq(coefficient,math.frac(1)))return {type:'operate',operation:'divide',amount:math.format(coefficient)};
-    return null;
+    for(const side of ['left','right'])for(const t of e[side])if(t.expr)return {type:'evaluate',id:t.id};
+    if(math.isSolved(e))return null;
+    const pair=side=>{let best=null;
+      for(let i=0;i<e[side].length;i++)for(let j=i+1;j<e[side].length;j++){const a=e[side][i],b=e[side][j];if(a.kind!==b.kind)continue;
+        const cancels=Math.sign(a.value.n)!==Math.sign(b.value.n),[target,source]=math.numeric(math.abs(a.value))>=math.numeric(math.abs(b.value))?[a,b]:[b,a];
+        if(!best||cancels&&!best.cancels)best={cancels,command:{type:'combine',id:source.id,target:target.id}};}
+      return best;};
+    const found=[pair('left'),pair('right')].filter(Boolean).sort((a,b)=>b.cancels-a.cancels)[0];
+    if(found)return found.command;
+    if(this.expression||![...e.left,...e.right].some(t=>t.kind==='variable'))return null;
+    const has=side=>e[side].some(t=>t.kind==='variable');
+    let home=has('left')?'left':'right';
+    if(has('left')&&has('right')){
+      const l=math.totals(e.left).variable,r=math.totals(e.right).variable;
+      home=math.numeric(l)>=math.numeric(r)?'left':'right';
+      const away=home==='left'?'right':'left';
+      return {type:'move',id:e[away].find(t=>t.kind==='variable').id,side:home};
+    }
+    const away=home==='left'?'right':'left',constant=e[home].find(t=>t.kind==='constant');
+    if(constant)return {type:'move',id:constant.id,side:away};
+    const coefficient=math.totals(e[home]).variable;
+    if(!coefficient.n||math.eq(coefficient,math.frac(1)))return null;
+    if(coefficient.d===1)return {type:'operate',operation:'divide',amount:math.format(coefficient)};
+    return {type:'operate',operation:'multiply',amount:math.format(math.div(math.frac(1),coefficient))};
   }
   result(){return math.solution(this.state);}
 }
