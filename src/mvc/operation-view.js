@@ -115,7 +115,9 @@ function multiplyStage({op,S,slot,time,camera,orientation}){
  }
  particles+=phaseParticles(frame.active.filter(a=>a.phase.type!=='transfer'),{pos,draw:(token,point,opacity=1)=>draw(token,point,opacity),color:()=>color,camera,shift});
  art+=place(particles,0,0,1,settle);
- const copyText=operandText(copyOperand),label=n===1?`1 copy of ${copyText}`:`${n} copies of ${copyText}`;
+ // "1 copy of 230 and 4 copies of 23": a ten-card's copy is named by its shifted value.
+ const groups=[];for(const c of op.copies){const last=groups.at(-1);if(last?.text===c.spec.text)last.count++;else groups.push({text:c.spec.text,count:1});}
+ const label=n?groups.map(g=>`${g.count} cop${g.count===1?'y':'ies'} of ${g.text}`).join(' and '):`No copies of ${operandText(copyOperand)}`;
  const sumText=n>1&&n<=6?op.copies.map(c=>c.spec.text).join(' + '):label;
  art+=caption(time<op.sumStart?label:sumText,S.x+S.w/2,dir<0?copyTop-34:copyTop+150*scale+52,ease(clamp((time-.3)/.3))*(1-ease(clamp((time-op.duration+.7)/.4))));
  const top=Math.min(copyTop-80,lineY),bottom=Math.max(copyTop+150*scale+80,lineY+60,S.y+170);
