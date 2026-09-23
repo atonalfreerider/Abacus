@@ -98,7 +98,9 @@ export class Dragger {
     const body = this.body; this.pending = null;
     if (!body) return;
     this.body = null;
-    const drop = body.drop();
+    let drop = body.drop();
+    // Shift on release places the card beside its magnet partner instead of combining.
+    if (drop?.target && event.shiftKey) drop = { side: drop.side, target: null, index: body.insert };
     if (drop) {
       // The release animation starts from where everything is now, not from the old layout.
       const positions = Object.fromEntries([...body.world].map(([id, w]) => [id, { x: w.x, y: w.y }]));

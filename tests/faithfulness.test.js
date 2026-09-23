@@ -38,3 +38,14 @@ test('provenance identifies the exact shipped director SWF', () => {
   const report = JSON.parse(fs.readFileSync('public/swf-provenance.json'));
   assert.equal(report.outputSha256, crypto.createHash('sha256').update(patched).digest('hex'));
 });
+
+import { parseAbc, disassemble } from '../tools/avm2.mjs';
+test('every original AVM2 method decodes with known opcodes and valid branch targets',()=>{
+  const abc=parseAbc(a.tags.find(t=>t.type===82).bytes);let bodies=0;
+  for(const m of abc.methods){if(!m.code)continue;bodies++;
+    const text=disassemble(abc,m,{skipDebugLines:false}),starts=new Set([...text.matchAll(/^\s+(\d+)\s{2}/gm)].map(x=>+x[1]));
+    assert.doesNotMatch(text,/UNKNOWN_|decode error/,m.owner);
+    for(const r of [...text.matchAll(/\bL(\d+)\b/g)].map(x=>+x[1]))assert.ok(starts.has(r)||r===m.code.length,`${m.owner}: branch to ${r}`);}
+  assert.equal(bodies,637);
+  assert.ok(abc.methods.some(m=>m.owner==='absrc:Multiplication$.Duplicator'||/Multiplication.*Duplicator/.test(m.owner||'')));
+});

@@ -93,3 +93,6 @@ test('operation animations render every frame in both layouts and all cameras',(
   for(const p of [0,.2,.4,.6,.8,.97,1]){const svg=renderEquation(c.model.state,c.options,c.clock.plan,p);assert.doesNotMatch(svg,/NaN|undefined|Infinity/,`${input} ${orientation} ${camera} ${p}`);}
  }
 });
+test('in an expression the planner only works out and combines; it never moves cards to the hidden side',()=>{
+ for(const input of ['x+3','2x+3x-4','23*4+x']){const m=new EquationModel(input);let command;while((command=m.nextStep())){assert.notEqual(command.type,'move',input);m.dispatch(command);}assert.equal(m.state.right.length,0,input);assert.ok(math.isSimplified(m.state.left),input);}
+});

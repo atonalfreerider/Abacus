@@ -1,71 +1,81 @@
 # ABACUS
 
-A browser equation workspace using the original SWF textures, face-on 3×3 trays, and equals mirror. The active application uses native model/view/controller modules. The original SWF remains available at `reference.html` for comparison.
+A browser equation workspace built from the original ABACUS SWF's textures, face-on 3×3 trays and equals mirror. Numbers are physical cards: each occupied cell holds 1, 10 or 100 card faces, so place value is visible as stack depth. Addition carries and borrows card by card, positive and negative cards cancel in zero pairs, multiplication copies cards, and long division deals them into equal groups. A tutor shows worked examples and then deals the learner fresh problems. The original SWF remains available at `reference.html` for comparison.
 
 ## Run
 
-Node.js 20+; no package installation required.
+Node.js 20+ for the app and unit tests (Node 22+ for the headless-Chrome checks); no package installation.
 
 ```sh
-npm start
-npm test
-npm run test:visual
-npm run build
-npm run preview
+npm start                 # http://localhost:5173
+npm test                  # unit and property tests
+npm run test:visual       # deterministic SVG snapshots
+npm run test:browser      # real pointer/keyboard/tutor checks in headless Chrome
+npm run perf              # frame times of heavy animations in headless Chrome
+npm run build && npm run preview
 ```
 
-Development defaults to http://localhost:5173. Stop development before previewing on the same port, or set PORT. `dist` is a static deployment with relative URLs and precompressed assets. The optional SWF reference includes self-hosted Ruffle; the main app does not download its runtime. No remote repository or public deployment is configured.
+Stop development before previewing on the same port, or set PORT. `dist` is a static deployment with relative URLs and precompressed assets. The browser checks find Chrome automatically (set `CHROME=/path/to/chrome` otherwise) and skip if none is installed.
 
-## Interaction
+## Using it
 
-Type an expression or use the original-style row-major 3×3 counting pad. The pad highlights cumulative cells under a large hover numeral; the folded corner on 9 enters a decimal point. Up arrow, the upper triangle, or Enter deploys the staged input into the workspace. Backspace edits it, and clear starts a fresh expression. The Equation dialog remains available for pasting a complete problem. Drag terms across the mirror to transpose them; drop like terms together to combine or cancel. A collision across the mirror transposes and combines in one command and one animation. Drop between terms to rearrange, or hold Shift when dropping to avoid combining. Keyboard arrows transpose a focused term; Shift + arrows rearrange. Multiply/divide applies a nonzero rational factor to both sides. Undo/redo restores exact mathematical states. Drag previews flip sign on each mirror crossing without changing the model; release commits once and animates from the pointer release coordinates.
+**Entering problems.** Type or use the original-style 3×3 counting pad (hover lights cumulative cells; the folded corner on 9 enters a decimal point). Up arrow, the upper triangle or Enter deploys the input; the Equation dialog takes a whole problem. `×` (or `*`) multiplies and `÷` (or `:`) divides; numbers joined by them stay one **operation term** in a dashed frame until worked out. A slash between numbers is a fraction (`3/4`). Parentheses, decimals up to six places and linear algebra in x are supported.
 
-View offers horizontal/vertical/automatic layouts and front/depth/spread stack views. These preserve face-on cards and change depth projection, rather than orbiting a 3D scene. Automatic layout responds to portrait screens. Animation controls pause, seek, resume, and finish independently of the committed model.
+**Dragging.** Cards have weight: the held card follows the pointer on a critically damped spring.
+- The equals mirror resists like a membrane. The card's edge stops at the mirror, which bows under the push; push further and the card pops through and flips sign (red ↔ blue). A small step back meets the membrane again rather than flipping back.
+- While a lifted card leaves its side lighter, the equals bars tilt into `<` or `>`, as the original SWF did; they level once the card has crossed.
+- Like cards on the card's side are outlined; near one the card is attracted, and close enough it snaps on, outlined red for a zero pair (opposite signs cancel) or teal for a combination. Release to combine; hold Shift on release to place it beside instead.
+- Elsewhere, the other cards spring apart and a dashed ghost shows where the card will land. The mirror and any merge target stay put, so nothing slides away from the pointer. Releasing without a change springs the card home.
+- Tap an operation term (or focus it and press Enter) to work it out. Arrow keys move a focused card across; Shift + arrows rearrange.
 
-Director runs preloaded problems one step at a time; Try it restores the previous step for practice.
+**Working out × and ÷.**
+- *Multiplication* extends the original's `Multiplication.Duplicator`. The factor with fewer cards becomes a horizontal line of cards; the other is copied once per card. A ten-card copies it one place up, so its cards become ten-stacks, and a tenth-card copies it one place down. The copies are then added into the answer card by card, carrying tens. `23 × 14` shows one copy of 230 and four of 23.
+- *Long division* shares the dividend: each place's cards, largest first, are dealt round-robin into equal groups, and leftovers unstack into ten cards of the next place. While the answer terminates, dealing continues into tenths and hundredths (`7 ÷ 4 = 1.75`). Otherwise each leftover card is sliced into equal strips, one per group, giving a mixed number of whole cards plus a sliced card (`7 ÷ 3 = 2⅓`). One group becomes the answer.
+- *Dividing by a fraction* first turns the fraction over (`6 ÷ ½` becomes `6 × 2`).
+- Tapping a fraction divides it out into a decimal (`3/4 → 0.75`) or a mixed number.
+- Visual plans cover divisors up to 12, up to 24 copies and dividends up to six digits. Larger or fractional cases use an exact symbolic transition.
 
-Each occupied cell has 1, 10, or 100 physical card faces, with uniform spacing down-right. The cycle resets at comma boundaries. Cached 10/100 stack drawings are shared by resting and moving units; carry packs ten units into the identical depth ranges, and borrow reverses that geometry inside the digit trays. Comma crossings compress the old depth group into the next inscribed face. Each face in successive groups receives k, M, B (and higher group marks) with progressively thicker nested outlines.
+**Tutor.** Choose a lesson (moving cards, zero pairs, equal groups, x on both sides, fractions, products, multiplying by copying, two-digit lines, decimal copies, long division, remainders as decimals or fractions, dividing by a fraction, carrying, borrowing). The tutor plays a worked example step by step, or with Play all, narrating each step, then deals a new problem of the same shape. Hint highlights the card to move and draws a guide arrow; Show me performs the step; feedback says whether a move helped, was a balanced detour, or solved it. Solve and Combine use the same step planner.
+
+**View** offers horizontal, vertical and automatic layouts, front/depth/spread stack cameras, and zoom. Animations can be paused, scrubbed and finished; undo/redo restore exact states.
 
 ## Architecture and mathematics
 
-- `src/engine.js`: exact reduced rational arithmetic, parsing, linear expressions and solution classification. BigInt intermediates prevent floating-point rounding.
-- `src/mvc/model.js`: immutable equations, validated commands, undo/redo and step planning. Every transformation checks preservation of the equation residual or the explicit nonzero scaling factor.
-- `src/mvc/controller.js`: commands, animation lifecycle, drop interpretation and view options.
-- `src/mvc/view.js`: SVG projection of model state and a deterministic transition frame. It cannot modify mathematical state.
-- `src/mvc/units.js`: signed singleton ledger and dependency scheduler for integer and terminating-decimal addition/subtraction. Independent transfers and digit operations run concurrently; dependent regrouping follows on the same timeline. Each transfer, carry, borrow and cancellation conserves exact weight.
-- `src/mvc/animation.js`: carry/borrow events, cancellation, operation groups and a seekable clock.
-- `src/mvc/app.js`: browser input and lesson director.
+- `src/engine.js`: exact reduced rationals (BigInt intermediates), the parser, operation terms (`expr` chains with the sign on the first operand), `evaluateStep`, and solution classification.
+- `src/mvc/model.js`: immutable equations and validated commands (move, reorder, combine, evaluate, operate, simplify) with undo/redo. Every command is checked to preserve the equation residual (or apply its explicit nonzero factor). `nextStep` is the planner: products first, zero pairs before same-sign pairs, x gathered where its coefficient stays positive, then scaled to one x.
+- `src/mvc/controller.js`: commands, animation lifecycle, drop interpretation; emits `commit` events.
+- `src/mvc/view.js`: SVG projection of model state and deterministic transition frames; it cannot change mathematical state. `surface.js` keeps a persistent SVG so textures stay decoded and frames replace only the scene body; `raster.js` rasterizes each 1/10/100-card stack once (the vector drawing remains the reference and fallback).
+- `src/mvc/units.js`: signed singleton ledger for addition, subtraction and repeated addition, scheduled on one timeline. Transfers, carries, borrows and cancellations conserve exact weight, and pairs cancel in reading order.
+- `src/mvc/operations.js` and `operation-view.js`: card plans and frames for multiplication (copies over a line of cards) and long division (dealing, unstacking, slicing).
+- `src/mvc/physics.js` and `drag.js`: drag physics (spring, membrane, magnets, reflow, balance tilt) and the DOM glue that writes transforms each frame.
+- `src/mvc/tutor.js`: lessons, problem generators, narration and feedback. `app.js` wires input, dialogs and the tutor bar.
 
-Supported scope: one-variable linear algebra in x, parentheses/distribution, fractions, decimals up to six decimal places, variables on both sides, identities and contradictions. Stored rational components must fit safe integers; overflow is rejected. Nonlinear terms and variable denominators are rejected. Zero multiply/divide is rejected because it does not preserve the solution set.
+Supported scope: one-variable linear equations and expressions in x, with parentheses/distribution, fractions, decimals, variables on both sides, identities and contradictions. Rational components must fit safe integers; overflow is rejected, as are nonlinear terms, variable denominators and multiplying or dividing both sides by zero. This is not a universal computer algebra system. The original JPEG textures are reused; typography and animation paths are reconstructions, not SWF playback. Solved variable trays show up to nine green units; larger answers remain fully represented on the constant side.
 
-This is not a universal symbolic algebra system or a claim of perfect SWF animation fidelity. The original JPEG textures are reused; native typography and reconstructed animation paths differ. Small positive integer multiplication/division factors (up to 12) receive repeated-group animations. Other rational factors use exact model results with symbolic operation transitions. Solved variable trays visualize up to nine green units; larger answers remain fully represented on the constant side.
+## Tests and regression infrastructure
 
-## Animation regression infrastructure
+- `npm test`: exact arithmetic, parser and operation chains, planner termination and residual preservation, 150 random products and every division plan checked for conservation, drag physics (membrane, hysteresis, snapping, reflow), 200 generated problems per tutor lesson, stack geometry, clock behaviour, and SWF provenance, including a full AVM2 decode of the original.
+- `npm run test:visual`: 720 deterministic SVG snapshots (24 scenes × 2 layouts × 3 cameras × 5 timestamps) against reviewed hashes; outputs go to `artifacts/visual`. `npm run test:visual:update` records new hashes after visual review.
+- `npm run test:browser`: headless Chrome with DevTools pointer and key events. It drags through the mirror onto a like card, releases inside the membrane, drops in open space and in gaps, taps a product, runs Solve through long division, uses the keyboard and the vertical layout, runs the tutor flow, and checks p90 frame time while dragging.
+- `npm run perf`: median/p95 frame times for heavy scenes, failing above `FRAME_BUDGET_MS` (34 ms by default). Scenes hold a 16.7 ms median; the heaviest spread-camera products and divisions reach 33 ms at p95.
+- The test bench (`tests.html`) scrubs any scene, layout, camera and frame, runs geometry assertions and compares local pixel baselines. Pixel baselines are Git-ignored and recorded per machine.
 
-Open `tests.html` on the local server. Select a scene, layout, camera and frame, or run all geometry assertions. Nineteen scenes cover crossing, rearrangement, cancellation, carry, comma carry, borrow, fractions, multiplication, division and inscriptions.
+CI runs unit, snapshot, browser and frame-time checks (the last two with a 50 ms budget for shared runners) and builds `dist`. See `docs/verification.md` for performed checks and limits.
 
-- `npm test`: exact arithmetic, invariants, stack geometry, clock behavior and retained SWF provenance checks.
-- `npm run test:visual`: 570 deterministic SVG snapshots against reviewed hashes. Outputs are in `artifacts/visual`.
-- Test bench **Compare pixels**: compares 38 rasterized scene PNGs across both orientations and all camera presets. Per-channel tolerance is 8; more than 0.1% changed pixels fails. Development saves actual PNGs to `artifacts/visual/pixels`.
-- **Record pixel baselines** writes PNGs to `public/pixel-baselines` through the loopback development server. These images stay local and are Git-ignored; do not commit pixel baselines. A fresh checkout must record local baselines before pixel comparison. Production cannot record baselines.
-- `npm run test:visual:update` intentionally updates structural hashes after visual review.
+## The original SWF
 
-CI runs unit and SVG snapshot checks and saves the SVG artifacts. Raster comparison currently runs through the browser test bench, not headless CI. Baseline PNGs capture the equation SVG, not application chrome; manual responsive and pointer tests complement them. See `docs/verification.md` for performed checks and limits.
+`public/ABACUS.swf` is the untouched original and `reference.html` plays it through self-hosted Ruffle. `npm run swf:disasm -- absrc::Multiplication` prints the original AVM2 bytecode for any class or method (`--list` names them all). `docs/original-reference.md` records what the original does and does not implement.
 
 ## Decimal and original input/display conventions
 
-Decimal input retains decimal notation and entered trailing zeros instead of becoming a numerator/denominator display. Explicit slash fractions remain fractions. Exact reduced rationals are still the mathematical representation. Terminating decimals use scaled integer units for carry/borrow; rational components must remain within the documented safe-integer bound.
+Decimal input keeps decimal notation and entered trailing zeros; explicit slash fractions stay fractions; values are exact reduced rationals either way. Terminating decimals use scaled integer units for carry and borrow.
 
-Whole-number group commas are triangles. The decimal boundary uses the original triangle-and-dotted-mark convention. Following the SWF's magnitude reset, a group comma follows tenths and hundredths (before thousandths), repeating before millionths and further groups. Within a decimal unit's full-size face, the textured inner area shrinks by ten for each smaller place.
-
-Tray background fill is 16% opaque, so a stack passing behind an adjacent tray remains visible. Numerals use a consistent face-on font, centered anchors and a central baseline. The new keypad includes 0, decimal point, arithmetic operators, x, parentheses, equals and backspace.
-
-Cancellation pairs receive fixed targets before playback. Incoming units travel directly to the receiving card in top-left, left-to-right grid order, then fade while coincident. Borrowed units use the same target mapping.
+Whole-number group commas are triangles; the decimal boundary uses the original triangle and dotted mark. Following the SWF's magnitude reset, a group comma follows tenths and hundredths (before thousandths) and repeats before millionths. A decimal unit's textured inner area shrinks by ten for each smaller place. Faces carry k, M, B (and higher) inscriptions with progressively thicker nested outlines. Tray fill is 16% opaque, so a stack passing behind an adjacent tray stays visible.
 
 ## Double-click on Windows
 
-Double-click **Start Abacus.cmd** in this folder. It starts a local server and opens your default browser; repeated launches reuse that server. No build or npm install is needed. Double-click **Stop Abacus.cmd** to stop it after closing the browser. The launcher serves the current source, so edits appear on refresh. It finds the existing Node runtime on this computer, or a standard Node.js installation. The folder can be moved; launch paths are relative. Temporary server state and logs stay in the Git-ignored `.runtime` directory.
+Double-click **Start Abacus.cmd**. It starts a local server and opens your default browser; repeated launches reuse that server. Double-click **Stop Abacus.cmd** to stop it. It finds an existing Node runtime or a standard Node.js installation. Temporary state and logs stay in the Git-ignored `.runtime` directory.
 
 ## Run on Ubuntu
 
-Double-click **Start Abacus.desktop** in this folder, or run `./Start\ Abacus.sh` in a terminal. The launcher starts a local server and opens your default browser. Repeated launches reuse the server. Run `./Stop\ Abacus.sh` to stop it. Node.js 20 or newer is required; no package installation is needed. Temporary server state and logs stay in `.runtime`.
+Double-click **Start Abacus.desktop**, or run `./Start\ Abacus.sh`. Repeated launches reuse the server; `./Stop\ Abacus.sh` stops it. Node.js 20 or newer is required.

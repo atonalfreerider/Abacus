@@ -14,7 +14,8 @@
     "test:visual:update": "node tools/visual-tests.mjs --update",
     "test:browser": "node tools/interaction-tests.mjs",
     "preview": "node tools/serve.mjs dist",
-    "perf": "node tools/perf.mjs"
+    "perf": "node tools/perf.mjs",
+    "swf:disasm": "node tools/swf-disasm.mjs"
   },
   "engines": {
     "node": ">=20"

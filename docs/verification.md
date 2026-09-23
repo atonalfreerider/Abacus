@@ -45,3 +45,16 @@ Re-inspected `Addition.MergeNoms`: its digit loop uses TimelineMax.insertMultipl
 Re-inspected `Operator.NewOp` and `Shapes.NewFillTriangle`: the group marker uses a filled left-pointing triangle, while the decimal marker uses a translucent fill with dotted marks. `Constant.InsertNomial` resets local magnitude when division reaches 0.001, placing the next group comma after tenths and hundredths. That spacing is reflected in both settled and animated trays.
 
 Browser checks exercised direct typing of 0.123456, keypad entry of 0.9+0.1=1, and a real collision drop of the 0.1 term onto 0.9. The merge began immediately and reached 1. Numeric text and trays retain decimal notation. The spread camera visibly shows the 100 stack continuing underneath the adjacent zero tray. The parallel 555+555 scene shows unit motion in all three places together. Regression scenes now include decimal carrying, borrowing, comma boundaries and tray translucency.
+
+## Operations, drag physics and tutor revision (2026-09)
+
+Automated: 61 Node tests, 720 SVG snapshots and 10 headless-Chrome interaction checks pass (`npm test`, `npm run test:visual`, `npm run test:browser`).
+
+- **CI determinism.** Decimal snapshots had hashed `10**-5` as `0.00009999999999999999` in some V8 builds, so a clean checkout failed CI. Exact place-value text and rounded inner geometry fixed it.
+- **Performance.** Every frame used to replace the whole SVG: texture patterns were recreated, which blanked the textures for a frame, and up to 100 pattern-filled faces were repainted per stack. Measured in headless Chrome, `999+1` ran at about 10 fps and a six-digit subtraction at about 3 fps. With the persistent surface and rasterized stacks, every benchmark scene holds a 16.7 ms median. The heaviest spread-camera cases (`99 × 99`: 18 copies of 100-card stacks; `999999 ÷ 7`) reach 33 ms at p95.
+- **Operations.** 150 random products conserve value through every ledger phase, and no place piles past 20 cards. Every division plan deals equal shares, and every card is dealt, unstacked or sliced. Frames render without NaN in both layouts and cameras.
+- **Physics.** Unit tests cover the membrane (resistance, pop-through, clearance, hysteresis), zero-pair versus combination snapping, reflow and the spring home. Browser checks drive real pointer drags horizontally and vertically, including inside the membrane, onto a like card, into open space and into a gap.
+- **Tutor.** Every lesson's example and 200 generated problems per lesson solve with the planner, each step with narration. The browser check plays an example to the end, then verifies a new problem and the hint highlight and arrow.
+- **Review found and fixed:** a same-side drop onto an unlike term raised an error instead of rearranging; `nextStep` in expression mode moved terms onto the hidden right side; `0 × 5` vanished at parse time; the drag preview negated only a product's value, not its first operand; sign text for products with a negative later factor printed as subtraction.
+
+Limits: visual multiplication and division have size limits (see README), beyond which exact symbolic transitions are used. Browser checks run in Chromium only. Pixel baselines remain local.

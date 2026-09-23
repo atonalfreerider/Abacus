@@ -211,7 +211,7 @@ export function renderScene(equation,options={},plan=null,progress=1) {
     for(const slot of after.terms)if(!before.terms.some(b=>b.term.id===slot.term.id)){scene.terms.push(slot);overrides[slot.term.id]={opacity:p};}
     body=renderLayout(scene,options,overrides);
     body+=overlay(plan,progress,before,options);
-  } else {const overrides={};if(options.drag){const d=options.drag,slot=scene.terms.find(t=>t.term.id===d.id);if(slot)overrides[d.id]={x:d.x,y:d.y,term:slot.side===d.side?slot.term:{...slot.term,value:math.neg(slot.term.value)}};}body=renderLayout(scene,options,overrides);}
+  } else {const overrides={};if(options.drag){const d=options.drag,slot=scene.terms.find(t=>t.term.id===d.id);if(slot)overrides[d.id]={x:d.x,y:d.y,term:slot.side===d.side?slot.term:math.negateTerm(slot.term)};}body=renderLayout(scene,options,overrides);}
   return {viewBox:`${round(scene.minX||0)} ${round(scene.minY||0)} ${round(scene.width-(scene.minX||0))} ${round(scene.height-(scene.minY||0))}`,orientation:options.orientation,camera:options.camera,label:math.equationText(equation),body,scene};
 }
 // Particles for active ledger phases; shared by addition and the operation scenes.
@@ -268,7 +268,7 @@ function renderUnits(plan,t,options){
  for(const slot of before.terms){const to=after.terms.find(s=>s.term.id===slot.term.id);if(to)overrides[slot.term.id]={x:lerp(slot.x,to.x),y:lerp(slot.y,to.y)};}
  const empty=term=>specArt(spec(term),'blue',options.camera,false);
  const sourceRemaining=frame.tokens.some(a=>a.owner===u.source)||frame.active.some(a=>a.phase.before.some(t=>a.phase.removed.includes(t.id)&&t.owner===u.source));
- overrides[u.source]={x:sourceAt.x,y:sourceAt.y,term:plan.command.side?{...source.term,value:math.neg(source.term.value)}:source.term,opacity:sourceRemaining?1:0,art:empty(source.term),labelOpacity:0};
+ overrides[u.source]={x:sourceAt.x,y:sourceAt.y,term:plan.command.side?math.negateTerm(source.term):source.term,opacity:sourceRemaining?1:0,art:empty(source.term),labelOpacity:0};
  let boxes='';for(let place=minPlace;place<=maxPlace;place++){const old=place>=spec(target.term).minPlace&&place<=spec(target.term).maxPlace,final=place>=spec(result.term).minPlace&&place<=spec(result.term).maxPlace,opacity=(old?1:clamp(t*8))*(final?1:1-ease((t-.9)/.1));const x=anchor.x+placeOffset(place)-target.x;boxes+=`<g opacity="${opacity}" transform="translate(${x} ${anchor.y-target.y})">${tray(0,'blue',place,options.camera,'')}</g>`;if(place<maxPlace&&(place===-1||place>=0&&place%3===2||place<0&&place%3===0))boxes+=`<g transform="translate(0 ${anchor.y-target.y})">${commaTriangle(x-40,place===-1)}</g>`;}
  overrides[u.target]={x:target.x,y:target.y,term:t>.9?result.term:target.term,art:boxes,labelOpacity:0};
  let body=renderLayout(scene,options,overrides),particles='';
