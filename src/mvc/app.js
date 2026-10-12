@@ -4,6 +4,7 @@ import { math } from './model.js';
 import { Surface } from './surface.js';
 import { Dragger } from './drag.js';
 import { Tutor,lessons,narrate,feedback,finished } from './tutor.js';
+import { haptic } from '../haptics.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
 const surface=new Surface($('stage'));
@@ -80,7 +81,7 @@ $('open-tutor').onclick=()=>$('lesson-dialog').showModal();
  const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${[lesson.example].flat().join(' and ').replace(/\*/g,' × ').replace(/÷/g,' ÷ ').replace(/\^2/g,'²')}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
 }}
 async function startLesson(lesson){
- stopPlaying();tutor=new Tutor(lesson);hint=null;entry.active=false;$('entry-bar').hidden=true;
+ stopPlaying();tutor=new Tutor(lesson);tutor.found=new Set();hint=null;entry.active=false;$('entry-bar').hidden=true;
  $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);
  if(lesson.graph){(await showGraph(true)).setEquations(lesson.example);}
  else{if(!$('graph-mode').hidden)showGraph(false);safe(()=>controller.load(lesson.example));}
@@ -98,8 +99,14 @@ function refreshTutor(){
  const next=tutor.lesson.graph?null:controller.model.nextStep(),action=!example&&!done&&next?.type==='operate'?next:null;
  $('tutor-action').hidden=!action;if(action)$('tutor-action').textContent=`${action.operation==='divide'?'÷':'×'} both sides by ${action.amount}`;$('tutor-action').onclick=()=>safe(()=>controller.execute(action));
 }
+// A graph lesson visits one or more goal points in order (the intercepts lesson: y axis, then x axis).
+const goalsOf=lesson=>lesson.goals||[lesson.goal];
+const goalPrompt=lesson=>{const goals=goalsOf(lesson);return goals.includes('y-intercept')?'Drag the point to where the line crosses the y axis, then to where it crosses the x axis.':goals[0]==='root'?'Drag the point to where the curve meets the x axis.':'Drag the point along a line to where the lines cross.';};
 function exampleStep(){
- if(tutor.lesson.graph){const goal=graph.goal(tutor.lesson.goal);if(goal)graph.goTo(goal);tutor.shown=true;say(`${goal?tutor.lesson.watch(graph.pointText(goal)).replace(/-/g,'−'):'Nothing to find.'} Now try one yourself: press Your turn.`,'done');refresh();return false;}
+ if(tutor.lesson.graph){
+  const goals=goalsOf(tutor.lesson),i=tutor.shownCount||0,kind=goals[i],goal=graph.goal(kind);if(goal)graph.goTo(goal);
+  tutor.shownCount=i+1;tutor.shown=tutor.shownCount>=goals.length;const worked=goal?graph.interceptText(goal):'';
+  say(`${goal?tutor.lesson.watch(graph.pointText(goal),kind).replace(/-/g,'−'):'Nothing to find.'}${worked?` ${worked}.`:''} ${tutor.shown?'Now try one yourself: press Your turn.':'Press Next step for the other axis.'}`,tutor.shown?'done':'');refresh();return false;}
  const command=controller.model.nextStep();
  if(!command){say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');stopPlaying();refresh();return false;}
  say(narrate(command,controller.model.state));
@@ -115,13 +122,13 @@ controller.addEventListener('change',()=>{
  if(playing&&!controller.busy&&!playTimer)playTimer=setTimeout(()=>{playTimer=0;if(playing&&!controller.busy&&!dragger.active)exampleStep();else if(playing)controller.dispatchEvent(new Event('change'));},1100);
 });
 function practice(){
- if(tutor.lesson.graph){tutor.solved=true;const equations=tutor.practice();graph.setEquations(equations);tutor.solved=false;say(`Your turn: ${equations.join('  and  ').replace(/\*/g,'×').replace(/-/g,'−')}. ${tutor.lesson.goal==='root'?'Drag the point to where the curve meets the x axis.':'Drag the point along a line to where the lines cross.'}`);refresh();return;}
+ if(tutor.lesson.graph){tutor.solved=true;const equations=tutor.practice();graph.setEquations(equations);tutor.solved=false;tutor.found=new Set();say(`Your turn: ${equations.join('  and  ').replace(/\*/g,'×').replace(/-/g,'−')}. ${goalPrompt(tutor.lesson)}`);refresh();return;}
  stopPlaying();hint=null;const problem=tutor.practice();safe(()=>controller.load(problem));say(`Your turn: ${math.equationText(controller.model.state).replace(/ = 0$/,'')}. ${controller.model.expression?'Tap the product to work it out, or drag like cards together.':'Drag cards to get x alone.'} Ask for a hint any time.`);refresh();}
 $('tutor-turn').onclick=practice;$('tutor-new').onclick=practice;
 $('tutor-next').onclick=()=>{const i=lessons.indexOf(tutor.lesson);startLesson(lessons[(i+1)%lessons.length]);};
 $('tutor-close').onclick=leaveTutor;
 $('tutor-hint').onclick=()=>{if(tutor.lesson.graph){tutor.hints++;say(`Hint: ${tutor.lesson.hint}`,'hint');return;}const command=controller.model.nextStep();if(!command)return;tutor.hints++;hint=command.type==='operate'?null:command;controller.render();say(`Hint: ${narrate(command,controller.model.state)}`,'hint');};
-$('tutor-show').onclick=()=>{if(tutor.lesson.graph){const goal=graph.goal(tutor.lesson.goal);tutor.solved=true;if(goal){graph.goTo(goal);say(`Here it is: (${graph.pointText(goal).replace(/-/g,'−')}). Try New problem to find one yourself.`,'hint');}refresh();return;}const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
+$('tutor-show').onclick=()=>{if(tutor.lesson.graph){const kind=goalsOf(tutor.lesson).find(k=>!tutor.found?.has(k))||goalsOf(tutor.lesson)[0],goal=graph.goal(kind);tutor.found?.add(kind);tutor.solved=goalsOf(tutor.lesson).every(k=>tutor.found?.has(k)??true);if(goal){graph.goTo(goal);const worked=graph.interceptText(goal);say(`Here it is: (${graph.pointText(goal).replace(/-/g,'−')}).${worked?` ${worked}.`:''} ${tutor.solved?'Try New problem to find one yourself.':'Now find the other one.'}`,'hint');}refresh();return;}const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
 controller.addEventListener('commit',event=>{
  hint=null;if(!tutor||tutor.phase!=='practice')return;
  const {transaction,source}=event.detail;if(source!=='learner'&&!finished(controller.model))return;
@@ -153,12 +160,16 @@ async function showGraph(on){
  else{graph?.hide();if(tutor?.lesson.graph)leaveTutor();controller.render();}
  return graph;
 }
-// A graph lesson is done when the learner's point reaches its goal (a crossing or a root).
+// A graph lesson is done when the learner's point has reached each of its goals.
 function graphPoint(event){
  if(!tutor?.lesson.graph||tutor.phase!=='practice'||tutor.solved)return;
- const {kinds,exact,x,y}=event.detail;if(!kinds.includes(tutor.lesson.goal))return;
- tutor.solved=true;const at=exact?`${exact.x.d===1?exact.x.n:math.format(exact.x)}, ${exact.y.d===1?exact.y.n:math.format(exact.y)}`:`${x}, ${y}`;
- say(`Found it: (${at.replace(/-/g,'−')}). ${tutor.lesson.goal==='root'?'Zero y cards: that x is a root.':'Every equation checks out here.'} Well done: New problem for another, or Next lesson.`,'done');refresh();
+ const {kinds,exact,x,y,group}=event.detail,goals=goalsOf(tutor.lesson);tutor.found??=new Set();
+ const kind=goals.find(k=>kinds.includes(k)&&!tutor.found.has(k));if(!kind)return;
+ tutor.found.add(kind);tutor.solved=goals.every(k=>tutor.found.has(k));
+ const at=exact?`${exact.x.d===1?exact.x.n:math.format(exact.x)}, ${exact.y.d===1?exact.y.n:math.format(exact.y)}`:`${x}, ${y}`,worked=group?graph.interceptText(group):'';
+ const why=kind==='root'?(goals.length>1?'Zero y cards: y = 0 on the x axis.':'Zero y cards: that x is a root.'):kind==='y-intercept'?'Zero x cards: x = 0 on the y axis.':'Every equation checks out here.';
+ if(tutor.solved)haptic('success');
+ say(`Found it: (${at.replace(/-/g,'−')}). ${why}${worked?` ${worked}.`:''} ${tutor.solved?'Well done: New problem for another, or Next lesson.':'Now find where it crosses the x axis.'}`,tutor.solved?'done':'good');refresh();
 }
 $('open-graph').onclick=()=>showGraph($('graph-mode').hidden);
 for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);});

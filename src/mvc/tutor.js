@@ -58,12 +58,21 @@ export const lessons = [
     watch: p => `At (${p}) the point touches the x axis: zero y cards, so x is a root.`,
     hint: 'Drag the point along the curve until the red or blue column shrinks to nothing.',
     make: r => { const p = r(-4, 2), q = r(p + 1, 5); return [`y = x^2 ${term(-(p + q), 'x')} ${term(p * q)}`.replace(/\s+/g, ' ')]; } },
+  // Intercepts: the learner visits both axis crossings of a line, y axis first.
+  { id: 'graph-intercepts', group: 'Graphs', title: 'Intercepts: set x = 0, then y = 0', graph: true, goals: ['y-intercept', 'root'], example: ['2x + 3y = 12'],
+    intro: 'Where a line crosses an axis, one coordinate is zero. On the y axis x = 0, so the x cards vanish; on the x axis y = 0, so the y cards vanish. Put in the zero and solve for the other letter.',
+    watch: (p, kind) => kind === 'y-intercept' ? `On the y axis at (${p}) there are no x cards: x = 0.` : `On the x axis at (${p}) there are no y cards: y = 0.`,
+    hint: 'Drag the point along the line until one set of cards disappears: there the line meets an axis.',
+    make: r => { const p = pick(r, [-6, -4, -3, -2, 2, 3, 4, 5, 6, 8]), q = pick(r, [-5, -4, -3, -2, 2, 3, 4, 6]), g = gcd(p, q); return [standardForm(q / g, p / g, p * q / g)]; } },
   { id: 'graph-both-sides', group: 'Graphs', title: 'Graph both sides', graph: true, goal: 'solution', example: ['3x + 1 = x + 9'],
     intro: 'Graph each side as its own line. Where they cross, the two sides are equal, and that x solves the equation.',
     watch: p => `The two sides meet at (${p}): there both sides equal the same number of cards.`,
     hint: 'Drag the point along either line to where the two lines meet.',
     make: r => { const a = r(2, 5), c = r(1, a - 1), x = r(1, 6), b = r(1, 9); return [`${a}x + ${b} = ${c === 1 ? '' : c}x + ${(a - c) * x + b}`]; } },
 ];
+const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a; };
+// a·x + b·y = c with the x coefficient positive, as a learner would write it.
+const standardForm = (a, b, c) => { if (a < 0) [a, b, c] = [-a, -b, -c]; return `${a === 1 ? '' : a}x ${b < 0 ? '-' : '+'} ${Math.abs(b) === 1 ? '' : Math.abs(b)}y = ${c}`; };
 const term = (n, v = '') => n === 0 ? '' : `${n < 0 ? '-' : '+'} ${Math.abs(n) === 1 && v ? '' : Math.abs(n)}${v}`;
 const line = (m, b) => `y = ${m === 1 ? '' : m === -1 ? '-' : m}x ${term(b)}`.trim();
 // a·x + b·y = c through (x, y), with a slope −a/b different from the other line's.

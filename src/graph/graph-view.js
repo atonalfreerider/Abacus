@@ -1,8 +1,10 @@
-// Graph mode rendering: grid, curves, special points, and the tracer's two card stacks.
-// A column of cards stands on the x axis up to the traced point (y cards) and a row
-// of cards runs from the y axis out to it (x cards). Cards are one unit long, cut off
-// exactly at fractional values, blue when positive and red when negative, with every
-// ten cards outlined as a group. The area module deposits columns of card strips.
+// Graph mode rendering: grid, curves, special points, and the tracer's cards.
+// The point's coordinates are laid out in square cards, one grid unit each and drawn
+// like the tray cards, side by side: a column of y cards stands on the x axis up to the
+// point and a row of x cards runs from the y axis out to it. Each sits just outside the
+// point, so the two meet at its corner without overlapping. Cards are cut exactly at
+// fractional values, blue when positive and red when negative, and every ten are
+// outlined as a group. The area module deposits columns of card strips.
 import { show, curveText } from './polynomial.js';
 import { numeric } from '../engine.js';
 
@@ -21,6 +23,20 @@ export const fx = (curve, x) => curve.poly.reduceRight((a, c) => a * x + numeric
 export function textureDefs() {
   return [['blue', 25], ['red', 23], ['paper', 24]].map(([name, id]) => `<pattern id="g-${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('');
 }
+// Square cards one grid unit wide, tiled from (x, y): a face like a tray card with a
+// thin gap between neighbours; too small to read, they become a plain fill.
+function squareCards(id, color, x, y, u, along) {
+  const gap = Math.min(3, Math.max(.6, u * .05)), framed = u >= 7, round = Math.min(8, u * 5 / 43), border = Math.min(1.6, Math.max(.7, u / 43));
+  let svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(u)}" height="${r(u)}">${framed ? `<rect x="${r(gap / 2)}" y="${r(gap / 2)}" width="${r(u - gap)}" height="${r(u - gap)}" rx="${r(round)}" fill="url(#g-${color})" stroke="#191a16" stroke-width="${r(border)}"/>` : `<rect width="${r(u)}" height="${r(u)}" fill="url(#g-${color})"/>`}</pattern>`;
+  if (u * 10 >= 24) {
+    const [gw, gh] = along === 'y' ? [u, u * 10] : [u * 10, u];
+    svg += `<pattern id="${id}-ten" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(gw)}" height="${r(gh)}"><rect x=".8" y=".8" width="${r(gw - 1.6)}" height="${r(gh - 1.6)}" rx="${r(round + 1)}" fill="none" stroke="#10170f" stroke-width="2.4"/></pattern>`;
+  }
+  return svg;
+}
+// Which side of the point's line the cards lie on, eased across an axis so they slide
+// rather than jump: +1 fully on the positive side, −1 on the negative side.
+export const cardSide = (distance, unit) => Math.max(-1, Math.min(1, distance / unit));
 // A tiled fill of cards: tile w×h anchored at (x, y); every ten cards along `along` get a group outline.
 function cardPattern(id, color, x, y, w, h, along) {
   const border = Math.min(w, h) >= 6, round = Math.min(4, Math.min(w, h) / 5);
@@ -80,7 +96,7 @@ export function groupSpecials(specials) {
 // The tracer, its card stacks and the area columns change every frame.
 export function renderDynamic(state) {
   const v = state.view, X0 = toX(v, 0), Y0 = toY(v, 0);
-  let defs = '', svg = '', area = '';
+  let defs = '', svg = '', area = '', cards = '';
   const sweep = state.area;
   if (sweep?.columns?.length) {
     const w = numeric(sweep.dx) * v.unit, ax = toX(v, numeric(sweep.a));
@@ -113,19 +129,32 @@ export function renderDynamic(state) {
   }
   const t = state.tracer;
   if (t && Number.isFinite(t.y)) {
-    const X = toX(v, t.x), Y = toY(v, t.y), u = v.unit, thick = Math.max(10, Math.min(36, u * .8));
+    const X = toX(v, t.x), Y = toY(v, t.y), u = v.unit;
     const colColor = t.y < 0 ? 'red' : 'blue', rowColor = t.x < 0 ? 'red' : 'blue';
-    defs += cardPattern('g-column', colColor, X - thick / 2, Y0, thick, u, 'y') + cardPattern('g-row', rowColor, X0, Y - thick / 2, u, thick, 'x');
+    // The y column hugs the point's vertical line on the side away from the y axis; the x
+    // row hugs its horizontal line on the side away from the x axis.
+    const s = cardSide(X - X0, u), q = cardSide(Y0 - Y, u);
+    const colLeft = X - u * (1 - s) / 2, rowTop = Y - u * (1 + q) / 2;
+    const height = Math.abs(Y - Y0), width = Math.abs(X - X0);
+    defs += squareCards('g-column', colColor, colLeft, Y0, u, 'y') + squareCards('g-row', rowColor, X0, rowTop, u, 'x');
     const tens = id => defs.includes(`id="${id}-ten"`);
-    if (Math.abs(Y - Y0) > .5) svg += `<g class="card-column"><rect x="${r(X - thick / 2)}" y="${r(Math.min(Y, Y0))}" width="${r(thick)}" height="${r(Math.abs(Y - Y0))}" fill="url(#g-column)"/>${tens('g-column') ? `<rect x="${r(X - thick / 2)}" y="${r(Math.min(Y, Y0))}" width="${r(thick)}" height="${r(Math.abs(Y - Y0))}" fill="url(#g-column-ten)"/>` : ''}</g>`;
-    if (Math.abs(X - X0) > .5) svg += `<g class="card-row"><rect x="${r(Math.min(X, X0))}" y="${r(Y - thick / 2)}" width="${r(Math.abs(X - X0))}" height="${r(thick)}" fill="url(#g-row)"/>${tens('g-row') ? `<rect x="${r(Math.min(X, X0))}" y="${r(Y - thick / 2)}" width="${r(Math.abs(X - X0))}" height="${r(thick)}" fill="url(#g-row-ten)"/>` : ''}</g>`;
+    // On an axis one set of cards is gone; the axis lights up with the zero it stands for.
+    if (t.axis) {
+      const onX = t.axis === 'x' || t.axis === 'origin', onY = t.axis === 'y' || t.axis === 'origin';
+      cards += `<g class="axis-hit">${onX ? `<path d="M0 ${r(Y0)}H${v.width}"/><text x="12" y="${r(Y0 < v.height - 44 ? Y0 + 38 : Y0 - 12)}">y = 0 on the x axis</text>` : ''}${onY ? `<path d="M${r(X0)} 0V${v.height}"/><text x="${r(X0 + 10)}" y="${r(v.height - 14)}">x = 0 on the y axis</text>` : ''}</g>`;
+    }
+    if (height > .5) cards += `<g class="card-column" data-cards="${esc(t.label?.y ?? show(t.y))}"><rect x="${r(colLeft)}" y="${r(Math.min(Y, Y0))}" width="${r(u)}" height="${r(height)}" fill="url(#g-column)"/>${tens('g-column') ? `<rect x="${r(colLeft)}" y="${r(Math.min(Y, Y0))}" width="${r(u)}" height="${r(height)}" fill="url(#g-column-ten)"/>` : ''}</g>`;
+    if (width > .5) cards += `<g class="card-row" data-cards="${esc(t.label?.x ?? show(t.x))}"><rect x="${r(Math.min(X, X0))}" y="${r(rowTop)}" width="${r(width)}" height="${r(u)}" fill="url(#g-row)"/>${tens('g-row') ? `<rect x="${r(Math.min(X, X0))}" y="${r(rowTop)}" width="${r(width)}" height="${r(u)}" fill="url(#g-row-ten)"/>` : ''}</g>`;
     const xText = t.label?.x ?? show(t.x), yText = t.label?.y ?? show(t.y);
-    const up = t.y >= 0, right = t.x >= 0;
-    svg += `<g class="stack-label"><text x="${r(X + (right ? 1 : -1) * (thick / 2 + 8))}" y="${r((Y + Y0) / 2 + 5)}" text-anchor="${right ? 'start' : 'end'}">y: ${esc(yText)}</text><text x="${r((X + X0) / 2)}" y="${r(Y + (up ? -1 : 1) * (thick / 2 + 8) + (up ? 0 : 12))}" text-anchor="middle">x: ${esc(xText)}</text></g>`;
+    const colOut = s >= 0 ? colLeft + u + 8 : colLeft - 8, rowOut = q >= 0 ? rowTop - 8 : rowTop + u + 18;
+    svg += `<g class="stack-label">${height > .5 ? `<text x="${r(colOut)}" y="${r((Y + Y0) / 2 + 5)}" text-anchor="${s >= 0 ? 'start' : 'end'}">y = ${esc(yText)}</text>` : ''}${width > .5 ? `<text x="${r((X + X0) / 2)}" y="${r(rowOut)}" text-anchor="middle">x = ${esc(xText)}</text>` : ''}</g>`;
+    if (t.axis) svg += `<circle class="collision" cx="${r(X)}" cy="${r(Y)}" r="12"/>`;
     svg += `<g class="tracer${t.snapped ? ' snapped' : ''}${t.active ? ' active' : ''}"><circle cx="${r(X)}" cy="${r(Y)}" r="${t.active ? 13 : 10}"/><circle cx="${r(X)}" cy="${r(Y)}" r="3.5" class="tracer-dot"/></g>`;
-    // The snap label goes in the quadrant away from both card stacks.
-    if (t.snapped) svg += `<text class="snap-label" x="${r(X + (right ? 16 : -16))}" y="${r(Y + (up ? -18 : 28))}" text-anchor="${right ? 'start' : 'end'}">${esc(t.snapped)}</text>`;
+    // The snap label goes in the corner the cards leave free: beyond the column, past the row.
+    if (t.snapped) svg += `<text class="snap-label" x="${r(X + (s >= 0 ? 16 : -16))}" y="${r(Y + (q >= 0 ? -18 : 28))}" text-anchor="${s >= 0 ? 'start' : 'end'}">${esc(t.snapped)}</text>`;
   }
-  return { defs, area, tracer: svg };
+  // Cards lie under the curves, so a curve stays visible across them; the point and the
+  // labels stay on top.
+  return { defs, area, cards, tracer: svg };
 }
 export const legend = curves => curves.map((c, i) => ({ color: COLORS[i], text: curveText(c) }));
