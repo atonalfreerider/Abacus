@@ -49,7 +49,7 @@ export async function record({origin, format: formatName, script, out, fps = 30,
   const page = await launch('about:blank', {width: format.width, height: format.height, scale});
   await page.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 5});
   await page.send('Page.addScriptToEvaluateOnNewDocument', {source: virtualTime});
-  await page.goto(origin + '/');
+  await page.goto(origin + '/?examples=written');
   // Let textures decode (real time) while advancing the app a little.
   for (let i = 0; i < 20; i++) { await page.eval('__vt.advance(16)'); await wait(40); }
   await page.eval(overlay);

@@ -25,6 +25,24 @@ export const term = (kind, value, notation="auto") => ({ id: `t${++sequence}`, k
 // An operation term is a constant whose value is a left-to-right chain such as 23 × 4 ÷ 2.
 // Its sign lives on the first operand, so crossing the mirror negates only that operand.
 const apply = (value, op, operand) => op === '×' ? mul(value, operand.value) : div(value, operand.value);
+// Operands can carry order-of-operations structure. A group is a parenthesised sum,
+// { value, group: [terms] }; a power is { value, base, power: n }. Each keeps its exact
+// value; `negated` records a minus written outside the parentheses or before a power
+// (−(4 + 3), −3²), so the text keeps the minus where it was typed.
+export const structured = o => !!(o && (o.group || o.base));
+const sumOf = items => items.reduce((v, t) => add(v, t.value), frac(0));
+const notationOf = items => items.some(t => t.notation === 'decimal') ? 'decimal' : items.some(t => t.notation === 'fraction') ? 'fraction' : 'auto';
+export const groupOperand = items => ({ value: sumOf(items), notation: notationOf(items), group: items });
+export function powerOperand(base, power) {
+  let value = frac(1);
+  for (let k = 0; k < power; k++) value = mul(value, base.value);
+  return { value, notation: value.d === 1 ? 'auto' : base.notation === 'decimal' ? 'decimal' : 'fraction', base, power };
+}
+const negateOperand = o => structured(o) ? { ...o, value: neg(o.value), negated: !o.negated } : { ...o, value: neg(o.value) };
+export const operandNegative = o => structured(o) ? !!o.negated : o.value.n < 0;
+const hasGroup = o => !!(o.group || o.base?.group || o.base?.base);
+// A term still holding parentheses or a power, ranked for the order of operations.
+export const pemdasRank = t => !t.expr ? 3 : t.expr.operands.some(hasGroup) ? 0 : t.expr.operands.some(o => o.base) ? 1 : 2;
 export function operationTerm(operands, ops) {
   if (ops.some(op => !['×', '÷'].includes(op)) || operands.length !== ops.length + 1) throw new Error('Unknown operation.');
   if (operands.length > 6) throw new Error('Use up to six numbers in one product.');
@@ -34,7 +52,7 @@ export function operationTerm(operands, ops) {
 export function negateTerm(t) {
   if (!t.expr) return { ...t, value: neg(t.value) };
   const [first, ...rest] = t.expr.operands;
-  return { ...t, value: neg(t.value), expr: { ...t.expr, operands: [{ ...first, value: neg(first.value) }, ...rest] } };
+  return { ...t, value: neg(t.value), expr: { ...t.expr, operands: [negateOperand(first), ...rest] } };
 }
 export function scaleTerm(t, factor, op = '×') {
   if (eq(factor, frac(-1)) && op === '×') return negateTerm(t);
@@ -51,9 +69,46 @@ export function resultNotation(value, operands, op) {
   const text = decimalText(value), terminating = text !== null && text.split('.')[1].length <= 6;
   return terminating ? 'decimal' : op === '÷' ? 'mixed' : 'fraction';
 }
-// One visible step: evaluate the first pair of an operation chain, or divide out a fraction.
+// Inside parentheses: a product comes before the sums, then the sums go left to right.
+// When one number is left the parentheses open and it becomes a plain operand.
+function stepGroup(o) {
+  const holder = o.group ? o : o.base?.group ? o.base : o.base;
+  if (!holder.group) return { ...o, base: stepGroup(holder) };
+  const items = holder.group, k = items.findIndex(t => t.expr);
+  let next;
+  if (k >= 0) next = items.map((t, i) => i === k ? evaluateStep(t) : t);
+  else {
+    const [a, b, ...rest] = items, places = Math.max(a.decimalPlaces || 0, b.decimalPlaces || 0);
+    next = [{ ...a, value: add(a.value, b.value), notation: notationOf([a, b]), ...(places ? { decimalPlaces: places } : {}) }, ...rest];
+  }
+  const open = next.length > 1 || !!next[0].expr;
+  const inner = open ? { ...holder, group: next } : { value: holder === o ? o.value : next[0].value, notation: next[0].notation, ...(next[0].decimalPlaces ? { decimalPlaces: next[0].decimalPlaces } : {}) };
+  return holder === o ? inner : { ...o, base: inner };
+}
+// One worked chain, or the plain number it has become.
+function rebuild(t, operands, ops) {
+  if (operands.length === 1 && !structured(operands[0])) { const { expr, ...plain } = t; return { ...plain, value: t.value, notation: operands[0].notation, decimalPlaces: operands[0].decimalPlaces }; }
+  return { ...t, expr: { operands, ops } };
+}
+// One visible step, in the order of operations: parentheses, then powers, then the
+// first pair of × and ÷ from the left. A fraction on its own divides out.
 export function evaluateStep(t) {
   if (t.expr) {
+    const operands = t.expr.operands, g = operands.findIndex(hasGroup);
+    if (g >= 0) return rebuild(t, operands.map((o, i) => i === g ? stepGroup(o) : o), t.expr.ops);
+    const e = operands.findIndex(o => o.base);
+    if (e >= 0) {
+      const o = operands[e];
+      // A power standing alone is written out as repeated multiplication (3² = 3 × 3),
+      // so the copies can be shown. Inside a chain it is worked out where it stands.
+      if (operands.length === 1 && o.power <= 6) {
+        const base = { value: o.base.value, notation: o.base.notation, ...(o.base.decimalPlaces ? { decimalPlaces: o.base.decimalPlaces } : {}) };
+        const copies = Array.from({ length: o.power }, (_, i) => i === 0 && o.negated ? negateOperand(base) : base);
+        return { ...t, expr: { operands: copies, ops: Array(o.power - 1).fill('×') } };
+      }
+      return rebuild(t, operands.map((x, i) => i === e ? { value: x.value, notation: x.notation } : x), t.expr.ops);
+    }
+    if (operands.length === 1) return rebuild(t, operands, []);
     const [a, b, ...rest] = t.expr.operands, [op, ...ops] = t.expr.ops;
     // Dividing by a fraction first flips it: ÷ 1/2 asks how many halves, which is × 2.
     if (op === '÷' && b.value.d !== 1) return { ...t, expr: { operands: [a, { value: div(frac(1), b.value), notation: b.value.n === 1 || b.value.n === -1 ? 'auto' : 'fraction' }, ...rest], ops: ['×', ...ops] } };
@@ -83,8 +138,8 @@ export function parseExpression(text) {
   const input = text.replace(/\d[\d,]*(?:\.\d*)?/g, number => {
     if(number.includes(',') && !/^\d{1,3}(?:,\d{3})+(?:\.\d*)?$/.test(number)) throw new Error('Group digits in threes at commas, for example 1,234,567.');
     return number.replaceAll(',','');
-  }).replace(/[−–]/g, '-').replace(/[×·]/g, '*').replace(/[÷:]/g, '÷').toLowerCase();
-  const tokens = input.match(/(?:\d+(?:\.\d*)?|\.\d+)|[x()+\-*/÷]|\S/g) || [];
+  }).replace(/[−–]/g, '-').replace(/[×·]/g, '*').replace(/[÷:]/g, '÷').replace(/[²³⁴⁵⁶]/g, m => '^' + '²³⁴⁵⁶'.indexOf(m) + 2).toLowerCase();
+  const tokens = input.match(/(?:\d+(?:\.\d*)?|\.\d+)|[x()+\-*/÷^]|\S/g) || [];
   let index = 0;
   const peek = () => tokens[index];
   const scalar = items => items.every(t => t.kind === 'constant');
@@ -95,6 +150,8 @@ export function parseExpression(text) {
     if (token === '(') {
       const value = expression();
       if (tokens[index++] !== ')') throw new Error('Close each parenthesis, for example 2(x + 3).');
+      // Numbers added inside parentheses stay grouped, so they can be worked out first.
+      if (scalar(value) && (value.length > 1 || value[0]?.expr && value[0].expr.ops.length)) return [operationTerm([groupOperand(value)], [])];
       return value;
     }
     if (token === 'x') return [term('variable', frac(1))];
@@ -104,7 +161,23 @@ export function parseExpression(text) {
   function unary() {
     if (peek() === '+') { index++; return unary(); }
     if (peek() === '-') { index++; return scale(unary(), frac(-1)); }
-    return primary();
+    return power();
+  }
+  // A whole-number exponent binds tighter than a minus sign: −3² is −(3²).
+  function power() {
+    const items = primary();
+    if (peek() !== '^') return items;
+    index++;
+    const exponent = tokens[index++];
+    if (!/^\d+$/.test(exponent || '') || Number(exponent) < 2 || Number(exponent) > 6) throw new Error('Use a whole-number exponent from 2 to 6, such as 3^2.');
+    if (!scalar(items)) throw new Error('This lab supports linear equations, so x cannot be raised to a power.');
+    if (peek() === '^') throw new Error('Use one exponent at a time, such as (2^3)^2.');
+    return [operationTerm([powerOperand(baseOf(items), Number(exponent))], [])];
+  }
+  function baseOf(items) {
+    if (items.length === 1 && items[0].expr && !items[0].expr.ops.length) return items[0].expr.operands[0];
+    if (items.length === 1 && !items[0].expr) return { value: items[0].value, notation: items[0].notation, ...(items[0].decimalPlaces ? { decimalPlaces: items[0].decimalPlaces } : {}) };
+    return groupOperand(items);
   }
   function product() {
     const factors = [unary()], ops = [];
@@ -147,6 +220,7 @@ export function parseExpression(text) {
     return operationTerm(operands, kept);
   }
   function operandOf(items) {
+    if (items.length === 1 && items[0].expr && !items[0].expr.ops.length) return items[0].expr.operands[0];
     if (items.length === 1 && !items[0].expr) return { value: items[0].value, notation: items[0].notation, ...(items[0].decimalPlaces ? { decimalPlaces: items[0].decimalPlaces } : {}) };
     const notation = items.some(t => t.notation === 'decimal') ? 'decimal' : items.some(t => t.notation === 'fraction') ? 'fraction' : 'auto';
     return { value: sum(items), notation };
@@ -227,7 +301,14 @@ export function operate(equation, operation, amount) {
   };
   return { left: change(equation.left), right: change(equation.right) };
 }
+const superscript = n => [...String(n)].map(d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]).join('');
+function structureText(o) {
+  if (o.group) return `(${sideText(o.group)})`;
+  const b = o.base, inner = structured(b) ? (b.base ? `(${structureText(b)})` : structureText(b)) : b.value.n < 0 ? `(${operandText(b, true, false)})` : operandText(b, true, false);
+  return inner + superscript(o.power);
+}
 function operandText(o, first, absolute) {
+  if (structured(o)) { const body = structureText(o); return !o.negated || (first && absolute) ? body : first ? '−' + body : `(−${body})`; }
   const value = first && absolute ? abs(o.value) : o.value;
   const text = o.notation === 'decimal' ? (numberSpec({ ...o, value })?.text ?? format(value)) : format(value);
   return value.n < 0 ? (first ? '−' + text.replace('-', '') : `(−${text.replace('-', '')})`) : text;
@@ -240,7 +321,18 @@ export function termText(t, absolute = false) {
   return value.n === value.d ? 'x' : value.n === -value.d ? '−x' : `${text}x`;
 }
 // The sign printed before a term; a product shows the sign of its first operand.
-export const negative = t => (t.expr ? t.expr.operands[0].value.n : t.value.n) < 0;
+// What one parentheses or exponent step did, for the caption over the cards.
+export function stepCaption(before, after) {
+  const a = before.expr.operands, b = after?.expr?.operands || [{ value: after.value, notation: after.notation }];
+  if (a.length === 1 && a[0].base && b.length > 1) return `${operandText(a[0], true, true)} = ${b.map((o, i) => operandText(o, !i, true)).join(' × ')}`;
+  const i = a.findIndex((o, k) => b.length !== a.length || operandText(o, !k, true) !== operandText(b[k], !k, true));
+  if (i < 0) return '';
+  const from = operandText(a[i], true, true), to = operandText(b.length === a.length ? b[i] : b[0], true, true);
+  const o = a[i];
+  if (o.base && !structured(o.base) && !hasGroup(o)) return `${from} = ${Array(o.power).fill(operandText(o.base, true, true)).join(' × ')} = ${to}`;
+  return `${from} = ${to}`;
+}
+export const negative = t => t.expr ? operandNegative(t.expr.operands[0]) : t.value.n < 0;
 export function sideText(items) {
   return items.map((t, index) => `${index ? negative(t) ? ' − ' : ' + ' : negative(t) ? '−' : ''}${termText(t, true)}`).join('') || '0';
 }

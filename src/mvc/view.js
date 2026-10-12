@@ -45,12 +45,37 @@ export function tray(digit,color,exponent=0,camera='front',label=String(digit),u
 }
 export function commaTriangle(x,decimal=false){return `<g class="${decimal?'decimal-comma':'group-comma'}" transform="translate(${x+5} 0)"><path d="M0 75 L25 50 L25 100 Z" fill="url(#paper)" fill-opacity="${decimal?.16:.75}" stroke="#37362e" stroke-width="1.5"/>${decimal?'<path d="M12 102v32 M12 120l-7 13" fill="none" stroke="#37362e" stroke-dasharray="1 4"/><circle cx="12" cy="120" r="2" fill="#37362e"/>':''}</g>`;}
 export function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
-export const OPERATOR_GAP=110,DOT_GAP=46;
+export const OPERATOR_GAP=110,DOT_GAP=46,PAREN=58,EXPONENT=64;
 // Operands of a product render as constants coloured by their own sign.
 export const operandTerm=o=>({kind:'constant',value:math.abs(o.value),notation:o.notation,decimalPlaces:o.decimalPlaces,negative:o.value.n<0});
+// Order of operations: a parenthesised sum shows its own cards between parentheses
+// (red where the minus outside applies), and a power shows its base with the exponent
+// raised beside it.
+export function operandWidth(o){
+  if(o.group)return 2*PAREN+o.group.reduce((w,t,i)=>w+termWidth(addend(t,false))+(i?OPERATOR_GAP:0),0);
+  if(o.base)return operandWidth(o.base)+(o.base.base?2*PAREN:0)+EXPONENT;
+  return termWidth(operandTerm(o));
+}
+const addend=(t,flip)=>t.expr?t:{kind:'constant',value:math.abs(t.value),notation:t.notation,decimalPlaces:t.decimalPlaces,negative:(t.value.n<0)!==flip};
+const glyph=(x,text,size=150,y=118)=>`<text x="${round(x)}" y="${y}" text-anchor="middle" font-size="${size}" class="operator paren" pointer-events="none">${text}</text>`;
+export function operandArt(o,camera,flip=false){
+  if(o.group){
+    flip=flip!==!!o.negated;let x=PAREN,art=glyph(PAREN/2,'(');
+    o.group.forEach((t,i)=>{if(i){art+=`<text x="${x+OPERATOR_GAP/2}" y="97" text-anchor="middle" font-size="76" class="operator" pointer-events="none">${math.negative(t)?'−':'+'}</text>`;x+=OPERATOR_GAP;}const term=addend(t,flip);art+=`<g transform="translate(${x} 0)">${termArt(term,camera)}</g>`;x+=termWidth(term);});
+    return art+glyph(x+PAREN/2,')');
+  }
+  if(o.base){
+    const inner=o.base.base,base=inner?glyph(PAREN/2,'(')+`<g transform="translate(${PAREN} 0)">${operandArt(o.base,camera,flip!==!!o.negated)}</g>`+glyph(PAREN+operandWidth(o.base)+PAREN/2,')'):operandArt(structuredBase(o.base,flip!==!!o.negated),camera);
+    const w=operandWidth(o.base)+(inner?2*PAREN:0);
+    return base+`<text x="${w+EXPONENT/2}" y="52" text-anchor="middle" font-size="84" class="exponent" pointer-events="none">${o.power}</text>`;
+  }
+  return termArt(operandTerm(o),camera);
+}
+// A plain base takes the power's sign colour: −3² shows red threes.
+const structuredBase=(b,flip)=>b.group?{...b,negated:flip!==!!b.negated}:flip?{...b,value:math.neg(b.value)}:b;
 export function mixedParts(value){const n=Math.abs(value.n),d=value.d;return {whole:Math.floor(n/d),remainder:n%d,denominator:d};}
 export function termWidth(term){
-  if(term.expr)return term.expr.operands.reduce((w,o)=>w+termWidth(operandTerm(o)),0)+OPERATOR_GAP*term.expr.ops.length;
+  if(term.expr)return term.expr.operands.reduce((w,o)=>w+operandWidth(o),0)+OPERATOR_GAP*term.expr.ops.length;
   if(term.notation==='mixed'&&term.value.d!==1){const {whole}=mixedParts(term.value);return (whole?String(whole).length*160:0)+160;}
   if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?DOT_GAP+160:0);}
 // A card cut into equal vertical slices; `count` of them remain.
@@ -61,15 +86,15 @@ export function sliceTray(count,denominator,color,camera,label=`${count}/${denom
   return art+`<text x="75" y="104" dominant-baseline="central" text-anchor="middle" class="numeral slice-label" font-size="58" fill="#050504" pointer-events="none">${esc(label)}</text>`;
 }
 // Operand offsets inside a product term, from its left edge.
-export const operandOffsets=term=>{let x=0;return term.expr.operands.map((o,i)=>{if(i)x+=OPERATOR_GAP;const at=x;x+=termWidth(operandTerm(o));return at;});};
+export const operandOffsets=term=>{let x=0;return term.expr.operands.map((o,i)=>{if(i)x+=OPERATOR_GAP;const at=x;x+=operandWidth(o);return at;});};
 // `from` omits leading operands, for a chain whose first pair is being worked out.
 export function operationArt(term,camera,from=0){
   let x=0,art='';
   term.expr.operands.forEach((o,i)=>{
-    if(i<from){x+=termWidth(operandTerm(o))+(i?OPERATOR_GAP:0);return;}
+    if(i<from){x+=operandWidth(o)+(i?OPERATOR_GAP:0);return;}
     if(i){art+=`<text x="${x+OPERATOR_GAP/2}" y="97" text-anchor="middle" font-size="76" class="operator" pointer-events="none">${term.expr.ops[i-1]}</text>`;x+=OPERATOR_GAP;
-      if(o.value.n<0)art+=`<text x="${x-10}" y="62" text-anchor="middle" font-size="54" fill="#8c2a17" pointer-events="none">−</text>`;}
-    const operand=operandTerm(o);art+=`<g class="operand" data-operand="${i}" transform="translate(${x} 0)">${termArt(operand,camera)}</g>`;x+=termWidth(operand);
+      if(math.operandNegative(o))art+=`<text x="${x-10}" y="62" text-anchor="middle" font-size="54" fill="#8c2a17" pointer-events="none">−</text>`;}
+    art+=`<g class="operand${math.structured(o)?' structured':''}" data-operand="${i}" transform="translate(${x} 0)">${operandArt(o,camera)}</g>`;x+=operandWidth(o);
   });
   const left=from?operandOffsets(term)[from]-OPERATOR_GAP:0;
   return `<rect class="operation-frame" x="${left-16}" y="-14" width="${x-left+32}" height="178" rx="20" fill="#fffdf2" fill-opacity=".35" stroke="#6d6655" stroke-width="2" stroke-dasharray="7 6"/>`+art;
@@ -213,6 +238,8 @@ export function renderScene(equation,options={},plan=null,progress=1) {
       else {const target=before.terms.find(a=>a.term.id===plan.command.target)||after.terms.find(a=>a.side===slot.side)||slot;overrides[slot.term.id]={x:slot.x+(target.x-slot.x)*p,y:slot.y+(target.y-slot.y)*p,opacity:1-p};}
       if(!plan.origin&&['move','reorder'].includes(plan.command.type)&&slot.term.id===plan.command.id){const arc=Math.sin(Math.PI*p);if(options.orientation==='vertical'&&plan.command.type==='move')overrides[slot.term.id].x-=55*arc;else {overrides[slot.term.id].y+=190*arc;scene.height=Math.max(scene.height,overrides[slot.term.id].y+200);}}
       if(plan.command.type==='operate'&&progress>.14&&progress<.78)overrides[slot.term.id].opacity=.16;
+      // A parentheses or exponent step: the old cards fade into the new, under a caption.
+      if(plan.caption&&to&&slot.term.id===plan.command.id){const out=1-ease((progress-.22)/.3),inn=ease((progress-.48)/.3),say=Math.min(1,Math.sin(Math.PI*clamp(progress/.95))*1.6);overrides[slot.term.id].term=to.term;overrides[slot.term.id].art=`<g opacity="${round(out)}">${termArt(slot.term,options.camera)}</g><g opacity="${round(inn)}" transform="translate(${round((slot.w-to.w)/2*(1-inn))} 0)">${termArt(to.term,options.camera)}</g><text class="step-caption" x="${round(Math.max(slot.w,to.w)/2)}" y="-34" text-anchor="middle" font-size="40" opacity="${round(say)}">${esc(plan.caption)}</text>`;}
       if(plan.command.type==='combine'&&[plan.command.id,plan.command.target].includes(slot.term.id))overrides[slot.term.id].labelOpacity=progress>=.78&&to?1:Math.max(0,1-progress/.18);
     }
     for(const slot of after.terms)if(!before.terms.some(b=>b.term.id===slot.term.id)){scene.terms.push(slot);overrides[slot.term.id]={opacity:p};}

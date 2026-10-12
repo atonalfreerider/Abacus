@@ -81,3 +81,37 @@ test('combination narration names each carry and borrow it will animate',()=>{
  assert.match(say('503-78'),/a hundred unstacks into ten tens and a ten unstacks into ten ones, each one tray to the right/);
  assert.doesNotMatch(say('3+4'),/tray/);assert.doesNotMatch(say('0.9+0.2'),/tray/);
 });
+test('order-of-operations lessons follow PEMDAS step by step and reach the exact value',async()=>{
+ const {pemdasRank,parseExpression,format,structured}=await import('../src/engine.js');
+ // Independent evaluator: parentheses, exponents, × ÷ left to right, + − left to right.
+ const evaluate=text=>{const tokens=text.match(/\d+|[-+*÷^()]/g);let i=0;
+  const atom=()=>{const t=tokens[i++];if(t==='('){const v=sum();i++;return v;}return Number(t);};
+  const pow=()=>{let b=atom();while(tokens[i]==='^'){i++;b=b**atom();}return b;};
+  const prod=()=>{let v=pow();while(tokens[i]==='*'||tokens[i]==='÷'){const op=tokens[i++],w=pow();v=op==='*'?v*w:v/w;}return v;};
+  const sum=()=>{let v=prod();while(tokens[i]==='+'||tokens[i]==='-'){const op=tokens[i++],w=prod();v=op==='+'?v+w:v-w;}return v;};
+  return sum();};
+ const stage=state=>Math.min(...state.left.map(pemdasRank));
+ for(const lesson of lessons.filter(l=>l.pemdas)){
+  const tutor=new Tutor(lesson,29);
+  for(let i=0;i<=200;i++){
+   const problem=i?tutor.practice():lesson.example,m=new EquationModel(problem);m.leftToRight=true;
+   let previous=0,steps=0,command;
+   while((command=m.nextStep())){
+    const now=command.type==='evaluate'?pemdasRank(m.state.left.find(t=>t.id===command.id)):3;
+    assert.ok(now>=previous,`${problem}: a ${['P','E','MD','AS'][now]} step after ${['P','E','MD','AS'][previous]}`);previous=Math.max(previous,Math.min(now,stage(m.state)));
+    if(command.type==='combine'){const ids=m.state.left.map(t=>t.id);assert.ok(ids.indexOf(command.target)===0&&ids.indexOf(command.id)===1,`${problem}: + and − go left to right`);}
+    assert.ok(narrate(command,m.state,true).length>10);m.dispatch(command);assert.ok(++steps<24,problem);
+   }
+   assert.ok(m.state.left.length<=1,problem);assert.equal(m.state.left.length?Number(format(m.state.left[0].value)):0,evaluate(problem),`${problem} = ${evaluate(problem)}`);
+   assert.ok(Number.isInteger(evaluate(problem)),`${problem} has a whole-number answer`);
+  }
+ }
+ assert.ok(parseExpression('(3+5)*2')[0].expr.operands.some(structured),'parentheses stay visible until worked out');
+});
+test('each launch deals new worked examples',async()=>{
+ const {dealExamples,exampleOf}=await import('../src/mvc/tutor.js');
+ const deal=seed=>{dealExamples(seed);return lessons.map(l=>[exampleOf(l)].flat().join(';')).join('|');};
+ const a=deal(1),b=deal(2),c=deal(3);assert.notEqual(a,b);assert.notEqual(b,c);
+ for(const lesson of lessons)if(!lesson.graph){const m=new EquationModel(exampleOf(lesson));m.leftToRight=!!lesson.pemdas;let n=0;while(m.nextStep()&&n++<30)m.dispatch(m.nextStep());assert.ok(finished(m),lesson.id);}
+ for(const lesson of lessons)delete lesson.today;
+});

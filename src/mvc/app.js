@@ -3,7 +3,7 @@ import { Controller } from './controller.js';
 import { math } from './model.js';
 import { Surface } from './surface.js';
 import { Dragger } from './drag.js';
-import { Tutor,lessons,narrate,feedback,finished } from './tutor.js';
+import { Tutor,lessons,narrate,feedback,finished,dealExamples,exampleOf } from './tutor.js';
 import { haptic } from '../haptics.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
@@ -74,22 +74,30 @@ for(const operation of ['multiply','divide'])$(operation).onclick=()=>safe(()=>c
 $('pause').onclick=()=>{if(controller.clock.playing)controller.seek(controller.clock.progress);else controller.clock.resume(performance.now());refresh();};
 $('skip').onclick=()=>controller.finish();$('progress').oninput=event=>controller.seek(Number(event.target.value));
 
+// An example as the learner will see it: 3 + 5 × 3, 2 × (9 − 4), 2³.
+function typesetExample(example){
+ return [example].flat().map(text=>{try{if(/y/.test(text))throw 0;return text.includes('=')?math.equationText(math.parseEquation(text)):math.sideText(math.parseExpression(text));}catch{return text.replace(/\*/g,' × ').replace(/\^(\d)/g,(_,d)=>'⁰¹²³⁴⁵⁶'[d]).replace(/-/g,'−');}}).join(' and ');
+}
+const answer=()=>controller.model.expression?`The answer is ${controller.status()}`:controller.status();
 // Tutor: a worked example step by step, then a fresh problem of the same shape.
+// Every launch deals new worked examples, so the lessons differ each time the app opens.
+// (?examples=written keeps the written examples, for tests and recorded videos.)
+if(new URLSearchParams(location.search).get('examples')!=='written')dealExamples(crypto.getRandomValues(new Uint32Array(1))[0]);
 $('open-tutor').onclick=()=>$('lesson-dialog').showModal();
 {let group='';for(const lesson of lessons){
  if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
- const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${[lesson.example].flat().join(' and ').replace(/\*/g,' × ').replace(/÷/g,' ÷ ').replace(/\^2/g,'²')}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
+ const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${typesetExample(exampleOf(lesson))}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
 }}
 async function startLesson(lesson){
  stopPlaying();tutor=new Tutor(lesson);tutor.found=new Set();hint=null;entry.active=false;$('entry-bar').hidden=true;
- $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);
- if(lesson.graph){(await showGraph(true)).setEquations(lesson.example);}
- else{if(!$('graph-mode').hidden)showGraph(false);safe(()=>controller.load(lesson.example));}
+ $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);controller.model.leftToRight=!!lesson.pemdas;
+ if(lesson.graph){(await showGraph(true)).setEquations(exampleOf(lesson));}
+ else{if(!$('graph-mode').hidden)showGraph(false);safe(()=>controller.load(exampleOf(lesson)));}
  $('tutor-bar').hidden=false;$('tutor-title').textContent=lesson.title;
  say(`${lesson.intro} Watch: press Next step, or Play all.`);refresh();
 }
 function say(text,tone=''){$('tutor-prompt').textContent=text;$('tutor-prompt').dataset.tone=tone;}
-function leaveTutor(){stopPlaying();tutor=null;hint=null;$('tutor-bar').hidden=true;$('tutor-bar').classList.remove('graph-lesson');controller.render();}
+function leaveTutor(){stopPlaying();tutor=null;hint=null;controller.model.leftToRight=false;$('tutor-bar').hidden=true;$('tutor-bar').classList.remove('graph-lesson');controller.render();}
 const lessonDone=()=>tutor.lesson.graph?(tutor.phase==='example'?!!tutor.shown:!!tutor.solved):finished(controller.model);
 function refreshTutor(){
  const example=tutor.phase==='example',done=lessonDone();
@@ -108,8 +116,8 @@ function exampleStep(){
   tutor.shownCount=i+1;tutor.shown=tutor.shownCount>=goals.length;const worked=goal?graph.interceptText(goal):'';
   say(`${goal?tutor.lesson.watch(graph.pointText(goal),kind).replace(/-/g,'−'):'Nothing to find.'}${worked?` ${worked}.`:''} ${tutor.shown?'Now try one yourself: press Your turn.':'Press Next step for the other axis.'}`,tutor.shown?'done':'');refresh();return false;}
  const command=controller.model.nextStep();
- if(!command){say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');stopPlaying();refresh();return false;}
- say(narrate(command,controller.model.state));
+ if(!command){say(`${answer()}. Now try one yourself: press Your turn.`,'done');stopPlaying();refresh();return false;}
+ say(narrate(command,controller.model.state,controller.model.leftToRight));
  safe(()=>controller.as('tutor',()=>controller.execute(command)));return true;
 }
 $('tutor-step').onclick=()=>{stopPlaying();exampleStep();};
@@ -118,7 +126,7 @@ $('tutor-play').onclick=()=>{if(playing)return stopPlaying();playing=true;$('tut
 // While playing, advance once each animation settles, with a pause to read the narration.
 controller.addEventListener('change',()=>{
  if(tutor&&!controller.busy&&!finished(controller.model))tutor.announced=false;
- if(tutor?.phase==='example'&&!controller.busy&&finished(controller.model)&&!tutor.announced){tutor.announced=true;stopPlaying();say(`${controller.status()}. Now try one yourself: press Your turn.`,'done');refresh();}
+ if(tutor?.phase==='example'&&!controller.busy&&finished(controller.model)&&!tutor.announced){tutor.announced=true;stopPlaying();say(`${answer()}. Now try one yourself: press Your turn.`,'done');refresh();}
  if(playing&&!controller.busy&&!playTimer)playTimer=setTimeout(()=>{playTimer=0;if(playing&&!controller.busy&&!dragger.active)exampleStep();else if(playing)controller.dispatchEvent(new Event('change'));},1100);
 });
 function practice(){
@@ -127,8 +135,8 @@ function practice(){
 $('tutor-turn').onclick=practice;$('tutor-new').onclick=practice;
 $('tutor-next').onclick=()=>{const i=lessons.indexOf(tutor.lesson);startLesson(lessons[(i+1)%lessons.length]);};
 $('tutor-close').onclick=leaveTutor;
-$('tutor-hint').onclick=()=>{if(tutor.lesson.graph){tutor.hints++;say(`Hint: ${tutor.lesson.hint}`,'hint');return;}const command=controller.model.nextStep();if(!command)return;tutor.hints++;hint=command.type==='operate'?null:command;controller.render();say(`Hint: ${narrate(command,controller.model.state)}`,'hint');};
-$('tutor-show').onclick=()=>{if(tutor.lesson.graph){const kind=goalsOf(tutor.lesson).find(k=>!tutor.found?.has(k))||goalsOf(tutor.lesson)[0],goal=graph.goal(kind);tutor.found?.add(kind);tutor.solved=goalsOf(tutor.lesson).every(k=>tutor.found?.has(k)??true);if(goal){graph.goTo(goal);const worked=graph.interceptText(goal);say(`Here it is: (${graph.pointText(goal).replace(/-/g,'−')}).${worked?` ${worked}.`:''} ${tutor.solved?'Try New problem to find one yourself.':'Now find the other one.'}`,'hint');}refresh();return;}const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
+$('tutor-hint').onclick=()=>{if(tutor.lesson.graph){tutor.hints++;say(`Hint: ${tutor.lesson.hint}`,'hint');return;}const command=controller.model.nextStep();if(!command)return;tutor.hints++;hint=command.type==='operate'?null:command;controller.render();say(`Hint: ${narrate(command,controller.model.state,controller.model.leftToRight)}`,'hint');};
+$('tutor-show').onclick=()=>{if(tutor.lesson.graph){const kind=goalsOf(tutor.lesson).find(k=>!tutor.found?.has(k))||goalsOf(tutor.lesson)[0],goal=graph.goal(kind);tutor.found?.add(kind);tutor.solved=goalsOf(tutor.lesson).every(k=>tutor.found?.has(k)??true);if(goal){graph.goTo(goal);const worked=graph.interceptText(goal);say(`Here it is: (${graph.pointText(goal).replace(/-/g,'−')}).${worked?` ${worked}.`:''} ${tutor.solved?'Try New problem to find one yourself.':'Now find the other one.'}`,'hint');}refresh();return;}const command=controller.model.nextStep();if(!command)return;hint=null;say(`Watch: ${narrate(command,controller.model.state,controller.model.leftToRight)}`,'hint');safe(()=>controller.as('tutor',()=>controller.execute(command)));};
 controller.addEventListener('commit',event=>{
  hint=null;if(!tutor||tutor.phase!=='practice')return;
  const {transaction,source}=event.detail;if(source!=='learner'&&!finished(controller.model))return;

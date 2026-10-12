@@ -25,7 +25,11 @@ export function planTransition(transaction) {
     if(a.value.d===1&&b.value.d===1){events=regroup(a.value.n,b.value.n);units=unitPlan(b.value.n,a.value.n,b.id,a.id);}
     else {const sa=numberSpec(a),sb=numberSpec(b);if(sa&&sb){const precision=Math.max(-sa.minPlace,-sb.minPlace),scale=10n**BigInt(precision),aa=BigInt(a.value.n)*scale/BigInt(a.value.d),bb=BigInt(b.value.n)*scale/BigInt(b.value.d);if(aa<=BigInt(Number.MAX_SAFE_INTEGER)&&aa>=-BigInt(Number.MAX_SAFE_INTEGER)&&bb<=BigInt(Number.MAX_SAFE_INTEGER)&&bb>=-BigInt(Number.MAX_SAFE_INTEGER)){units=unitPlan(Number(bb),Number(aa),b.id,a.id);units.placeShift=-precision;}}else events=[{type:'fraction',denominators:[a.value.d,b.value.d],result:math.add(a.value,b.value)}];}
   }
-  if(command.type==='evaluate'){const op=operationPlan(transaction);if(op)return {before,after,command,events:[],units:null,op,duration:Math.round(op.duration*1000)};events=[{type:'evaluate'}];}
+  if(command.type==='evaluate'){
+   // Parentheses and powers are worked out in place under a caption; × and ÷ animate with cards.
+   const term=[...before.left,...before.right].find(t=>t.id===command.id),next=[...after.left,...after.right].find(t=>t.id===command.id);
+   if(term?.expr&&math.pemdasRank(term)<2)return {before,after,command,events:[{type:'evaluate'}],units:null,caption:math.stepCaption(term,next),duration:1700};
+   const op=operationPlan(transaction);if(op)return {before,after,command,events:[],units:null,op,duration:Math.round(op.duration*1000)};events=[{type:'evaluate'}];}
   if(command.type==='move')events=[{type:'cross',id:command.id}];
   if(command.type==='operate')events=[{type:command.operation,amount:math.parseScalar(command.amount)}];
   return {before,after,command,events,units,duration:units?Math.max(900,units.duration*1000+200):events.length?1200:650};

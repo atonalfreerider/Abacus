@@ -85,3 +85,5 @@ body.graph-active #workspace,body.graph-active .original-dock,body.graph-active 
 @media(prefers-reduced-motion:reduce){.collision{animation:none;opacity:.8}}
 .intercept{margin:8px 0;padding:6px 10px 8px;border-radius:10px;background:#fff3d6;border:1px solid #e0b768}.intercept h2{margin:0 0 4px!important;color:#7a520c!important}
 .intercept ol{margin:0 0 4px;padding-left:1.3em;font-size:16px;line-height:1.5}.intercept ol li:last-child{font-weight:bold}.intercept p{margin:0;font-size:13px}
+/* Order of operations: parentheses and exponents drawn in the numerals' typeface. */
+.paren{font-family:Georgia,serif;fill:#3d3a30}.exponent{font-family:Georgia,serif;fill:#25241e}.step-caption{font-family:Georgia,serif;fill:#2f5d6b;paint-order:stroke;stroke:#fffdf4;stroke-width:6px}
