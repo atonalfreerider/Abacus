@@ -1,0 +1,32 @@
+{
+  "appId": "com.metavirtuoso.abacus",
+  "appName": "Abacus",
+  "webDir": "dist-app",
+  "loggingBehavior": "debug",
+  "backgroundColor": "#f7f0df",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": false,
+    "backgroundColor": "#f7f0df"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 700,
+      "launchAutoHide": true,
+      "backgroundColor": "#f7f0df",
+      "androidScaleType": "CENTER_INSIDE",
+      "showSpinner": false,
+      "launchFadeOutDuration": 250
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#f7f0df",
+      "overlaysWebView": false
+    }
+  }
+}

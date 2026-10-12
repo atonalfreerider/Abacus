@@ -13,3 +13,7 @@ public/pixel-baselines/
 .claude/
 .cache/
 videos/
+dist-app/
+android/keystore.properties
+*.jks
+*.keystore

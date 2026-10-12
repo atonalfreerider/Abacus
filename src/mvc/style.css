@@ -87,3 +87,46 @@ body.graph-active #workspace,body.graph-active .original-dock,body.graph-active 
 .intercept ol{margin:0 0 4px;padding-left:1.3em;font-size:16px;line-height:1.5}.intercept ol li:last-child{font-weight:bold}.intercept p{margin:0;font-size:13px}
 /* Order of operations: parentheses and exponents drawn in the numerals' typeface. */
 .paren{font-family:Georgia,serif;fill:#3d3a30}.exponent{font-family:Georgia,serif;fill:#25241e}.step-caption{font-family:Georgia,serif;fill:#2f5d6b;paint-order:stroke;stroke:#fffdf4;stroke-width:6px}
+/* Peek: a firm or long press shows what a card holds. */
+#peek{position:absolute;z-index:5;max-width:min(340px,calc(100% - 16px));padding:10px 14px;border:1px solid #6d6655;border-radius:14px;background:#fffaf0f2;box-shadow:0 10px 24px #0003;font-size:15px;line-height:1.4;pointer-events:none}
+#peek h2{margin:0 0 4px;font-size:13px;font-weight:normal;text-transform:uppercase;letter-spacing:.07em;color:#7a7263}#peek ol{margin:0;padding-left:1.4em;font-size:18px}#peek ol li:last-child{font-weight:bold}#peek p{margin:4px 0 0;font-size:13px;color:#5d584c}
+/* Touch devices and the native apps: no page zoom on double tap, no text selection or
+   callouts on cards, and room for notches and home indicators. */
+html{touch-action:manipulation;-webkit-text-size-adjust:100%}
+#stage,#graph-stage,.original-dock,#transport{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button{-webkit-tap-highlight-color:transparent}
+/* Safe areas: env() in browsers and on iOS; Capacitor injects --safe-area-inset-* on
+   Android WebViews whose env() is unreliable. */
+body{padding:max(5px,env(safe-area-inset-top),var(--safe-area-inset-top,0px)) max(8px,env(safe-area-inset-right),var(--safe-area-inset-right,0px)) max(5px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left),var(--safe-area-inset-left,0px))}
+/* Fingers need room: on touch screens every button is at least 38 px tall. */
+@media(pointer:coarse){nav button,#transport button,.tutor-actions button,.graph-bar button,.graph-bar select,#graph-points button,dialog button,.area-actions button{min-height:38px}#progress{height:30px}}
+/* Phones in portrait: the dock becomes a 3 × 3 grid with 44 px keys, the counting pad
+   in the middle, operators either side, and back, clear, parentheses and solve below. */
+@media(max-width:560px) and (min-height:521px),(max-height:520px) and (min-aspect-ratio:3/2){
+ .original-dock{--key:44px;display:grid;grid-template-columns:auto auto auto;grid-template-rows:auto auto auto;gap:6px 12px;padding:12px 14px 12px;border-radius:30px;width:auto;margin-top:24px;align-items:center;justify-items:center}
+ .original-dock>:nth-child(1){grid-area:1/1/3/2}.original-dock>:nth-child(3){grid-area:1/2/3/3}.original-dock>:nth-child(4){grid-area:1/3/3/4}
+ .original-dock>:nth-child(2){grid-area:3/1;display:flex;width:auto;gap:6px}.original-dock>:nth-child(2)>button{width:var(--key);font-size:16px}
+ .original-dock>:nth-child(5){display:contents}.original-dock #solve{grid-area:3/3;width:calc(var(--key)*2 + 6px);font-size:20px}.original-dock .parentheses{grid-area:3/2;width:calc(var(--key)*3 + 6px)}
+ .original-dock button{font-size:22px}.dock-operators{gap:6px}
+ .original-dock .decimal-fold{width:24px;height:24px;font-size:13px;padding:5px 0 0 9px}.original-dock .deploy-triangle{height:20px}
+}
+@media(max-width:380px) and (min-height:521px){.original-dock{--key:40px;gap:5px 8px;padding:10px}}
+/* Phones in landscape: the equation space on the left, the dock beside it on the right. */
+@media(max-height:520px) and (min-aspect-ratio:3/2){
+ body{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto minmax(0,1fr) auto auto auto;column-gap:10px}
+ header,#tutor-bar{grid-column:1/-1}#workspace{grid-column:1;grid-row:3}#entry-bar{grid-column:1;grid-row:4}#transport{grid-column:1;grid-row:5}#feedback{grid-column:1;grid-row:6}
+ .original-dock{--key:38px;grid-column:2;grid-row:3/7;align-self:center;margin:18px 0 0;padding:8px 10px;gap:5px 8px;border-radius:24px}
+ .original-dock button{font-size:19px}.original-dock>:nth-child(2)>button{font-size:14px}.original-dock #solve{font-size:17px}
+ #graph-mode{grid-column:1/-1;grid-row:3/7}
+}
+.native #open-tests{display:none}
+.native body{overscroll-behavior:none}
+/* Tablets in portrait: room for full-size keys. */
+@media(min-width:700px) and (max-width:900px) and (min-height:900px){.original-dock{--key:50px;gap:22px;padding:16px 34px}.dock-long{width:110px}.original-dock button{font-size:28px}}
+/* Graph on phones: compact controls so the plane gets the room. */
+@media(max-width:560px){
+ .graph-bar{gap:4px 5px}#graph-equations{flex:1 1 100%;flex-direction:column;gap:4px}.graph-eq{width:100%}.graph-eq input{width:100%;font-size:16px;padding:2px 4px}
+ .graph-bar>button,.graph-bar select{font-size:13px;padding:3px 8px;min-height:34px}#graph-examples{max-width:120px}.graph-advanced{font-size:12px;padding:2px 6px}
+ #graph-stage{min-height:50vh;border-radius:16px}#graph-panel{max-height:32vh;padding:8px 10px}#graph-readout .point{font-size:17px}
+}
+.about{margin:14px 0 0;font-size:13px}.about a{color:#2f5d6b}

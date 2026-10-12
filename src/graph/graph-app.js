@@ -69,7 +69,10 @@ export class Graph extends EventTarget {
   resize() {
     const { clientWidth: w, clientHeight: h } = this.stage;
     if (!w || !h) return;
+    // A rotation or a big change of size refits the picture rather than cropping it.
+    const { width: w0, height: h0 } = this.view, refit = this.visible && (Math.abs(w - w0) > w0 * .25 || Math.abs(h - h0) > h0 * .25);
     Object.assign(this.view, { width: w, height: h });
+    if (refit) this.fit();
     this.svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     this.dirty = true;
   }
