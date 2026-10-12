@@ -13,7 +13,13 @@ export function stackGeometry(exponent,camera='front') {
   const meta=placeMetadata(exponent),pitch=cameras[camera].pitch;
   return {...meta,pitch,depth:meta.cardCount*pitch,dx:meta.cardCount*pitch,dy:meta.cardCount*pitch};
 }
-export function face(x,y,size,color,meta,attributes='') {
+// Behind the top card a stack shows card stock: cream edges with fine separators, and
+// every tenth card edged in the stack's colour, so a hundred reads as ten tens. The
+// back card outlines the stack. (Near-black edges on every layer fused into a slab.)
+export const cardEdge={paper:'#f6f0de',line:'#b2aa92',base:'#55513f',group:{blue:'#2b6e8e',red:'#b0432b',green:'#5d8a39'}};
+export const cardRole=(layer,count)=>layer===1?'top':layer===count?'base':layer%10===1?'group':'support';
+export function face(x,y,size,color,meta,attributes='',role='top') {
+  if(role!=='top'){const stroke=role==='base'?cardEdge.base:role==='group'?cardEdge.group[color]:cardEdge.line;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="${cardEdge.paper}" stroke="${stroke}" stroke-width="${role==='support'?.45:1.1}"/></g>`;}
   const border=1+meta.group*.55;
   if(meta.exponent<0){const inner=round(size*meta.innerScale),inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="#191a16" stroke-width="1"/><rect data-inner-area="${decimalUnit(meta.exponent)}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
 
@@ -113,7 +119,7 @@ const stackCache=new Map();
 export const stackIds=body=>[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
 export function parseStackId(id){const [,color,exp,camera]=id.split('-');return {color,camera,meta:stackGeometry(Number(exp.replace('m','-')),camera)};}
 // Vector card faces for one cached stack; the browser may swap in a raster of the same drawing.
-export function stackContent(id){if(stackCache.has(id))return stackCache.get(id);const {color,meta}=parseStackId(id);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`);stackCache.set(id,content);return content;}
+export function stackContent(id){if(stackCache.has(id))return stackCache.get(id);const {color,meta}=parseStackId(id);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`,cardRole(layer,meta.cardCount));stackCache.set(id,content);return content;}
 function stackDefinitions(body){return '<defs>'+stackIds(body).map(id=>`<g id="${id}">${stackContent(id)}</g>`).join('')+'</defs>';}
 export const textureSources=[['blue',25],['red',23],['green',2],['paper',24]];
 export function textureDefs(){return textureSources.map(([name,id])=>`<pattern id="${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('');}
@@ -243,7 +249,7 @@ export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
     else if(comma){
      // Faces closer than ~1.2px read as one edge band, so draw only that many layers.
      const meta=stackGeometry(token.place+shift,camera),layers=Math.min(meta.cardCount,Math.max(1,Math.ceil(meta.cardCount*pitch*compression/1.2)));let drawing='';
-     for(let k=layers;k>=1;k--){const d=(k/layers)*meta.cardCount*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta);}
+     for(let k=layers;k>=1;k--){const d=(k/layers)*meta.cardCount*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta,'',cardRole(k,layers));}
      particles+=`<g data-unit="${token.id}" opacity="${round(1-ease((f-.75)/.25))}">${drawing}</g>`;
     }
     else particles+=draw(token,point);

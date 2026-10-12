@@ -2,14 +2,15 @@
 // instead of one hundred pattern-filled faces, so animation frames stay cheap to paint.
 // drawFace mirrors view.face(); the vector drawing remains the reference and the
 // fallback until the textures decode.
-import {parseStackId,textureSources} from './view.js';
+import {parseStackId,textureSources,cardEdge,cardRole} from './view.js';
 const SCALE=3,SIZE=43,MARGIN=2;
 let images=null;
 const loadTextures=()=>images??=Promise.all(textureSources.map(([name,id])=>new Promise((resolve,reject)=>{
  const image=new Image();image.onload=()=>resolve([name,image]);image.onerror=reject;image.src=`./textures/swf-${id}.jpg`;
 }))).then(Object.fromEntries);
-function drawFace(ctx,x,y,color,meta,fill){
+function drawFace(ctx,x,y,color,meta,fill,role='top'){
  ctx.beginPath();ctx.roundRect(x,y,SIZE,SIZE,5);
+ if(role!=='top'){ctx.fillStyle=cardEdge.paper;ctx.fill();ctx.lineWidth=role==='support'?.45:1.1;ctx.strokeStyle=role==='base'?cardEdge.base:role==='group'?cardEdge.group[color]:cardEdge.line;ctx.stroke();return;}
  if(meta.exponent<0){
   ctx.globalAlpha=.12;ctx.fillStyle=fill.paper;ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=1;ctx.strokeStyle='#191a16';ctx.stroke();
   const inner=SIZE*meta.innerScale,inset=(SIZE-inner)/2;ctx.fillStyle=fill[color];ctx.fillRect(x+inset,y+inset,inner,inner);return;
@@ -30,7 +31,7 @@ export function rasterStack(id){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=Math.ceil(extent*SCALE);
   const ctx=canvas.getContext('2d');ctx.scale(SCALE,SCALE);ctx.translate(MARGIN,MARGIN);
   const fill={};for(const [name,image] of Object.entries(textures)){fill[name]=ctx.createPattern(image,'repeat');fill[name].setTransform(new DOMMatrix().scale(150/image.naturalWidth));}
-  for(let layer=meta.cardCount;layer>=1;layer--)drawFace(ctx,layer*meta.pitch,layer*meta.pitch,color,meta,fill);
+  for(let layer=meta.cardCount;layer>=1;layer--)drawFace(ctx,layer*meta.pitch,layer*meta.pitch,color,meta,fill,cardRole(layer,meta.cardCount));
   return new Promise(resolve=>canvas.toBlob(resolve,'image/png')).then(blob=>{if(!blob)return null;const image=`<image href="${URL.createObjectURL(blob)}" x="${-MARGIN}" y="${-MARGIN}" width="${canvas.width/SCALE}" height="${canvas.height/SCALE}"/>`;ready.set(id,image);return image;});
  }).catch(()=>null));
  return cache.get(id);
