@@ -1,5 +1,8 @@
 name: Publish Abacus to GitHub Pages
+# The web version (and its privacy page, linked from the store listings) follows main.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
