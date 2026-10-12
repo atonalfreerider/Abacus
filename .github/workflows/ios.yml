@@ -38,9 +38,7 @@ jobs:
             xcrun simctl install "$UDID" "$APP"
             xcrun simctl launch "$UDID" com.metavirtuoso.abacus
             sleep 12
-            xcrun simctl io "$UDID" screenshot "screenshots/$kind-equation.png"
-            xcrun simctl openurl "$UDID" "abacus://open/graph"; sleep 5
-            xcrun simctl io "$UDID" screenshot "screenshots/$kind-graph.png"
+            xcrun simctl io "$UDID" screenshot "screenshots/$kind.png"
             xcrun simctl shutdown "$UDID"
           done
           (cd build/Build/Products/Release-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/Abacus-simulator.app.zip" App.app)
