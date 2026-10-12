@@ -7,7 +7,7 @@ import {renderEquation} from '../src/mvc/view.js';
 
 const value=text=>math.format(math.parseScalar(text));
 test('× and ÷ between numbers stay as one unevaluated term with the exact value',()=>{
- for(const [input,text,result] of [['23*4','23 × 4','92'],['2*3*4','2 × 3 × 4','24'],['156÷12','156 ÷ 12','13'],['156:12','156 ÷ 12','13'],['7÷4','7 ÷ 4','7/4'],['2*(3+4)','2 × 7','14'],['-2*3','−2 × 3','-6'],['3*(-4)','3 × (−4)','-12'],['6÷1/2','6 ÷ 1/2','12']]){
+ for(const [input,text,result] of [['23*4','23 × 4','92'],['2*3*4','2 × 3 × 4','24'],['156÷12','156 ÷ 12','13'],['156:12','156 ÷ 12','13'],['7÷4','7 ÷ 4','7/4'],['2*(3+4)','2 × (3 + 4)','14'],['(6-1)^2','(6 − 1)²','25'],['-3^2','−3²','-9'],['(-3)^2','(−3)²','9'],['10÷(3+2)×4','10 ÷ (3 + 2) × 4','8'],['-2*3','−2 × 3','-6'],['3*(-4)','3 × (−4)','-12'],['6÷1/2','6 ÷ 1/2','12']]){
   const [t]=math.parseExpression(input);assert.ok(t.expr,input);assert.equal(math.sideText([t]),text);assert.equal(math.format(t.value),result);
   assert.equal(value(math.sideText([t]).replace('−','-')),result,'text round-trips: '+input);
  }
@@ -122,4 +122,23 @@ test('division plans fall back for fraction answers and deal reduced strips',()=
  assert.equal(divisionPlan(math.parseExpression('6/2÷4')[0],math.evaluateStep(math.parseExpression('6/2÷4')[0])),null);
  const t=math.parseExpression('8÷6')[0],plan=divisionPlan(t,math.evaluateStep(t));assert.equal(plan.pieces,3,'8 ÷ 6 deals thirds, matching 1⅓');
  const c=new Controller({render(){}},'3-3+1/2=x');c.step(0);for(const p of [0,.5,.9])assert.doesNotMatch(renderEquation(c.model.state,{},c.clock.plan,p),/NaN|undefined/);
+});
+
+test('order of operations: parentheses, then powers, then × and ÷ from the left, each value kept',()=>{
+ const steps=input=>{const out=[];let t=math.parseExpression(input)[0];while(t){out.push(math.termText(t));const next=math.evaluateStep(t);if(next)assert.deepEqual(next.value,t.value,'every step keeps the value: '+input);t=next;}return out;};
+ assert.deepEqual(steps('(3+5)*2'),['(3 + 5) × 2','8 × 2','16']);
+ assert.deepEqual(steps('2*3^2'),['2 × 3²','2 × 9','18']);
+ assert.deepEqual(steps('18÷3^2'),['18 ÷ 3²','18 ÷ 9','2'],'a power is worked out where it stands, never spread into the chain');
+ assert.deepEqual(steps('2^3'),['2³','2 × 2 × 2','4 × 2','8'],'a lone power is written out as repeated multiplication');
+ assert.deepEqual(steps('(1+2*3)*2'),['(1 + 2 × 3) × 2','(1 + 6) × 2','7 × 2','14'],'inside parentheses, × before +');
+ assert.deepEqual(steps('(8-2-1)^2'),['(8 − 2 − 1)²','(6 − 1)²','5²','5 × 5','25'],'sums inside parentheses go left to right');
+ assert.deepEqual(steps('12÷3*2'),['12 ÷ 3 × 2','4 × 2','8'],'÷ and × go left to right');
+ for(const bad of ['2^x','2^1','2^7','2^2^2','x^2=4'])assert.throws(()=>math.parseEquation(bad.includes('=')?bad:bad+'=0'),undefined,bad);
+});
+test('a minus outside parentheses or before a power stays where it was typed',()=>{
+ const [t]=math.parseExpression('-(4+3)');assert.equal(math.sideText([t]),'−(4 + 3)');assert.equal(math.format(t.value),'-7');
+ const e=math.parseExpression('10-(4+3)');assert.equal(math.sideText(e),'10 − (4 + 3)');assert.equal(math.format(math.add(e[0].value,e[1].value)),'3');
+ assert.equal(math.sideText(math.parseExpression('5*(2-7)')),'5 × (2 − 7)');assert.equal(math.negative(math.parseExpression('(2-7)*5')[0]),false,'the sum inside is negative, the term is not');
+ const m=new EquationModel('x+(4+3)=10');m.dispatch({type:'move',id:m.state.left[1].id,side:'right'});assert.equal(math.equationText(m.state),'x = 10 − (4 + 3)');
+ while(m.nextStep())m.dispatch(m.nextStep());assert.equal(math.equationText(m.state),'x = 3');
 });

@@ -16,7 +16,7 @@ async function load(text){await page.eval(`(()=>{const i=document.getElementById
 async function drag(from,to,steps=30){await page.mouse('mouseMoved',from.x,from.y,{buttons:0});await page.mouse('mousePressed',from.x,from.y);for(let i=1;i<=steps;i++){await page.mouse('mouseMoved',from.x+(to.x-from.x)*i/steps,from.y+(to.y-from.y)*i/steps);await wait(16);}await wait(250);await page.mouse('mouseReleased',to.x,to.y);}
 const idle=async(limit=9000)=>{for(let t=0;t<limit;t+=100){if(!(await page.eval(`document.getElementById('skip')&&document.getElementById('solve').disabled`)))return;await wait(100);}};
 async function check(name,fn,viewport){
- page=await launch(origin+'/',viewport);
+ page=await launch(origin+'/?examples=written',viewport);
  try{await wait(400);await fn();if(page.errors.length)throw Error('page errors: '+page.errors.join(' | '));results.push([name,null]);}
  catch(e){results.push([name,e.message]);}
  finally{await page.close();}
@@ -58,6 +58,19 @@ try{
   const problem=await status();if(problem==='x + 9 − 7 = 6')throw Error('practice repeated the example');
   await page.eval(`document.getElementById('tutor-hint').click()`);await wait(200);
   expect(await page.eval(`!!document.querySelector('#equation-svg .hinted')&&!!document.querySelector('#equation-svg .hint-arrow')`),true,'hint highlight and arrow');
+ });
+ await check('tutor PEMDAS lesson: the worked example plays in order of operations, then the learner solves a fresh one',async()=>{
+  await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`[...document.querySelectorAll('#lessons button')].find(b=>b.textContent.includes('All of PEMDAS')).click()`);await wait(900);
+  const prompts=[];
+  for(let i=0;i<14&&!/Now try one yourself/.test(prompts.at(-1)||'');i++){await page.eval(`document.getElementById('skip').click()`);await page.eval(`document.getElementById('tutor-step').click()`);await wait(250);prompts.push(await page.eval(`document.getElementById('tutor-prompt').textContent`));}
+  const order=prompts.map(p=>/^Parentheses/.test(p)?'P':/^Exponents|^An exponent/.test(p)?'E':/^Work out/.test(p)?'MD':/^Last, add/.test(p)?'AS':'').filter(Boolean);
+  if(order.join(' ')!=='P E MD MD AS AS')throw Error('steps: '+order.join(' ')+' | '+prompts.join(' / '));
+  if(!/^The answer is \d+/.test(prompts.at(-1)))throw Error(prompts.at(-1));
+  await page.eval(`document.getElementById('tutor-turn').click()`);await wait(400);
+  for(let i=0;i<14&&!/Done/.test(await page.eval(`document.getElementById('tutor-prompt').textContent`));i++){await page.eval(`document.getElementById('skip').click()`);await page.eval(`document.getElementById('solve').click()`);await wait(200);}
+  await page.eval(`document.getElementById('skip').click()`);await wait(200);
+  const done=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Done: −?\d+\. Well done/.test(done))throw Error(done);
+  await page.eval(`document.getElementById('tutor-close').click()`);
  });
  await check('dragging stays at frame rate',async()=>{
   await load('987654+123456-555555=x+999');const all=await terms(),card=all[1],m=await mirror();

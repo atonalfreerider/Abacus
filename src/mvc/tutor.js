@@ -47,6 +47,28 @@ export const lessons = [
     make: r => { const p = r(1, 9), q = r(10 - p, 9); return `${r(1, 8)}${p}+${r(1, 8)}${q}`; } },
   { id: 'borrow', group: 'Adding', title: 'Borrowing', example: '503-78', intro: 'A card unstacks into ten of the place below so the red cards have partners.',
     make: r => { const a = r(3, 9) * 100 + r(0, 9), b = r(11, 99); return `${a}-${b}`; } },
+  // Order of operations (PEMDAS): Parentheses, Exponents, Multiplication and Division
+  // from the left, Addition and Subtraction from the left. These lessons work + and −
+  // left to right too, so every step follows the rule as it is taught.
+  { id: 'pemdas-multiply', group: 'Order of operations', pemdas: true, title: 'Multiply before adding', example: '3+4*2',
+    intro: '× and ÷ come before + and −. Work out the product first (tap it), then add the cards.',
+    make: r => { const a = r(1, 9), b = r(2, 5), c = r(2, 6); return pick(r, [`${a}+${b}*${c}`, `${b}*${c}+${a}`, `${b * c + a}-${b}*${c}`]); } },
+  { id: 'pemdas-left-right', group: 'Order of operations', pemdas: true, title: '× and ÷ from left to right', example: '12÷3*2',
+    intro: 'Multiplication and division share a step. Work them from left to right: 12 ÷ 3 × 2 is 4 × 2, not 12 ÷ 6.',
+    make: r => { const b = r(2, 6), q = r(2, 9), c = r(2, 5), d = pick(r, [2, 3, 4, 6]), a = d * r(1, 4); return r(0, 1) ? `${b * q}÷${b}*${c}` : `${a}*${c}÷${d}`; } },
+  { id: 'pemdas-parentheses', group: 'Order of operations', pemdas: true, title: 'Parentheses first', example: '(3+5)*2',
+    intro: 'Whatever sits in parentheses is worked out first, even an addition.',
+    make: r => { const a = r(2, 9), b = r(1, 8), c = r(2, 5); const big = a + b + r(1, 9); const sum = a + b, d = pick(r, [2, 3, 4, 5].filter(k => sum % k === 0).concat([1]).filter(k => k > 1)) ;
+      return pick(r, [`(${a}+${b})*${c}`, `${c}*(${Math.max(a, b) + 1}-${Math.min(a, b)})`, d ? `(${a}+${b})÷${d}` : `(${a}+${b})*${c}`, `${big}-(${a}+${b})`]); } },
+  { id: 'pemdas-exponents', group: 'Order of operations', pemdas: true, title: 'Exponents: repeated multiplication', example: '2+3^2',
+    intro: 'An exponent says how many times to multiply: 3² is 3 × 3. Exponents come after parentheses and before × and ÷.',
+    make: r => { const a = r(1, 9), b = r(2, 5), k = r(1, 4); return pick(r, [`${a}+${b}^2`, `${b}^2-${Math.min(a, b * b - 1)}`, `${r(2, 3)}*${b}^2`, `${r(2, 3)}^3`, `${b * b * k}÷${b}^2`]); } },
+  { id: 'pemdas-add-subtract', group: 'Order of operations', pemdas: true, title: '+ and − from left to right', example: '9-4+2',
+    intro: 'Addition and subtraction share the last step: go from left to right. Each − is a red card, so the cards agree with the rule.',
+    make: r => { const a = r(5, 19), b = r(1, a - 1), c = r(1, 9); return r(0, 1) ? `${a}-${b}+${c}` : `${a}+${c}-${b}`; } },
+  { id: 'pemdas-all', group: 'Order of operations', pemdas: true, title: 'All of PEMDAS', example: '4+2*(6-1)^2÷5-3',
+    intro: 'PEMDAS: Parentheses, Exponents, Multiplication and Division from the left, Addition and Subtraction from the left.',
+    make: r => { const s = r(2, 3), d = r(1, 4), b = r(2, 4), P = b * s * s, e = pick(r, [2, 3, 4, 5, 6, 8, 9].filter(k => P % k === 0)), a = r(1, 9), f = r(1, Math.min(9, a + P / e)); return `${a}+${b}*(${s + d}-${d})^2÷${e}-${f}`; } },
   // Graph lessons: the learner drags the point to the goal (a crossing or a root).
   { id: 'graph-system', group: 'Graphs', title: 'Solve a system by graphing', graph: true, goal: 'solution', example: ['y = x + 1', 'y = -x + 5'],
     intro: 'Each line holds every point that solves its equation. Where the lines cross, both equations are true at once.',
@@ -82,11 +104,16 @@ const text = t => math.termText(t);
 const typeset = s => s.replace(/(^|[\s(])-(?=[\dx])/g, '$1−');
 const find = (state, id) => [...state.left, ...state.right].find(t => t.id === id);
 // One sentence for a planned step, in the learner's terms.
-export function narrate(command, state) { return typeset(describe(command, state)); }
-function describe(command, state) {
+export function narrate(command, state, leftToRight = false) { return typeset(describe(command, state, { leftToRight })); }
+function describe(command, state, options = {}) {
   if (!command) return math.isSolved(state) ? 'Solved: x is alone.' : 'Nothing left to do.';
   if (command.type === 'evaluate') {
     const t = find(state, command.id), [a, b] = t.expr ? t.expr.operands : [], op = t.expr?.ops[0];
+    if (t.expr && math.pemdasRank(t) < 2) {
+      const caption = math.stepCaption(t, math.evaluateStep(t));
+      if (math.pemdasRank(t) === 0) return `Parentheses first: ${caption}.`;
+      return t.expr.operands.length === 1 ? `An exponent means repeated multiplication: ${caption}. Then the copies are worked out.` : `Exponents come next: ${caption}.`;
+    }
     const show = o => math.termText({ kind: 'constant', value: o.value, notation: o.notation, decimalPlaces: o.decimalPlaces });
     if (!t.expr) return `Divide out ${text(t)}: deal the cards into ${t.value.d} equal groups.`;
     if (op === '×') return `Work out ${show(a)} × ${show(b)}: one factor becomes a line of cards, the other is copied onto every card, then the copies are added.`;
@@ -95,6 +122,7 @@ function describe(command, state) {
   }
   if (command.type === 'combine') {
     const a = find(state, command.id), b = find(state, command.target), regrouping = regroupText(a, b);
+    if (options.leftToRight && a.kind === 'constant') return `Last, add and subtract from left to right: ${text(b)} ${math.negative(a) ? '−' : '+'} ${math.termText(a, true)}. ${Math.sign(a.value.n) !== Math.sign(b.value.n) ? 'A red card cancels a blue one.' : 'The cards add.'}${regrouping}`;
     if (Math.sign(a.value.n) !== Math.sign(b.value.n)) return `${text(a)} and ${text(b)} have opposite signs: their cards cancel in zero pairs. Drop ${text(a)} onto ${text(b)}.${regrouping}`;
     return `Combine ${text(a)} with ${text(b)}: drop one onto the other and the cards add.${regrouping}`;
   }
@@ -119,8 +147,8 @@ function regroupText(a, b) {
   return '';
 }
 // Steps the planner needs from a state (used to judge whether a move helped).
-export function remaining(state, expression = false) {
-  const m = new EquationModel('0'); m.state = state; m.expression = expression; m.hasVariable = [...state.left, ...state.right].some(t => t.kind === 'variable');
+export function remaining(state, expression = false, leftToRight = false) {
+  const m = new EquationModel('0'); m.state = state; m.expression = expression; m.leftToRight = leftToRight; m.hasVariable = [...state.left, ...state.right].some(t => t.kind === 'variable');
   let n = 0, command;
   while ((command = m.nextStep()) && n < 40) { m.dispatch(command); n++; }
   return n;
@@ -128,17 +156,25 @@ export function remaining(state, expression = false) {
 export const finished = model => model.nextStep() === null;
 export function feedback(model, before) {
   if (finished(model)) return { tone: 'done', text: model.expression ? `Done: ${math.sideText(model.state.left)}.` : math.isSolved(model.state) ? `Solved: ${math.equationText(model.state)}.` : `Done: ${math.equationText(model.state)}.` };
-  const now = remaining(model.state, model.expression), then = remaining(before, model.expression);
-  const next = narrate(model.nextStep(), model.state);
+  const now = remaining(model.state, model.expression, model.leftToRight), then = remaining(before, model.expression, model.leftToRight);
+  const next = narrate(model.nextStep(), model.state, model.leftToRight);
   if (now < then) return { tone: 'good', text: `Good. ${next}` };
   if (now > then) return { tone: 'detour', text: `Still balanced, but that is a detour. Undo (↶) or: ${next}` };
   return { tone: 'neutral', text: `Balanced. Next: ${next}` };
 }
+// A fresh worked example for every lesson each time the app opens: the generators deal
+// one per lesson from a random seed. The written example stays as the fallback.
+export function dealExamples(seed = Date.now()) {
+  const r = random(seed);
+  for (const lesson of lessons) { try { lesson.today = lesson.make(r); } catch { lesson.today = lesson.example; } }
+}
+export const exampleOf = lesson => lesson.today ?? lesson.example;
+const same = (a, b) => [a].flat().join(';') === [b].flat().join(';');
 export class Tutor {
-  constructor(lesson, seed = Date.now()) { this.lesson = lesson; this.random = random(seed); this.phase = 'example'; this.problem = lesson.example; this.hints = 0; }
+  constructor(lesson, seed = Date.now()) { this.lesson = lesson; this.random = random(seed); this.phase = 'example'; this.problem = exampleOf(lesson); this.hints = 0; }
   practice() {
     let next;
-    for (let i = 0; i < 20; i++) { next = this.lesson.make(this.random); if (next !== this.lesson.example && next !== this.problem) break; }
+    for (let i = 0; i < 20; i++) { next = this.lesson.make(this.random); if (!same(next, exampleOf(this.lesson)) && !same(next, this.problem)) break; }
     this.phase = 'practice'; this.problem = next; this.hints = 0; return next;
   }
 }

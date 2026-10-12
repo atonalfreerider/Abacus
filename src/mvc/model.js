@@ -45,12 +45,16 @@ export class EquationModel {
   }
   undo(){if(!this.past.length)return;this.future.push(this.state);this.state=this.past.pop();return this.state;}
   redo(){if(!this.future.length)return;this.past.push(this.state);this.state=this.future.pop();return this.state;}
-  // Planner for Solve and the tutor: products first, then zero pairs, then like terms,
+  // Planner for Solve and the tutor, in the order of operations: parentheses anywhere,
+  // then powers, then × and ÷ (leftmost term first), then zero pairs, then like terms,
   // then gather x on the side where its coefficient stays positive, then scale to one x.
+  // With leftToRight (the order-of-operations lessons) + and − also go left to right.
   nextStep() {
     const e=this.state;
-    for(const side of ['left','right'])for(const t of e[side])if(t.expr)return {type:'evaluate',id:t.id};
+    let first=null;for(const side of ['left','right'])for(const t of e[side])if(t.expr&&(!first||math.pemdasRank(t)<math.pemdasRank(first)))first=t;
+    if(first)return {type:'evaluate',id:first.id};
     if(math.isSolved(e))return null;
+    if(this.leftToRight)for(const side of ['left','right']){const items=e[side];for(let i=1;i<items.length;i++){const j=items.slice(0,i).findIndex(t=>t.kind===items[i].kind);if(j>=0)return {type:'combine',id:items[i].id,target:items[j].id};}}
     const pair=side=>{let best=null;
       for(let i=0;i<e[side].length;i++)for(let j=i+1;j<e[side].length;j++){const a=e[side][i],b=e[side][j];if(a.kind!==b.kind)continue;
         const cancels=Math.sign(a.value.n)!==Math.sign(b.value.n),[target,source]=math.numeric(math.abs(a.value))>=math.numeric(math.abs(b.value))?[a,b]:[b,a];
