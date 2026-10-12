@@ -13,12 +13,25 @@ export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
  const add=(type,removed,created)=>{const before=snapshot();tokens=tokens.filter(t=>!removed.includes(t.id)).concat(created);if(unitValue(tokens)!==total)throw Error('Unit animation lost mathematical value.');phases.push({type,before,after:snapshot(),removed,created:created.map(t=>t.id)});};
  const bucket=(place,sign)=>tokens.filter(t=>t.owner===target&&t.place===place&&(sign===undefined||t.sign===sign));
  const free=place=>{const used=new Set(bucket(place).map(t=>t.cell));let cell=0;while(used.has(cell))cell++;return cell;};
+ // Cancellation starts deepest in the tray: the receiving card in the bottom-right-most
+ // cell meets the nearest card of the other sign, then the pairs work backwards to the
+ // top-left. Cards waiting on the rim (cell 9 and up) receive last. Cards that started in
+ // the target or were made there by a borrow receive; arrivals move.
+ const arrivals=new Set(initial.filter(t=>t.owner!==target).map(t=>t.id));
+ const depth=cell=>cell<9?cell:-cell,spot=cell=>cell<9?[cell%3,Math.floor(cell/3)]:[1+(cell-9)*.13,-1.1];
+ const apart=(a,b)=>{const [ax,ay]=spot(a.cell),[bx,by]=spot(b.cell);return Math.hypot(ax-bx,ay-by);};
+ function cancelPair(plus,minus){
+  const home=list=>list.filter(t=>!arrivals.has(t.id));
+  const [stay,come]=home(plus).length&&!home(minus).length?[plus,minus]:home(minus).length&&!home(plus).length?[minus,plus]:plus.length>=minus.length?[plus,minus]:[minus,plus];
+  const pool=home(stay).length?home(stay):stay,receiver=pool.reduce((a,b)=>depth(b.cell)>depth(a.cell)?b:a);
+  return [receiver,come.reduce((a,b)=>apart(b,receiver)<apart(a,receiver)?b:a)];
+ }
  function normalize(allowCarry=true){
   let changed=true;
   while(changed){changed=false;
    for(let place=0;place<17;place++){
     const plus=bucket(place,1),minus=bucket(place,-1);
-    if(plus.length&&minus.length){add('neutralize',[plus[0].id,minus[0].id],[]);changed=true;break;}
+    if(plus.length&&minus.length){add('neutralize',cancelPair(plus,minus).map(t=>t.id),[]);changed=true;break;}
     const group=plus.length>=10?plus:minus.length>=10?minus:null;
     if(group&&allowCarry){add('carry',group.slice(0,10).map(t=>t.id),[make(group[0].sign,place+1,target,free(place+1))]);changed=true;break;}
    }
@@ -59,7 +72,7 @@ export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
   phase.receiver={...receiver};phase.mover=mover.id;
   cancelTargets[mover.id]={...receiver};
  }
- // Pairs in one place pop in reading order, a short ripple that can be counted.
+ // Pairs in one place pop from the bottom-right backwards, a short ripple that can be counted.
  const rank={};for(const phase of phases.filter(p=>p.type==='neutralize')){const place=phase.receiver.place;phase.lag=.06*(rank[place]=(rank[place]??-1)+1);}
  const plan={initial,phases,final:snapshot(),target,source,total:String(total),cancelTargets,speed};scheduleUnits(plan);return plan;
 }
