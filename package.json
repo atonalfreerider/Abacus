@@ -1,6 +1,6 @@
 {
   "name": "abacus-equation-lab",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "ABACUS equation space: exact rational algebra, card animations for addition, multiplication and long division, drag physics, and a guided tutor.",
@@ -16,9 +16,25 @@
     "preview": "node tools/serve.mjs dist",
     "perf": "node tools/perf.mjs",
     "swf:disasm": "node tools/swf-disasm.mjs",
-    "videos": "node tools/make-videos.mjs"
+    "videos": "node tools/make-videos.mjs",
+    "app:build": "node tools/build.mjs --app && npx cap sync",
+    "android:debug": "npm run app:build && cd android && ./gradlew assembleDebug",
+    "android:release": "npm run app:build && cd android && ./gradlew bundleRelease assembleRelease",
+    "icons": "node tools/make-icons.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/ios": "8.5.3",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
   }
 }

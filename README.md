@@ -55,6 +55,24 @@ Drag the point along a curve. Its coordinates are laid out in square cards, one 
 
 **Carrying and borrowing.** A tray has nine cells. Cards arriving at a full tray wait on its rim; when ten gather they stack into one card in their own tray, then the stack slides one tray to the left. A borrow plays the same motion backwards: a card slides one tray to the right and fans out into ten.
 
+## Android and iOS apps
+
+The phone and tablet apps are [Capacitor 8](https://capacitorjs.com) shells (`android/`, `ios/`) around the same code, with app ID `com.metavirtuoso.abacus`. `npm run app:build` writes `dist-app` (0.6 MB: the equation app without the Flash comparison runtime or test bench, plus the vendored `@capacitor/core` module) and copies it into both projects. The apps work fully offline, ask for no permissions beyond vibration, and collect nothing (`public/privacy.html`, linked from View).
+
+```sh
+npm ci
+npm run android:debug        # android/app/build/outputs/apk/debug/app-debug.apk
+npm run android:release      # signed AAB and APK, with the upload key below
+npm run icons                # app icons, splash screens and store graphics from the app's own cards
+```
+
+- **Android** needs JDK 21 and the Android SDK (API 36, the Play target since August 2026); set `JAVA_HOME` and `ANDROID_HOME`. Release builds are signed with the upload key named in `android/keystore.properties` or `~/.android-keys/abacus-upload.properties` (never committed), or in `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. The version (`android/variables.gradle`, `appVersion`) sets the version code: 1.2.3 is 10203.
+- **iOS and iPadOS** need Xcode on a Mac: `npx cap open ios`. CI (`.github/workflows/ios.yml`) builds for the simulator on a macOS runner and runs the app on an iPhone and an iPad simulator, keeping screenshots. App Store and TestFlight builds need an Apple Developer Program membership for signing.
+- **Layouts.** Phones in portrait get a 3 × 3 dock with 44 px keys; phones in landscape put the dock beside the equation space; tablets get full-size keys. Every touch-screen button is at least 38 px tall, safe areas (notches, home indicators, Android edge-to-edge) are respected, and the graph refits when the device rotates.
+- **Haptics** (Capacitor Haptics; the Vibration API on the web): a tick when a card snaps to a partner or the graph point settles in a detent, a heavy bump when a card pops through the mirror or the point lands on an axis, a light pop for each zero pair as it cancels, and a success pattern when a lesson problem is solved.
+- **Firm press (3D Touch) and long press.** Pressing a card firmly (3D Touch on iPhone 6s–XS, Apple Pencil, Android screens that report pressure) or holding it still for half a second opens a peek: a number's places as stacks of cards, or every order-of-operations step of a term still to be worked out. Releasing closes it without tapping; moving turns it into a drag. Apple removed 3D Touch hardware from iPhones from the XR and 11 onwards and iPads never had it, so long press is the path most devices use.
+- **Quick actions and shortcuts.** A firm press or long press on the home-screen icon offers Lessons, PEMDAS, Graph and Equation (iOS `UIApplicationShortcutItems`, Android `res/xml/shortcuts.xml`). They open `abacus://open/<place>`, which `src/native.js` routes. Android's back button closes a dialog, the tutor or graph mode before it leaves the app.
+
 ## Tutorial videos
 
 `npm run videos` records three narrated tutorials from the real app in headless Chrome: `base-ten` (why ten cards make one), `carry-borrow` (adding and subtracting) and `solving-for-x` (moving pieces across the mirror until the green X is alone). Each is written in landscape 1920×1080 and portrait 1080×1920 to `videos/<name>-<format>.mp4`, with burned-in captions and a matching `.srt`.
@@ -93,7 +111,7 @@ Supported scope: one-variable linear equations and expressions in x, with parent
 - `npm run perf`: median/p95 frame times for heavy scenes, failing above `FRAME_BUDGET_MS` (34 ms by default). Scenes hold a 16.7 ms median; the heaviest spread-camera products and divisions reach 33 ms at p95.
 - The test bench (`tests.html`) scrubs any scene, layout, camera and frame, runs geometry assertions and compares local pixel baselines. Pixel baselines are Git-ignored and recorded per machine.
 
-CI runs unit, snapshot, browser and frame-time checks (the last two with a 50 ms budget for shared runners) and builds `dist`. See `docs/verification.md` for performed checks and limits.
+CI runs unit, snapshot, browser and frame-time checks (the last two with a 50 ms budget for shared runners) and builds `dist`; `android.yml` builds and lints the Android app, and `ios.yml` builds the iOS app and runs it in iPhone and iPad simulators. See `docs/verification.md` for performed checks and limits.
 
 ## The original SWF
 

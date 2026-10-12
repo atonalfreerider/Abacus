@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Abacus</string>
+    <string name="title_activity_main">Abacus</string>
+    <string name="package_name">com.metavirtuoso.abacus</string>
+    <string name="custom_url_scheme">abacus</string>
+    <string name="shortcut_lessons">Lessons</string>
+    <string name="shortcut_lessons_long">Choose a lesson</string>
+    <string name="shortcut_pemdas">PEMDAS</string>
+    <string name="shortcut_pemdas_long">Order of operations</string>
+    <string name="shortcut_graph">Graph</string>
+    <string name="shortcut_graph_long">Graph an equation</string>
+    <string name="shortcut_equation">Equation</string>
+    <string name="shortcut_equation_long">Type a new equation</string>
+</resources>

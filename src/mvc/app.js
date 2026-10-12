@@ -5,6 +5,8 @@ import { Surface } from './surface.js';
 import { Dragger } from './drag.js';
 import { Tutor,lessons,narrate,feedback,finished,dealExamples,exampleOf } from './tutor.js';
 import { haptic } from '../haptics.js';
+import { initNative } from '../native.js';
+import { placeMetadata } from '../place-value.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
 const surface=new Surface($('stage'));
@@ -40,9 +42,38 @@ controller.addEventListener('change',refresh);
 const dragger=new Dragger($('stage'),controller,{
  onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t))return controller.evaluate(t.id);controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
  onCommit:(id,drop,origin)=>safe(()=>controller.drop(id,drop.side,drop.target,drop.index,performance.now(),origin)),
+ onPeek:(id,at)=>peek(id,at),onPeekEnd:()=>{$('peek').hidden=true;},
 });
+// Peek (firm press or long press): what a card holds, without changing anything. A
+// number shows its places as cards; a term still to be worked out shows every step of
+// its order of operations through to the answer.
+function peekText(t){
+ if(t.expr){const chain=[math.termText(t,true)];let next=t;while((next=math.evaluateStep(next))&&chain.length<12)chain.push(math.termText(next,true));
+  return `<h2>Worked out in order</h2><ol>${chain.slice(1).map(step=>`<li>${escapeHtml(step)}</li>`).join('')}</ol><p>Tap the term to watch each step.</p>`;}
+ if(t.kind==='variable')return `<h2>The unknown</h2><p>${escapeHtml(math.termText(t,true))} ${math.eq(math.abs(t.value),math.frac(1))?'is one x: get it alone to find its value.':'is that many groups of x.'}</p>`;
+ if(t.value.d!==1&&t.notation!=='decimal')return `<h2>A fraction</h2><p>${escapeHtml(math.termText(t,true))} = ${escapeHtml(math.format(math.abs(t.value)))}; tap it to divide it out.</p>`;
+ const digits=[...String(Math.abs(t.value.n))].filter(d=>t.value.d===1),places=digits.map((d,i)=>({d:Number(d),meta:placeMetadata(digits.length-i-1)})).filter(p=>p.d);
+ if(!places.length)return `<h2>${escapeHtml(math.termText(t,true))}</h2>`;
+ const name=m=>({1:'one',10:'ten',100:'hundred'}[m.magnitude])+(m.mark?` ${({k:'thousand',M:'million',B:'billion',T:'trillion'})[m.mark]}`:'');
+ return `<h2>${escapeHtml(math.termText(t,true))} in cards</h2><ol>${places.map(p=>`<li>${p.d} ${name(p.meta)}${p.d>1?'s':''}: ${p.d} ${p.meta.cardCount>1?`stacks of ${p.meta.cardCount} cards`:p.d>1?'cards':'card'}</li>`).join('')}</ol><p>${math.negative(t)?'Red: a negative amount.':'Blue: a positive amount.'}</p>`;
+}
+const escapeHtml=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function peek(id,at){
+ const t=terms().find(t=>t.id===id);if(!t)return;
+ const box=$('peek'),stage=$('workspace').getBoundingClientRect();box.innerHTML=peekText(t);box.hidden=false;haptic('peek');
+ const w=box.offsetWidth,h=box.offsetHeight;box.style.left=`${Math.max(8,Math.min(stage.width-w-8,at.x-stage.left-w/2))}px`;box.style.top=`${Math.max(8,at.y-stage.top-h-28)}px`;
+}
 refresh();surface.prewarm(controller.options.camera);
-function tick(now){requestAnimationFrame(tick);try{controller.frame(now);dragger.frame(now);}catch(error){console.error(error);controller.finish();message(error.message);}}requestAnimationFrame(tick);
+// Haptics follow the cards: a light pop as each zero pair cancels, a tick as ten stack.
+let felt={plan:null,time:0};
+function animationHaptics(){
+ const plan=controller.clock.plan,u=plan?.units;if(!u||!controller.clock.playing)return;
+ if(felt.plan!==plan)felt={plan,time:-1};
+ const time=Math.min(1,controller.clock.progress/.9)*u.duration;
+ for(const phase of u.phases)if(phase.start>felt.time&&phase.start<=time&&(phase.type==='neutralize'||phase.type==='carry'))haptic(phase.type==='neutralize'?'pop':'tick');
+ felt.time=time;
+}
+function tick(now){requestAnimationFrame(tick);try{controller.frame(now);dragger.frame(now);animationHaptics();}catch(error){console.error(error);controller.finish();message(error.message);}}requestAnimationFrame(tick);
 $('stage').addEventListener('pointerdown',event=>{if(dragger.down(event)){entry.active=false;$('entry-bar').hidden=true;}});
 $('stage').addEventListener('pointermove',event=>dragger.move(event));
 $('stage').addEventListener('pointerup',event=>dragger.up(event));
@@ -140,7 +171,7 @@ $('tutor-show').onclick=()=>{if(tutor.lesson.graph){const kind=goalsOf(tutor.les
 controller.addEventListener('commit',event=>{
  hint=null;if(!tutor||tutor.phase!=='practice')return;
  const {transaction,source}=event.detail;if(source!=='learner'&&!finished(controller.model))return;
- const result=feedback(controller.model,transaction.before);say(result.tone==='done'?`${result.text} Well done — New problem for another, or Next lesson.`:result.text,result.tone);
+ const result=feedback(controller.model,transaction.before);say(result.tone==='done'?`${result.text} Well done — New problem for another, or Next lesson.`:result.text,result.tone);if(result.tone==='done')haptic('success');
 });
 
 // Pad and hardware keys stage the same input; the up triangle deploys it.
@@ -181,3 +212,23 @@ function graphPoint(event){
 }
 $('open-graph').onclick=()=>showGraph($('graph-mode').hidden);
 for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);});
+
+// Native apps: quick actions and shortcuts open a place; Android's back button closes
+// what is open before it leaves the app.
+initNative({
+ open:place=>{
+  for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+  if(place==='graph'){leaveTutor();showGraph(true);}
+  else if(place==='lessons'){if(!$('graph-mode').hidden)showGraph(false);$('lesson-dialog').showModal();}
+  else if(place==='pemdas'){startLesson(lessons.find(l=>l.id==='pemdas-all'));}
+  else if(place==='equation'){if(!$('graph-mode').hidden)showGraph(false);leaveTutor();$('open-equation').click();}
+ },
+ back:()=>{
+  const dialog=document.querySelector('dialog[open]');if(dialog){dialog.close();return true;}
+  if(!$('peek').hidden){$('peek').hidden=true;return true;}
+  if(tutor){leaveTutor();return true;}
+  if(!$('graph-mode').hidden){showGraph(false);return true;}
+  if(entry.active){enterKey('Escape');return true;}
+  return false;
+ },
+});

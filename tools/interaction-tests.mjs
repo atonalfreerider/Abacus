@@ -72,6 +72,16 @@ try{
   const done=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Done: −?\d+\. Well done/.test(done))throw Error(done);
   await page.eval(`document.getElementById('tutor-close').click()`);
  });
+ await check('a long press peeks at a term without changing it: places for a number, every PEMDAS step for a term to work out',async()=>{
+  await load('345+(6-1)^2*2÷5=x');const all=await terms(),before=await status();
+  const hold=async(at,ms)=>{await page.mouse('mouseMoved',at.x,at.y,{buttons:0});await page.mouse('mousePressed',at.x,at.y);await wait(ms);};
+  await hold(all[1],750);const text=await page.eval(`document.getElementById('peek').hidden?'':document.getElementById('peek').innerText`);
+  if(!/Worked out in order[\s\S]*5² × 2 ÷ 5[\s\S]*25 × 2 ÷ 5[\s\S]*50 ÷ 5[\s\S]*10/i.test(text))throw Error('peek: '+text);
+  await page.mouse('mouseReleased',all[1].x,all[1].y);await wait(300);
+  expect(await page.eval(`document.getElementById('peek').hidden`),true,'released, the peek closes');expect(await status(),before,'a peek is not a tap: nothing was worked out');
+  await hold(all[0],750);const places=await page.eval(`document.getElementById('peek').innerText`);await page.mouse('mouseReleased',all[0].x,all[0].y);
+  if(!/3 hundreds: 3 stacks of 100 cards[\s\S]*4 tens: 4 stacks of 10 cards[\s\S]*5 ones: 5 cards/.test(places))throw Error('places: '+places);
+ });
  await check('dragging stays at frame rate',async()=>{
   await load('987654+123456-555555=x+999');const all=await terms(),card=all[1],m=await mirror();
   await page.eval(`window.__frames=[];(function f(t){window.__frames.push(t);if(window.__frames.length<400)requestAnimationFrame(f);})(performance.now())`);

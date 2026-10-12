@@ -1,0 +1,37 @@
+name: Android
+on:
+  push:
+    branches: [main]
+    tags: ['android-v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: node --test tests/*.test.js
+      - run: node tools/build.mjs --app
+      - run: npx cap sync android
+      # Release builds are signed with the upload key only when its secrets exist;
+      # otherwise CI checks that the app builds and keeps the debug APK.
+      - name: Build
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: abacus-android-debug
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/reports/lint-results-debug.html

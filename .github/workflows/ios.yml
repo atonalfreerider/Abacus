@@ -1,0 +1,52 @@
+name: iOS
+on:
+  push:
+    branches: [main]
+    tags: ['ios-v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    # Xcode only runs on macOS. Without an Apple Developer signing identity this builds
+    # for the simulator, then runs the app on an iPhone and an iPad simulator and keeps
+    # screenshots of both.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node tools/build.mjs --app
+      - run: npx cap sync ios
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -40
+          test -d build/Build/Products/Release-iphonesimulator/App.app
+      - name: Run on iPhone and iPad simulators
+        run: |
+          APP=build/Build/Products/Release-iphonesimulator/App.app
+          mkdir -p screenshots
+          for kind in iPhone iPad; do
+            UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for r,l in sorted(d.items(),reverse=True) if 'iOS' in r for x in l if x['name'].startswith('$kind')))")
+            xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl install "$UDID" "$APP"
+            xcrun simctl launch "$UDID" com.metavirtuoso.abacus
+            sleep 12
+            xcrun simctl io "$UDID" screenshot "screenshots/$kind-equation.png"
+            xcrun simctl openurl "$UDID" "abacus://open/graph"; sleep 5
+            xcrun simctl io "$UDID" screenshot "screenshots/$kind-graph.png"
+            xcrun simctl shutdown "$UDID"
+          done
+          (cd build/Build/Products/Release-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/Abacus-simulator.app.zip" App.app)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: abacus-ios-simulator
+          path: |
+            Abacus-simulator.app.zip
+            screenshots/

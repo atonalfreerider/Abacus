@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the launcher icon: jump straight to a place in the app (abacus://open/...). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="lessons" android:enabled="true" android:icon="@drawable/shortcut_lessons"
+        android:shortcutShortLabel="@string/shortcut_lessons" android:shortcutLongLabel="@string/shortcut_lessons_long">
+        <intent android:action="android.intent.action.VIEW" android:data="abacus://open/lessons"
+            android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="pemdas" android:enabled="true" android:icon="@drawable/shortcut_pemdas"
+        android:shortcutShortLabel="@string/shortcut_pemdas" android:shortcutLongLabel="@string/shortcut_pemdas_long">
+        <intent android:action="android.intent.action.VIEW" android:data="abacus://open/pemdas"
+            android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="graph" android:enabled="true" android:icon="@drawable/shortcut_graph"
+        android:shortcutShortLabel="@string/shortcut_graph" android:shortcutLongLabel="@string/shortcut_graph_long">
+        <intent android:action="android.intent.action.VIEW" android:data="abacus://open/graph"
+            android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="equation" android:enabled="true" android:icon="@drawable/shortcut_equation"
+        android:shortcutShortLabel="@string/shortcut_equation" android:shortcutLongLabel="@string/shortcut_equation_long">
+        <intent android:action="android.intent.action.VIEW" android:data="abacus://open/equation"
+            android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
+    </shortcut>
+</shortcuts>
