@@ -112,6 +112,14 @@ try{
   from=await graphRect('#graph-svg .tracer circle');await drag(from,await spot('x'),40);await wait(600);
   text=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Found it: .*, 0\)/.test(text)||!/Well done/.test(text))throw Error(text);
  });
+ await check('graph: a crossing one card past an x-intercept is still reachable (a held detent yields to a closer one)',async()=>{
+  await openGraph();
+  await page.eval(`(async()=>{const set=(i,v)=>{const input=document.querySelectorAll('.graph-eq input')[i];input.value=v;input.dispatchEvent(new Event('input'));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));};set(0,'y = 2x - 7');if(document.querySelectorAll('.graph-eq').length<2)document.getElementById('graph-add').click();await new Promise(r=>setTimeout(r,100));set(1,'y = -2x + 9');})()`);await wait(700);
+  const at=(x,y)=>page.eval(`(()=>{const n=[...document.querySelectorAll('#graph-svg .special')].find(n=>Number(n.dataset.x)===${x}&&Number(n.dataset.y)===${y});const r=n.querySelector('circle').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  const from=await graphRect('#graph-svg .tracer circle'),root=await at(3.5,0),cross=await at(4,1);
+  await drag(from,root,30);await wait(300);await drag(root,cross,20);await wait(500);
+  const text=await readout();if(!/\(x, y\) = \(4, 1\)/.test(text))throw Error('stuck at: '+text.slice(0,60));
+ });
  await check('graph: a system of two lines is solved where they cross',async()=>{
   await openGraph();await page.eval(`(()=>{const s=document.getElementById('graph-examples');s.value='2';s.dispatchEvent(new Event('change'));document.getElementById('graph-solve').click();})()`);await wait(800);
   const text=await readout();if(!/\(3, 2\) solves every equation/.test(text))throw Error(text.slice(0,200));

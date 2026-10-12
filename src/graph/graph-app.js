@@ -136,8 +136,11 @@ export class Graph extends EventTarget {
     const vertical = c.kind === 'vertical', px = vertical ? toY(v, raw) : toX(v, raw);
     const along = g => vertical ? toY(v, g.y) : toX(v, g.x);
     const mine = this.groups.filter(g => g.curves.includes(i));
-    let snap = this.tracer?.snapped && this.tracer.curve === i && mine.includes(this.tracer.snapGroup) && Math.abs(along(this.tracer.snapGroup) - px) < 24 ? this.tracer.snapGroup : null;
-    if (!snap) { let best = null; for (const g of mine) { const d = Math.abs(along(g) - px); if (d < snapRadius && (!best || d < best.d)) best = { g, d }; } snap = best?.g || null; }
+    // A settled detent holds within 24 px (hysteresis), but never against a detent that
+    // is closer to the finger: crowded detents (a root one card from a crossing) stay reachable.
+    const held = this.tracer?.snapped && this.tracer.curve === i && mine.includes(this.tracer.snapGroup) && Math.abs(along(this.tracer.snapGroup) - px) < 24 ? this.tracer.snapGroup : null;
+    let best = null; for (const g of mine) { const d = Math.abs(along(g) - px); if (d < snapRadius && (!best || d < best.d)) best = { g, d }; }
+    const snap = best && (!held || best.d < Math.abs(along(held) - px)) ? best.g : held;
     let target;
     if (snap) target = { x: snap.x, y: snap.y, exact: snap.exact, group: snap };
     else {
