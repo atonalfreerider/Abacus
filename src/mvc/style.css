@@ -78,3 +78,10 @@ body.graph-active #workspace,body.graph-active .original-dock,body.graph-active 
 #area-result table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}#area-result td{padding:2px 0}#area-result td:last-child{text-align:right}
 @media(max-width:800px){.graph-body{flex-direction:column}#graph-panel{width:auto;max-height:34vh}#graph-stage{min-height:46vh}.graph-advanced{margin-left:0}.graph-eq input{width:10em}}
 .area-ghost{fill:none;stroke:#25241e;stroke-opacity:.35;stroke-dasharray:3 3}.tally-label{font-size:14px;fill:#25241e;paint-order:stroke;stroke:#fffdf4;stroke-width:4px}.tally-label.exact{font-style:italic;fill:#7a520c}.exact-mark{stroke:#9a6b0b;stroke-width:3;stroke-dasharray:6 4}
+/* Graph: square coordinate cards and axis crossings (one coordinate is zero there). */
+.axis-hit path{stroke:#d18a1c;stroke-width:4;stroke-linecap:round;stroke-opacity:.85}.axis-hit text{font-size:15px;font-style:italic;fill:#8a5a10;paint-order:stroke;stroke:#fffdf4;stroke-width:4px}
+.collision{fill:none;stroke:#d18a1c;stroke-width:3;transform-box:fill-box;transform-origin:center;animation:collide 1.3s ease-out infinite}
+@keyframes collide{from{opacity:.95;transform:scale(.7)}to{opacity:0;transform:scale(2.4)}}
+@media(prefers-reduced-motion:reduce){.collision{animation:none;opacity:.8}}
+.intercept{margin:8px 0;padding:6px 10px 8px;border-radius:10px;background:#fff3d6;border:1px solid #e0b768}.intercept h2{margin:0 0 4px!important;color:#7a520c!important}
+.intercept ol{margin:0 0 4px;padding-left:1.3em;font-size:16px;line-height:1.5}.intercept ol li:last-child{font-weight:bold}.intercept p{margin:0;font-size:13px}

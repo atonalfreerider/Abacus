@@ -1,12 +1,16 @@
 // Graph mode. Equations become curves; a tracer point rides a curve and its
-// coordinates stand as card stacks (a column of y cards on the x axis, a row of x
-// cards from the y axis). The point settles into detents at roots, the y-intercept,
-// turning points and crossings; at a crossing every equation of the system holds.
+// coordinates are laid out in square cards (a column of y cards on the x axis, a row of
+// x cards from the y axis). The point settles into detents at x-intercepts (roots), the
+// y-intercept, turning points and crossings. On an axis one coordinate is zero, and the
+// panel solves the equation with that zero substituted; at a crossing every equation of
+// the system holds.
 // Advanced: an area sweep drops columns of card strips that gather into one stack.
 import { parseCurves, parseExpression, specialPoints, intersections, show, degree, evaluateExact, riemann, integral, curveText } from './polynomial.js';
 import { renderStatic, renderDynamic, textureDefs, toX, toY, fromX, fromY, snapStep, fx, groupSpecials, COLORS } from './graph-view.js';
 import { spring } from '../mvc/physics.js';
 import { frac, numeric, add, mul, sub, parseScalar, abs } from '../engine.js';
+import { interceptSteps, interceptSentence } from './intercepts.js';
+import { haptic } from '../haptics.js';
 
 export const examples = [
   { label: 'Parabola: y = x² − 2x − 3', equations: ['y = x^2 - 2x - 3'] },
@@ -19,13 +23,15 @@ export const examples = [
   { label: 'Parallel lines: no solution', equations: ['y = 2x + 1', 'y = 2x - 3'] },
 ];
 const STEPS = [[0.01, 1, 100], [0.05, 1, 20], [0.1, 1, 10], [0.25, 1, 4], [0.5, 1, 2], [1, 1, 1], [2, 2, 1], [5, 5, 1], [10, 10, 1], [25, 25, 1], [50, 50, 1], [100, 100, 1]];
-const kindNames = { solution: 'solution', root: 'root', 'y-intercept': 'y-intercept', vertex: 'vertex', 'turning point': 'turning point' };
+const kindNames = { solution: 'solution', root: 'x-intercept', 'y-intercept': 'y-intercept', vertex: 'vertex', 'turning point': 'turning point' };
+// The axis a snapped point sits on: roots lie on the x axis, y-intercepts on the y axis.
+const axisOf = kinds => kinds.includes('root') && kinds.includes('y-intercept') ? 'origin' : kinds.includes('root') ? 'x' : kinds.includes('y-intercept') ? 'y' : null;
 const ease = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const value = (exact, x) => exact ? show(exact) : `≈ ${show(x)}`;
 const pretty = text => text.replace(/\^([0-4])/g, (_, d) => '⁰¹²³⁴'[d]).replace(/\*/g, '×').replace(/-/g, '−');
-const cards = (v, axis) => { const n = typeof v === 'number' ? Math.abs(v) : numeric(abs(v)); const word = n === 1 ? 'card' : 'cards'; return `${typeof v === 'number' ? '≈ ' + show(n) : show(abs(v))} ${word} ${axis === 'x' ? (v < 0 || v.n < 0 ? 'left (red)' : 'across (blue)') : (v < 0 || v.n < 0 ? 'down (red)' : 'up (blue)')}`; };
+const cards = (v, axis) => { const n = typeof v === 'number' ? Math.abs(v) : numeric(abs(v)); if (n === 0) return `no cards (${axis} = 0)`; const word = n === 1 ? 'card' : 'cards'; return `${typeof v === 'number' ? '≈ ' + show(n) : show(abs(v))} ${word} ${axis === 'x' ? (v < 0 || v.n < 0 ? 'left (red)' : 'across (blue)') : (v < 0 || v.n < 0 ? 'down (red)' : 'up (blue)')}`; };
 
 // Evaluate one side of a typed equation at the point, exactly when possible.
 function evalSide(map, x, y) {
@@ -44,9 +50,9 @@ export class Graph extends EventTarget {
     super();
     this.cardsEquation = cardsEquation;
     this.stage = $('graph-stage');
-    this.stage.innerHTML = `<svg id="graph-svg" xmlns="http://www.w3.org/2000/svg"><defs>${textureDefs()}</defs><defs class="dynamic-defs"></defs><g class="layer-back"></g><g class="layer-area"></g><g class="layer-front"></g><g class="layer-top"></g></svg>`;
+    this.stage.innerHTML = `<svg id="graph-svg" xmlns="http://www.w3.org/2000/svg"><defs>${textureDefs()}</defs><defs class="dynamic-defs"></defs><g class="layer-back"></g><g class="layer-area"></g><g class="layer-cards"></g><g class="layer-front"></g><g class="layer-top"></g></svg>`;
     this.svg = this.stage.firstElementChild;
-    this.layers = Object.fromEntries(['dynamic-defs', 'layer-back', 'layer-area', 'layer-front', 'layer-top'].map(c => [c, this.svg.querySelector('.' + c)]));
+    this.layers = Object.fromEntries(['dynamic-defs', 'layer-back', 'layer-area', 'layer-cards', 'layer-front', 'layer-top'].map(c => [c, this.svg.querySelector('.' + c)]));
     this.view = { cx: 0, cy: 0, unit: 40, width: 600, height: 400 };
     this.inputs = []; this.curves = []; this.specials = []; this.groups = []; this.tracer = null;
     this.area = { enabled: false, a: frac(0), b: frac(3), dx: frac(1, 4), rule: 'left', phase: 'static', columns: [], shown: 0, grow: 0 };
@@ -138,8 +144,8 @@ export class Graph extends EventTarget {
     }
     const t = this.tracer?.curve === i ? this.tracer : { curve: i, x: target.x, y: target.y, v: 0 };
     const changed = !this.tracer || this.tracer.snapGroup !== snap || this.tracer.target?.x !== target.x || this.tracer.target?.y !== target.y;
-    if (snap && snap !== this.tracer?.snapGroup) try { navigator.vibrate?.(8); } catch {}
-    Object.assign(t, { target, snapped: snap ? snap.kinds.map(k => kindNames[k]).join(' · ') : null, snapGroup: snap });
+    if (snap && snap !== this.tracer?.snapGroup) haptic(axisOf(snap.kinds) ? 'thud' : 'tick');
+    Object.assign(t, { target, snapped: snap ? snap.kinds.map(k => kindNames[k]).join(' · ') : null, snapGroup: snap, axis: snap ? axisOf(snap.kinds) : null });
     if (instant) { t.x = target.x; t.y = target.y; t.v = 0; }
     this.tracer = t;
     if (changed) { this.readout(); this.dispatchEvent(new CustomEvent('point', { detail: this.pointInfo() })); }
@@ -148,7 +154,7 @@ export class Graph extends EventTarget {
   pointInfo() {
     const t = this.tracer; if (!t) return null;
     const checks = this.checks();
-    return { x: t.target.x, y: t.target.y, exact: t.target.exact, kinds: t.snapGroup?.kinds || [], solvesAll: checks.length > 0 && checks.every(c => c.ok), checks };
+    return { x: t.target.x, y: t.target.y, exact: t.target.exact, kinds: t.snapGroup?.kinds || [], group: t.snapGroup || null, solvesAll: checks.length > 0 && checks.every(c => c.ok), checks };
   }
   checks() {
     const t = this.tracer; if (!t) return [];
@@ -166,6 +172,7 @@ export class Graph extends EventTarget {
     if (!t) { box.innerHTML = '<p>Drag along a curve: the point’s x and y stand up as cards.</p>'; return; }
     const ex = t.target.exact, xv = ex ? ex.x : t.target.x, yv = ex ? ex.y : t.target.y;
     let html = `<p class="point">(x, y) = (${value(ex?.x, t.target.x)}, ${value(ex?.y, t.target.y)})</p>${t.snapped ? `<p><i>At the ${esc(t.snapped)}.</i></p>` : ''}<p>x: ${cards(xv, 'x')}<br>y: ${cards(yv, 'y')}</p>`;
+    html += this.interceptHtml();
     const checks = this.checks();
     for (const c of checks) html += `<div class="check ${c.ok ? 'ok' : 'no'}">${esc(c.text)} ${c.ok ? '✓' : '✗'}<small>${esc(c.substituted)}: ${esc(c.left)} ${c.ok ? '=' : '≠'} ${esc(c.right)}${c.approximate ? ' (rounded)' : ''}</small></div>`;
     const both = this.parsed.length === 1 && this.parsed[0].curves.length === 2;
@@ -173,6 +180,18 @@ export class Graph extends EventTarget {
     else if (both && t.snapGroup?.kinds.includes('solution')) html += `<div class="solved-banner">Both sides are equal here, so x = ${value(ex?.x, t.target.x)} solves ${esc(this.parsed[0].text)}.</div>`;
     else if (checks.length === 1 && checks[0].ok && !both) html += `<p><small>Every point on this curve solves the equation; drag to see others.</small></p>`;
     box.innerHTML = html;
+  }
+  // At an axis crossing, the zero coordinate is substituted and the equation solved.
+  interceptHtml() {
+    const t = this.tracer, ex = t?.target.exact; if (!t?.axis || !ex) return '';
+    const curve = this.curves[t.curve], text = curve.kind === 'vertical' ? curve.source : curve.source || this.parsed[curve.input]?.text;
+    if (!text) return '';
+    let html = '';
+    for (const axis of t.axis === 'origin' ? ['y', 'x'] : [t.axis]) {
+      let worked; try { worked = interceptSteps(text, axis, ex); } catch { continue; }
+      html += `<div class="intercept" data-axis="${axis}"><h2>${axis === 'y' ? 'On the y axis: set x = 0' : 'On the x axis: set y = 0'}</h2><ol>${worked.steps.slice(1).map(step => `<li>${esc(step)}</li>`).join('')}</ol><p>${esc(interceptSentence(axis, ex))}</p></div>`;
+    }
+    return html;
   }
   listPoints() {
     const box = $('graph-points'), order = g => g.kinds.includes('solution') ? 0 : g.kinds.includes('root') ? 1 : 2;
@@ -186,6 +205,12 @@ export class Graph extends EventTarget {
     const errors = this.parsed.filter(p => p.error).map(p => `<p class="check no">${esc(p.text)}<small>${esc(p.error)}</small></p>`).join('');
     box.innerHTML = errors + (groups.length ? '<h2>Points</h2>' : '') + groups.map((g, k) => `<button data-point="${k}" class="${g.kinds.includes('solution') ? 'solution' : ''}"><i></i>${g.kinds.map(k => kindNames[k]).join(' · ')}: (${value(g.exact?.x, g.x)}, ${value(g.exact?.y, g.y)})</button>`).join('') + note;
     box.querySelectorAll('[data-point]').forEach(b => b.onclick = () => this.goTo(groups[Number(b.dataset.point)]));
+  }
+  // The worked substitution at an axis point, in one line, for the tutor.
+  interceptText(group) {
+    const axis = axisOf(group.kinds), curve = this.curves[group.curves[0]], text = curve?.source;
+    if (!axis || !group.exact || !text) return '';
+    return (axis === 'origin' ? ['y', 'x'] : [axis]).map(a => { const w = interceptSteps(text, a, group.exact); return `${w.steps[0]}: ${w.steps.slice(1).join(' → ')}`; }).join('; ');
   }
   // The first special point of a kind ('solution', 'root'), for the tutor.
   goal(kind) { return this.groups.filter(g => g.kinds.includes(kind)).sort((a, b) => a.x - b.x)[0] || null; }
@@ -267,14 +292,19 @@ export class Graph extends EventTarget {
       const c = this.curves[t.curve];
       if (c?.kind === 'vertical') { [t.y, t.v] = spring(t.y, t.v, t.target.y, 26, dt); t.x = t.target.x; }
       else if (c) { [t.x, t.v] = spring(t.x, t.v, t.target.x, 26, dt); t.y = Math.abs(t.x - t.target.x) < 1e-6 ? t.target.y : fx(c, t.x); }
+      // Land exactly on the target, so a point at a crossing reads as on the axis.
+      const near = Math.abs(t.x - t.target.x) < 2e-3 && Math.abs(t.y - t.target.y) < 2e-3 && Math.abs(t.v) < .05;
+      if (near && (t.x !== t.target.x || t.y !== t.target.y)) { t.x = t.target.x; t.y = t.target.y; t.v = 0; this.dirty = true; }
       if (Math.abs(t.v) > .001) this.dirty = true;
     }
     if (!this.dirty) return;
     this.dirty = false;
-    const state = { view: this.view, curves: this.curves, specials: this.specials, tracer: t && { ...t, active: this.dragging === 'tracer', label: { x: value(t.target.exact?.x, t.target.x), y: value(t.target.exact?.y, t.target.y) } }, area: this.area.enabled ? this.area : null };
+    // The axis lights up only once the point has settled onto the crossing.
+    const settled = t && Math.abs(t.x - t.target.x) < 1e-3 && Math.abs(t.y - t.target.y) < 1e-3;
+    const state = { view: this.view, curves: this.curves, specials: this.specials, tracer: t && { ...t, axis: settled ? t.axis : null, active: this.dragging === 'tracer', label: { x: value(t.target.exact?.x, t.target.x), y: value(t.target.exact?.y, t.target.y) } }, area: this.area.enabled ? this.area : null };
     if (this.staticKey !== this.key()) { const s = renderStatic(state); this.layers['layer-back'].innerHTML = s.back; this.layers['layer-front'].innerHTML = s.front; this.staticKey = this.key(); }
     const d = renderDynamic(state);
-    this.layers['dynamic-defs'].innerHTML = d.defs; this.layers['layer-area'].innerHTML = d.area; this.layers['layer-top'].innerHTML = d.tracer;
+    this.layers['dynamic-defs'].innerHTML = d.defs; this.layers['layer-area'].innerHTML = d.area; this.layers['layer-cards'].innerHTML = d.cards; this.layers['layer-top'].innerHTML = d.tracer;
   }
   key() { const v = this.view; return [v.cx, v.cy, v.unit, v.width, v.height, this.inputs.join('|')].join(','); }
   update() { this.readout(); this.listPoints(); this.dirty = true; }

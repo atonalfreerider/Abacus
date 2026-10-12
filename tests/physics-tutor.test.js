@@ -48,8 +48,8 @@ test('every graph lesson example and 200 generated problems have an exact goal p
  for(const lesson of lessons.filter(l=>l.graph)){
   const tutor=new Tutor(lesson,23),seen=new Set();
   for(let i=0;i<=200;i++){const equations=i?tutor.practice():lesson.example;seen.add(equations.join(';'));
-   const goals=specialPoints(equations.flatMap(parseCurves)).filter(p=>p.kind===lesson.goal);
-   assert.ok(goals.length>=1,`${lesson.id}: ${equations.join(' ; ')}`);assert.ok(goals.every(p=>p.exact),`${lesson.id}: exact goal for ${equations}`);}
+   for(const kind of lesson.goals||[lesson.goal]){const goals=specialPoints(equations.flatMap(parseCurves)).filter(p=>p.kind===kind);
+   assert.ok(goals.length>=1,`${lesson.id}: ${equations.join(' ; ')}`);assert.ok(goals.every(p=>p.exact),`${lesson.id}: exact ${kind} for ${equations}`);}}
   assert.ok(seen.size>20,`${lesson.id} varies`);
  }
 });

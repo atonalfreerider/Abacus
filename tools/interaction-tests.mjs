@@ -73,8 +73,21 @@ try{
  await check('graph: dragging the point along the parabola settles on a root with no y cards',async()=>{
   await openGraph();const from=await graphRect('#graph-svg .tracer circle'),root=await page.eval(`(()=>{const c=[...document.querySelectorAll('#graph-svg .special circle')].map(n=>n.getBoundingClientRect()).sort((a,b)=>b.x-a.x)[0];return {x:c.x+c.width/2,y:c.y+c.height/2};})()`);
   await drag(from,{x:root.x+4,y:root.y-3},40);await wait(500);
-  const text=await readout();if(!/At the root/.test(text)||!/\(x, y\) = \(3, 0\)/.test(text))throw Error('readout: '+text.slice(0,120));
+  const text=await readout();if(!/At the x-intercept/.test(text)||!/\(x, y\) = \(3, 0\)/.test(text))throw Error('readout: '+text.slice(0,120));
   expect(await page.eval(`!document.querySelector('#graph-svg .card-column')&&!!document.querySelector('#graph-svg .card-row')`),true,'y column gone, x row of 3 cards');
+  if(!/On the x axis: set y = 0[\s\S]*x = 3/i.test(text))throw Error('intercept solution: '+text.slice(0,300));
+  expect(await page.eval(`!!document.querySelector('#graph-svg .axis-hit')&&!!document.querySelector('#graph-svg .collision')`),true,'x axis lit at the crossing');
+ });
+ await check('tutor intercepts lesson: the learner drags to the y axis, then the x axis',async()=>{
+  await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`[...document.querySelectorAll('#lessons button')].find(b=>b.textContent.includes('Intercepts')).click()`);await wait(1200);
+  await page.eval(`document.getElementById('tutor-step').click()`);await wait(300);await page.eval(`document.getElementById('tutor-step').click()`);await wait(300);
+  if(!/Now try one yourself/.test(await page.eval(`document.getElementById('tutor-prompt').textContent`)))throw Error('example did not visit both axes');
+  await page.eval(`document.getElementById('tutor-turn').click()`);await wait(900);
+  const spot=async kind=>page.eval(`(()=>{const g=[...document.querySelectorAll('#graph-svg .special')].find(n=>${kind==='y'?'Number(n.dataset.x)===0':'Number(n.dataset.y)===0&&Number(n.dataset.x)!==0'}).querySelector('circle').getBoundingClientRect();return {x:g.x+g.width/2,y:g.y+g.height/2};})()`);
+  let from=await graphRect('#graph-svg .tracer circle');await drag(from,await spot('y'),40);await wait(600);
+  let text=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Found it: \(0, /.test(text)||!/x = 0:/.test(text))throw Error(text);
+  from=await graphRect('#graph-svg .tracer circle');await drag(from,await spot('x'),40);await wait(600);
+  text=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Found it: .*, 0\)/.test(text)||!/Well done/.test(text))throw Error(text);
  });
  await check('graph: a system of two lines is solved where they cross',async()=>{
   await openGraph();await page.eval(`(()=>{const s=document.getElementById('graph-examples');s.value='2';s.dispatchEvent(new Event('change'));document.getElementById('graph-solve').click();})()`);await wait(800);

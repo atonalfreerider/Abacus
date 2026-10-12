@@ -45,10 +45,38 @@ test('graph frames render without invalid numbers for curves, tracer stacks and 
  for(const inputs of [['y=x^2-2x-3'],['2x+3y=12','x-y=1'],['x=3','y=x^3-2x'],['x^2=4']]){
   const curves=inputs.flatMap(parseCurves),specials=specialPoints(curves),{back,front}=renderStatic({view,curves,specials});
   assert.doesNotMatch(back+front,/NaN|undefined|Infinity/);assert.equal((front.match(/class="graph-curve"/g)||[]).length,curves.length);
-  for(const [x,y] of [[2.5,-1.75],[-3,4],[0,0],[0.25,7.5]]){const d=renderDynamic({view,curves,specials,tracer:{x,y,label:{x:String(x),y:String(y)}},area:null});assert.doesNotMatch(d.defs+d.tracer,/NaN|undefined/);if(y)assert.match(d.tracer,/card-column/);if(x)assert.match(d.tracer,/card-row/);}
+  for(const [x,y] of [[2.5,-1.75],[-3,4],[0,0],[0.25,7.5]]){const d=renderDynamic({view,curves,specials,tracer:{x,y,label:{x:String(x),y:String(y)}},area:null});assert.doesNotMatch(d.defs+d.cards+d.tracer,/NaN|undefined/);if(y)assert.match(d.cards,/card-column/);if(x)assert.match(d.cards,/card-row/);}
  }
  const [f]=parseCurves('y=x^2-2x-3'),sums=riemann(f.poly,frac(0),frac(4),frac(1,4),'left');
  const d=renderDynamic({view,curves:[f],specials:[],tracer:null,area:{a:frac(0),b:frac(4),dx:frac(1,4),columns:sums.columns,shown:8,grow:.5,tallies:[{x:5,sign:1,height:1},{x:5,sign:-1,height:3}],net:-2,exact:frac(-20,3)}});
  assert.doesNotMatch(d.defs+d.area,/NaN|undefined/);assert.equal((d.area.match(/class="area-column"/g)||[]).length,9);assert.match(d.area,/exact ∫/);
  assert.equal(groupSpecials(specialPoints(parseCurves('x^2=4'))).filter(g=>g.kinds.length>1).length>=1,true,'coincident points share a marker');
+});
+
+test('coordinate cards are squares one grid unit wide, laid side by side and meeting at the point without overlap',async()=>{
+ const {renderDynamic,cardSide}=await import('../src/graph/graph-view.js');
+ for(const unit of [12,40,90])for(const [x,y] of [[3,2],[-2.5,4],[4,-3],[-1,-1.5],[2,0],[0,3]]){
+  const view={cx:0,cy:0,unit,width:900,height:700},d=renderDynamic({view,curves:[],specials:[],tracer:{x,y,label:{x:String(x),y:String(y)}},area:null});
+  for(const id of ['g-column','g-row']){const m=d.defs.match(new RegExp(`<pattern id="${id}"[^>]*width="([\\d.]+)" height="([\\d.]+)"`));assert.ok(m,id);assert.equal(Number(m[1]),unit);assert.equal(Number(m[2]),unit,'square, undistorted');}
+  const box=cls=>{const m=d.cards.match(new RegExp(`class="${cls}"[^>]*><rect x="([-\\d.]+)" y="([-\\d.]+)" width="([\\d.]+)" height="([\\d.]+)"`));return m&&m.slice(1).map(Number);};
+  const col=box('card-column'),row=box('card-row');
+  if(y)assert.equal(col[2],unit,'one card wide');else assert.equal(col,null,'no y cards on the x axis');
+  if(x)assert.equal(row[3],unit,'one card tall');else assert.equal(row,null,'no x cards on the y axis');
+  if(col&&row&&Math.abs(x)>=1&&Math.abs(y)>=1){const overlapX=Math.min(col[0]+col[2],row[0]+row[2])-Math.max(col[0],row[0]),overlapY=Math.min(col[1]+col[3],row[1]+row[3])-Math.max(col[1],row[1]);assert.ok(overlapX<=1e-6||overlapY<=1e-6,`no overlap at (${x}, ${y})`);}
+ }
+ assert.equal(cardSide(100,40),1);assert.equal(cardSide(-100,40),-1);assert.equal(cardSide(10,40),.25,'cards slide across an axis instead of jumping');
+});
+test('at an axis crossing the zero is substituted and the equation solved step by step',async()=>{
+ const {interceptSteps}=await import('../src/graph/intercepts.js');
+ const steps=(t,a,p)=>interceptSteps(t,a,p).steps.slice(1);
+ assert.deepEqual(steps('2x + 3y = 12','y',{x:frac(0),y:frac(4)}),['2(0) + 3y = 12','3y = 12','y = 12 ÷ 3 = 4']);
+ assert.deepEqual(steps('2x + 3y = 12','x',{x:frac(6),y:frac(0)}),['2x + 3(0) = 12','2x = 12','x = 12 ÷ 2 = 6']);
+ assert.deepEqual(steps('y = 2x + 1','x',{x:frac(-1,2),y:frac(0)}),['0 = 2x + 1','2x + 1 = 0','2x = −1','x = −1 ÷ 2 = −0.5']);
+ assert.deepEqual(steps('x - y = 1','y',{x:frac(0),y:frac(-1)}),['0 − y = 1','−y = 1','y = −1']);
+ assert.deepEqual(steps('y = x^2 - 2x - 3','y',{x:frac(0),y:frac(-3)}),['y = 0² − 2(0) − 3','y = −3']);
+ assert.match(steps('y = x^2 - 2x - 3','x',{x:frac(3),y:frac(0)}).join(' | '),/x = −1 or x = 3 \| Here x = 3/);
+ // Every generated intercept problem solves to its own intercepts.
+ const {lessons,Tutor}=await import('../src/mvc/tutor.js');const lesson=lessons.find(l=>l.id==='graph-intercepts'),tutor=new Tutor(lesson,11);
+ for(let i=0;i<200;i++){const [text]=i?tutor.practice():lesson.example,curves=parseCurves(text),points=specialPoints(curves);
+  for(const kind of ['y-intercept','root']){const p=points.find(p=>p.kind===kind);assert.ok(p?.exact,`${text}: exact ${kind}`);const w=interceptSteps(text,kind==='root'?'x':'y',p.exact);assert.ok(eq(w.value,kind==='root'?p.exact.x:p.exact.y),`${text} ${kind}: ${w.steps.join(' → ')}`);assert.ok(w.value.d===1,'whole-number intercepts');}}
 });
