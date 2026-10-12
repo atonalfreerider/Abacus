@@ -37,20 +37,21 @@ test('unit animations use tray-level units, reusable stack definitions and no fl
 });
 
 
-test('cancellation assigns distinct receivers in top-left row-major order for either sign',()=>{
+test('cancellation starts at the bottom-right of the tray and works backwards, for either sign',()=>{
  for(const [a,b] of [[9,-7],[-9,7],[999,-777],[-999,777]]){
   const p=unitPlan(a,b,'target','source'),pairs=p.phases.filter(p=>p.type==='neutralize');
   assert.equal(new Set(pairs.map(p=>p.receiver.id)).size,pairs.length);
-  for(const place of new Set(pairs.map(p=>p.receiver.place)))assert.deepEqual(pairs.filter(p=>p.receiver.place===place).map(p=>p.receiver.cell),[0,1,2,3,4,5,6]);
+  for(const place of new Set(pairs.map(p=>p.receiver.place))){const ranked=pairs.filter(p=>p.receiver.place===place);assert.deepEqual(ranked.map(p=>p.receiver.cell),[8,7,6,5,4,3,2]);assert.deepEqual(ranked.map(p=>p.lag),[...ranked.keys()].map(i=>.06*i),'the ripple runs backwards from the deepest card');}
   for(const pair of pairs){assert.equal(p.initial.find(t=>t.id===pair.receiver.id).owner,'target');assert.deepEqual(p.cancelTargets[pair.mover],pair.receiver);assert.notEqual(pair.receiver.sign,pair.before.find(t=>t.id===pair.mover).sign);}
  }
 });
-test('borrowed cancellation receivers start at the top-left unit and stay predetermined',()=>{
- for(const [a,b] of [[100,-9],[-100,9],[1000,-99]]){const p=unitPlan(a,b,'target','source');const pairs=p.phases.filter(p=>p.type==='neutralize'&&p.receiver.place===0);assert.deepEqual(pairs.map(p=>p.receiver.cell),[0,1,2,3,4,5,6,7,8]);assert.ok(pairs.every(pair=>p.cancelTargets[pair.mover].id===pair.receiver.id));}
+test('borrowed cancellation receivers start at the bottom-right unit and stay predetermined',()=>{
+ for(const [a,b] of [[100,-9],[-100,9],[1000,-99]]){const p=unitPlan(a,b,'target','source');const pairs=p.phases.filter(p=>p.type==='neutralize'&&p.receiver.place===0);assert.deepEqual(pairs.map(p=>p.receiver.cell),[8,7,6,5,4,3,2,1,0]);assert.ok(pairs.every(pair=>p.cancelTargets[pair.mover].id===pair.receiver.id));}
 });
 test('rendered cancellation pairs overlap exactly at their receiving card',()=>{
  const c=new Controller({render(){}},'9-7');const ids=c.model.state.left.map(t=>t.id);c.execute({type:'combine',id:ids[1],target:ids[0]});const plan=c.clock.plan;
  for(const fraction of [.1,.5,.8]){const phase=plan.units.phases.find(p=>p.type==='neutralize'),progress=.9*(phase.start+fraction*(phase.end-phase.start))/plan.units.duration;const svg=renderEquation(c.model.state,{},plan,progress);const matches=[...svg.matchAll(/<g data-cancel-target="([^"]+)" data-target-cell="(\d+)"[^>]*>(<g data-unit=.*?)<\/g><\/g>/g)];const time=phase.start+fraction*(phase.end-phase.start),active=plan.units.phases.filter(p=>p.type==='neutralize'&&time>=p.start&&time<p.end).length;assert.ok(active>=1);assert.equal(matches.length,2*active);for(let i=0;i<matches.length;i+=2){assert.equal(matches[i][1],matches[i+1][1]);const coordinates=m=>[...m[3].matchAll(/(?:x|y|transform)="([^"]+)"/g)].map(v=>v[0]);assert.deepEqual(coordinates(matches[i]),coordinates(matches[i+1]));}}
 });
 
-test('remaining cards do not compact into receiver cells until cancellation finishes',()=>{const p=unitPlan(7,-3,'target','source'),settle=p.phases.find(p=>p.type==='settle');assert.ok(settle.start>=Math.max(...p.phases.filter(p=>p.type==='neutralize').map(p=>p.end)));});
+test('a smaller target cancels from its last card and the cards left over keep their cells',()=>{const p=unitPlan(7,-3,'target','source');assert.deepEqual(p.phases.filter(p=>p.type==='neutralize').map(p=>p.receiver.cell),[6,5,4]);assert.ok(!p.phases.some(p=>p.type==='settle'),'the four cards left fill cells 0-3 already');});
+test('remaining cards do not compact into receiver cells until cancellation finishes',()=>{const p=unitPlan(3,-7,'target','source'),settle=p.phases.find(p=>p.type==='settle');assert.ok(settle.start>=Math.max(...p.phases.filter(p=>p.type==='neutralize').map(p=>p.end)));});
