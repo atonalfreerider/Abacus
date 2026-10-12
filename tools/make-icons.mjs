@@ -34,17 +34,18 @@ for (const [density, scale] of Object.entries({ mdpi: 1, hdpi: 1.5, xhdpi: 2, xx
   // Android 12+ splash icon: 288 dp, mark within the central 192 dp circle.
   square(`${res}/drawable-${density}/splash_icon.png`, 288 * scale, { scale: .46, background: 'none' });
 }
-// Legacy splash images keep their generated sizes: paper with the mark in the middle.
+// Legacy splash images keep their generated sizes: the mark on the paper colour (a plain
+// colour keeps these full-screen images small).
 for (const dir of fs.readdirSync(res).filter(d => d.startsWith('drawable'))) {
   const file = `${res}/${dir}/splash.png`;
   if (!fs.existsSync(file)) continue;
   const b = fs.readFileSync(file), w = b.readUInt32BE(16), h = b.readUInt32BE(20), s = Math.min(w, h) * .34;
-  images.push([file, w, h, svg(w, h, mark((w - s) / 2, (h - s) / 2, s)), false]);
+  images.push([file, w, h, svg(w, h, mark((w - s) / 2, (h - s) / 2, s), '#f7f0df'), false]);
 }
 // iOS: one 1024 icon (opaque), and the launch image.
 square('ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png', 1024);
 for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png'])
-  images.push([`ios/App/App/Assets.xcassets/Splash.imageset/${name}`, 2732, 2732, svg(2732, 2732, mark(2732 / 2 - 360, 2732 / 2 - 360, 720)), false]);
+  images.push([`ios/App/App/Assets.xcassets/Splash.imageset/${name}`, 2732, 2732, svg(2732, 2732, mark(2732 / 2 - 360, 2732 / 2 - 360, 720), '#f7f0df'), false]);
 // Google Play: 512 icon and the 1024 × 500 feature graphic.
 square('store/android/icon-512.png', 512);
 images.push(['store/android/feature-graphic.png', 1024, 500, svg(1024, 500, mark(70, 70, 360)
