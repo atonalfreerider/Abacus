@@ -2,6 +2,7 @@
 // fresh problem of the same shape. Steps come from the model's planner, so the
 // narration always matches what the animation shows.
 import { EquationModel, math } from './model.js';
+import { regroup } from './animation.js';
 
 export function random(seed = Date.now()) {
   let s = seed >>> 0 || 1;
@@ -10,6 +11,10 @@ export function random(seed = Date.now()) {
 const pick = (r, items) => items[r(0, items.length - 1)];
 
 export const lessons = [
+  { id: 'ten', group: 'Place value', title: 'Ten makes a stack', example: '7+1+1+1', intro: 'A tray has nine spaces. When a tenth card arrives, the ten cards stack into one card and move to the next tray to the left: one ten.',
+    make: r => { const a = r(6, 9); return a + '+1'.repeat(10 - a + r(0, 2)); } },
+  { id: 'hundred', group: 'Place value', title: 'Full trays stack again', example: '99+1', intro: 'Each tray to the left is worth ten of the tray to its right. When the tens tray fills too, ten tens stack into one hundred.',
+    make: r => { const a = r(91, 99); return `${a}+${r(100 - a, 9)}`; } },
   { id: 'across', group: 'Moving cards', title: 'Across the mirror', example: 'x+3=7', intro: 'Get x alone. A card that crosses the equals mirror flips its sign.',
     make: r => { const x = r(1, 9), a = r(2, 9); return `x+${a}=${x + a}`; } },
   { id: 'negatives', group: 'Moving cards', title: 'Moving negatives', example: 'x-4=5', intro: 'A red (negative) card turns blue when it crosses.',
@@ -80,9 +85,9 @@ function describe(command, state) {
     return `Work out ${show(a)} ÷ ${show(b)}: deal the cards into ${show(b)} equal groups, largest place first; unstack leftovers into the next place.`;
   }
   if (command.type === 'combine') {
-    const a = find(state, command.id), b = find(state, command.target);
-    if (Math.sign(a.value.n) !== Math.sign(b.value.n)) return `${text(a)} and ${text(b)} have opposite signs: their cards cancel in zero pairs. Drop ${text(a)} onto ${text(b)}.`;
-    return `Combine ${text(a)} with ${text(b)}: drop one onto the other and the cards add, carrying tens.`;
+    const a = find(state, command.id), b = find(state, command.target), regrouping = regroupText(a, b);
+    if (Math.sign(a.value.n) !== Math.sign(b.value.n)) return `${text(a)} and ${text(b)} have opposite signs: their cards cancel in zero pairs. Drop ${text(a)} onto ${text(b)}.${regrouping}`;
+    return `Combine ${text(a)} with ${text(b)}: drop one onto the other and the cards add.${regrouping}`;
   }
   if (command.type === 'move') {
     const t = find(state, command.id);
@@ -91,6 +96,18 @@ function describe(command, state) {
   if (command.type === 'operate') return command.operation === 'divide' ? `Divide both sides by ${command.amount} so one x remains.` : `Multiply both sides by ${command.amount} to make x whole.`;
   if (command.type === 'reorder') return 'Rearrange the cards; the value does not change.';
   return 'Simplify.';
+}
+// Whole numbers name each carry and borrow the combination will animate.
+const places = ['one', 'ten', 'hundred', 'thousand', 'ten-thousand', 'hundred-thousand', 'million'];
+const plural = place => places[place] + 's';
+function regroupText(a, b) {
+  if (a.value.d !== 1 || b.value.d !== 1) return '';
+  const events = regroup(a.value.n, b.value.n).filter(e => e.place + 1 < places.length);
+  const carries = events.filter(e => e.type === 'carry'), borrows = events.filter(e => e.type === 'borrow');
+  const list = parts => parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  if (carries.length) return ` A tray holds nine, so ${list(carries.map((e, i) => `${i ? '' : 'ten '}${plural(e.place)} stack into one ${places[e.place + 1]}`).map((t, i) => i ? `ten ${t}` : t))}, ${carries.length > 1 ? 'each ' : ''}one tray to the left.`;
+  if (borrows.length) return ` The red cards need partners, so ${list(borrows.map(e => `a ${places[e.place]} unstacks into ten ${plural(e.to)}`))}, ${borrows.length > 1 ? 'each ' : ''}one tray to the right.`;
+  return '';
 }
 // Steps the planner needs from a state (used to judge whether a move helped).
 export function remaining(state, expression = false) {

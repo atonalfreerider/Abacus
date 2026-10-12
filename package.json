@@ -15,7 +15,8 @@
     "test:browser": "node tools/interaction-tests.mjs",
     "preview": "node tools/serve.mjs dist",
     "perf": "node tools/perf.mjs",
-    "swf:disasm": "node tools/swf-disasm.mjs"
+    "swf:disasm": "node tools/swf-disasm.mjs",
+    "videos": "node tools/make-videos.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -1,4 +1,4 @@
-# ABACUS
+# Abacus
 
 A browser equation workspace built from the original ABACUS SWF's textures, face-on 3×3 trays and equals mirror. Numbers are physical cards: each occupied cell holds 1, 10 or 100 card faces, so place value is visible as stack depth. Addition carries and borrows card by card, positive and negative cards cancel in zero pairs, multiplication copies cards, and long division deals them into equal groups. In graph mode, a point dragged along a curve shows its coordinates as card stacks, and systems of equations are solved where curves cross. An advanced module sweeps card strips under a curve to build an integral. A tutor shows worked examples and then deals the learner fresh problems. The original SWF remains available at `reference.html` for comparison.
 
@@ -12,6 +12,7 @@ npm test                  # unit and property tests
 npm run test:visual       # deterministic SVG snapshots
 npm run test:browser      # real pointer/keyboard/tutor checks in headless Chrome
 npm run perf              # frame times of heavy animations in headless Chrome
+npm run videos            # narrated tutorial videos (see Tutorial videos)
 npm run build && npm run preview
 ```
 
@@ -45,9 +46,26 @@ Drag the point along a curve. Its coordinates stand as cards: a column of y card
 
 **Area (advanced).** Tick *Area*, choose [a, b], a strip width Δx and where each strip takes its height, then **Sweep**. The point moves across and stacks a column of card strips at each step. Every column then slides beside b and becomes whole cards (same area), and red cancels blue. The resulting stack is marked against the exact integral, computed from the antiderivative. **Thinner strips** halves Δx, and the sum approaches the integral.
 
-**Tutor.** Choose a lesson (moving cards, zero pairs, equal groups, x on both sides, fractions, products, multiplying by copying, two-digit lines, decimal copies, long division, remainders as decimals or fractions, dividing by a fraction, carrying, borrowing, and three graph lessons: solve a system by graphing, where a parabola meets zero, graph both sides). The tutor plays a worked example step by step, or with Play all, narrating each step, then deals a new problem of the same shape. Hint highlights the card to move and draws a guide arrow; Show me performs the step; feedback says whether a move helped, was a balanced detour, or solved it. Solve and Combine use the same step planner.
+**Tutor.** Choose a lesson (ten makes a stack, full trays stack again, moving cards, zero pairs, equal groups, x on both sides, fractions, products, multiplying by copying, two-digit lines, decimal copies, long division, remainders as decimals or fractions, dividing by a fraction, carrying, borrowing, and three graph lessons: solve a system by graphing, where a parabola meets zero, graph both sides). The tutor plays a worked example step by step, or with Play all, narrating each step, then deals a new problem of the same shape. Narration names every carry and borrow a combination causes. Hint highlights the card to move and draws a guide arrow; Show me performs the step; feedback says whether a move helped, was a balanced detour, or solved it. Solve and Combine use the same step planner.
 
 **View** offers horizontal, vertical and automatic layouts, front/depth/spread stack cameras, and zoom. Animations can be paused, scrubbed and finished; undo/redo restore exact states.
+
+**Carrying and borrowing.** A tray has nine cells. Cards arriving at a full tray wait on its rim; when ten gather they stack into one card in their own tray, then the stack slides one tray to the left. A borrow plays the same motion backwards: a card slides one tray to the right and fans out into ten.
+
+## Tutorial videos
+
+`npm run videos` records three narrated tutorials from the real app in headless Chrome: `base-ten` (why ten cards make one), `carry-borrow` (adding and subtracting) and `solving-for-x` (moving pieces across the mirror until the green X is alone). Each is written in landscape 1920×1080 and portrait 1080×1920 to `videos/<name>-<format>.mp4`, with burned-in captions and a matching `.srt`.
+
+```sh
+npm run videos                                   # all three, both formats
+npm run videos -- base-ten --format portrait     # one video, one format
+npm run videos -- carry-borrow --draft           # quick 1× render for review
+```
+
+- The page runs on virtual time (`tools/video/page.js`): each video frame advances the app clock exactly, so drags, animations and narration line up frame for frame, and regrouping plays in slow motion while it is described.
+- Touches are real DevTools touch events; an overlay draws the fingertip, press ripples, captions, title cards and place-value labels.
+- Narration uses ElevenLabs (`tools/video/voice.mjs`) with the voice named by `ELEVENLABS_VOICE` (default `JohnV4`). The key comes from `ELEVENLABS_API_KEY` or the file in `ELEVENLABS_KEY_FILE` (default `~/Desktop/eleven-key.txt`). Lines are cached by content in the Git-ignored `.cache/voice`, so re-rendering costs nothing; only edited lines are synthesized again.
+- Scripts live in `tools/video/tutorials.mjs`. Card positions are read live, so one script serves both formats. Requires Chrome and ffmpeg.
 
 ## Architecture and mathematics
 

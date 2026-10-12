@@ -11,3 +11,5 @@ public/pixel-baselines/
 
 .runtime/
 .claude/
+.cache/
+videos/

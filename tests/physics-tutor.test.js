@@ -73,3 +73,11 @@ test('feedback distinguishes progress, detours and completion',()=>{
  const done=new EquationModel('x=7-3');const before=done.state;done.dispatch(done.nextStep());assert.equal(feedback(done,before).tone,'done');
  assert.equal(remaining(start),2);
 });
+test('combination narration names each carry and borrow it will animate',()=>{
+ const say=input=>{const m=new EquationModel(input);return narrate(m.nextStep(),m.state);};
+ assert.match(say('9+1'),/ten ones stack into one ten, one tray to the left/);
+ assert.match(say('99+1'),/ten ones stack into one ten and ten tens stack into one hundred, each one tray to the left/);
+ assert.match(say('52-17'),/a ten unstacks into ten ones, one tray to the right/);
+ assert.match(say('503-78'),/a hundred unstacks into ten tens and a ten unstacks into ten ones, each one tray to the right/);
+ assert.doesNotMatch(say('3+4'),/tray/);assert.doesNotMatch(say('0.9+0.2'),/tray/);
+});

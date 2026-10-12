@@ -6,10 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 const candidates=[process.env.CHROME,'/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium','/usr/bin/chromium-browser','/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','C:/Program Files/Google/Chrome/Application/chrome.exe'].filter(Boolean);
 export const chromePath=()=>candidates.find(file=>fs.existsSync(file));
-export async function launch(url,{width=1280,height=800}={}){
+// scale > 1 sets a real device pixel ratio (emulating it misplaces touch coordinates).
+export async function launch(url,{width=1280,height=800,scale=1}={}){
  const binary=chromePath();if(!binary)throw Error('Chrome not found. Set CHROME=/path/to/chrome.');
  const profile=fs.mkdtempSync(path.join(os.tmpdir(),'abacus-chrome-'));
- const child=spawn(binary,['--headless=new','--remote-debugging-port=0',`--user-data-dir=${profile}`,`--window-size=${width},${height}`,'--no-first-run','--no-default-browser-check','--disable-extensions','--hide-scrollbars','about:blank'],{stdio:['ignore','ignore','pipe']});
+ const child=spawn(binary,['--headless=new','--remote-debugging-port=0',`--user-data-dir=${profile}`,`--window-size=${width},${height}`,'--no-first-run','--no-default-browser-check','--disable-extensions','--hide-scrollbars',...(scale===1?[]:[`--force-device-scale-factor=${scale}`]),'about:blank'],{stdio:['ignore','ignore','pipe']});
  const endpoint=await new Promise((resolve,reject)=>{let text='';child.stderr.on('data',chunk=>{text+=chunk;const match=text.match(/ws:\/\/[^\s]+/);if(match)resolve(match[0]);});child.on('exit',()=>reject(Error('Chrome exited: '+text)));setTimeout(()=>reject(Error('Chrome did not start')),15000);});
  const port=new URL(endpoint).port;
  const target=await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent('about:blank')}`,{method:'PUT'})).json();
@@ -18,7 +19,7 @@ export async function launch(url,{width=1280,height=800}={}){
  socket.onmessage=event=>{const message=JSON.parse(event.data);if(message.id&&pending.has(message.id)){const {resolve,reject}=pending.get(message.id);pending.delete(message.id);message.error?reject(Error(message.error.message)):resolve(message.result);}else for(const listener of listeners)listener(message);};
  const send=(method,params={})=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});socket.send(JSON.stringify({id:n,method,params}));});
  await send('Page.enable');await send('Runtime.enable');
- await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+ await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:scale===1?1:0,mobile:false});
  const errors=[];listeners.push(m=>{if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.exception?.description||m.params.exceptionDetails.text);if(m.method==='Runtime.consoleAPICalled'&&m.params.type==='error')errors.push(m.params.args.map(a=>a.value??a.description).join(' '));});
  const loaded=()=>new Promise(resolve=>{const listener=m=>{if(m.method==='Page.loadEventFired'){listeners.splice(listeners.indexOf(listener),1);resolve();}};listeners.push(listener);});
  const page={

@@ -68,7 +68,7 @@ export function scheduleUnits(plan){
  for(const phase of plan.phases){
   const inputs=phase.type==='settle'?phase.before.map(t=>t.id):phase.removed;
   phase.start=Math.max(phase.type==='settle'?end:phase.delay||0,...inputs.map(id=>ready.get(id)||0),...(phase.waits||[]).map(i=>plan.phases[i].start))+(phase.lag||0);
-  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:.45)/(plan.speed||1);
+  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:phase.type==='neutralize'?.45:.8)/(plan.speed||1);
   for(const id of (phase.type==='settle'?phase.after.map(t=>t.id):phase.created))ready.set(id,phase.end);
   end=Math.max(end,phase.end);
  }

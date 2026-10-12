@@ -232,10 +232,13 @@ export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
    const carry=phase.type==='carry',many=(carry?phase.before:phase.after).filter(a=>(carry?phase.removed:phase.created).includes(a.id));
    const single=(carry?phase.after:phase.before).find(a=>a.id===(carry?phase.created[0]:phase.removed[0]));
    const end=pos(single),pitch=cameras[camera].pitch,depth=placeMetadata(many[0].place+shift).cardCount*pitch;
-   const f=carry?ease(q):1-ease(q),comma=(single.place+shift)%3===0||many[0].place+shift<0;
+   // Two stages, so the regrouping can be followed: ten cards gather into one stack in
+   // their own tray (g), then the stack slides one tray over (f). A borrow plays it backwards.
+   const c=carry?q:1-q,g=ease(c/.5),f=ease((c-.5)/.5),comma=(single.place+shift)%3===0||many[0].place+shift<0;
+   const home=pos({...single,place:many[0].place}),slide={x:(end.x-home.x)*f,y:(end.y-home.y)*f};
    // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
    // At a comma, compress the old depth group into the next inscribed face.
-   for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,end.x+offset,f),y:lerp(start.y,end.y+offset,f)};
+   for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,home.x+offset,g)+slide.x,y:lerp(start.y,home.y+offset,g)+slide.y};
     if(comma&&compression>.98)particles+=`<g opacity="${round(1-ease((f-.75)/.25))}">${draw(token,point)}</g>`;
     else if(comma){
      // Faces closer than ~1.2px read as one edge band, so draw only that many layers.
@@ -265,7 +268,8 @@ function renderUnits(plan,t,options){
  const scene={...before,width:lerp(before.width,after.width),height:Math.max(before.height,after.height),terms:[...before.terms],equal:before.equal&&after.equal?{x:lerp(before.equal.x,after.equal.x),y:lerp(before.equal.y,after.equal.y)}:null};
  const maxPlace=Math.max(spec(target.term).maxPlace,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift)),minPlace=Math.min(spec(target.term).minPlace,spec(source.term).minPlace,0,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift));
  function pos(token){if(token.owner===u.target&&u.cancelTargets?.[token.id])token=u.cancelTargets[token.id];const owner=token.owner===u.target?anchor:{x:sourceAt.x+boundary(source.term),y:sourceAt.y};const cell=token.cell;
-  return {x:owner.x+placeOffset(token.place+shift)+7+(cell<9?cell%3*47:47+(cell-9)*6),y:owner.y+7+(cell<9?Math.floor(cell/3)*47:47+(cell-9)*6)};
+  // A full tray has no tenth cell: extra cards wait on its rim until ten of them regroup.
+  return {x:owner.x+placeOffset(token.place+shift)+7+(cell<9?cell%3*47:47+(cell-9)*6),y:owner.y+7+(cell<9?Math.floor(cell/3)*47:-50-(cell-9)*6)};
  }
  for(const slot of before.terms){const to=after.terms.find(s=>s.term.id===slot.term.id);if(to)overrides[slot.term.id]={x:lerp(slot.x,to.x),y:lerp(slot.y,to.y)};}
  const empty=term=>specArt(spec(term),'blue',options.camera,false);
