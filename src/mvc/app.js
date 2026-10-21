@@ -51,7 +51,7 @@ function refresh() {
 }
 controller.addEventListener('change',refresh);
 const dragger=new Dragger($('stage'),controller,{
- onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t))return controller.evaluate(t.id);controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
+ onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){offerWatch(t);return controller.evaluate(t.id);}controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
  onCommit:(id,drop,origin)=>safe(()=>controller.drop(id,drop.side,drop.target,drop.index,performance.now(),origin)),
  onPeek:(id,at)=>peek(id,at),onPeekEnd:()=>{$('peek').hidden=true;},
 });
@@ -111,7 +111,7 @@ $('stage').addEventListener('pointerup',event=>dragger.up(event));
 $('stage').addEventListener('pointercancel',event=>dragger.cancel(event));
 $('stage').addEventListener('keydown',event=>{
  const term=event.target.closest('[data-term]');if(!term||term.classList.contains('placeholder'))return;const id=term.dataset.term;
- if(['Enter',' '].includes(event.key)){const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){event.preventDefault();safe(()=>controller.evaluate(id));}return;}
+ if(['Enter',' '].includes(event.key)){const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){event.preventDefault();offerWatch(t);safe(()=>controller.evaluate(id));}return;}
  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
   event.preventDefault();safe(()=>{
    const direction=['ArrowLeft','ArrowUp'].includes(event.key)?-1:1;
@@ -153,6 +153,7 @@ $('open-tutor').onclick=()=>$('lesson-dialog').showModal();
 // Lessons count in tens: a lesson shows decimal cards and gives the base back afterwards.
 let lessonBase=null;
 async function startLesson(lesson){
+ if(!$('machine-mode').hidden)await showMachine(false);
  if(numeral.id!=='decimal'){lessonBase=numeral.id;setBase('decimal');}
  stopPlaying();tutor=new Tutor(lesson);tutor.found=new Set();hint=null;entry.active=false;$('entry-bar').hidden=true;
  $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);controller.model.leftToRight=!!lesson.pemdas;
@@ -222,13 +223,14 @@ for(let n=1;n<=9;n++){const b=document.createElement('button');b.dataset.inputKe
 $('keypad').onpointerleave=()=>illuminate(0);
 for(const b of document.querySelectorAll('[data-input-key]'))b.onclick=()=>enterKey(b.dataset.inputKey);
 $('entry-done').onclick=()=>enterKey('ArrowUp');
-document.addEventListener('keydown',event=>{if(document.body.classList.contains('graph-active')||document.body.classList.contains('numbers-active')||event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
+document.addEventListener('keydown',event=>{if(document.body.classList.contains('graph-active')||document.body.classList.contains('numbers-active')||document.body.classList.contains('machine-active')||event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
 $('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>{controller.load('0');leaveTutor();});};
 $('open-tests').onclick=()=>location.href='./tests.html';
 // Graph mode loads on first use and shares the page; card-space input pauses while it is open.
 let graph=null;
 async function showGraph(on){
  if(on&&!$('numbers-mode').hidden)showNumbers(false);
+ if(on&&!$('machine-mode').hidden)showMachine(false);
  document.body.classList.toggle('graph-active',on);$('graph-mode').hidden=!on;$('open-graph').setAttribute('aria-pressed',String(on));
  if(on){entry.active=false;$('entry-bar').hidden=true;if(tutor&&!tutor.lesson.graph)leaveTutor();if(!graph){const {Graph}=await import('../graph/graph-app.js');graph=new Graph({cardsEquation:()=>math.equationText(controller.model.state)});graph.addEventListener('point',graphPoint);}graph.show();}
  else{graph?.hide();if(tutor?.lesson.graph)leaveTutor();controller.render();}
@@ -246,13 +248,14 @@ function graphPoint(event){
  say(`Found it: (${at.replace(/-/g,'−')}). ${why}${worked?` ${worked}.`:''} ${tutor.solved?'Well done: New problem for another, or Next lesson.':'Now find where it crosses the x axis.'}`,tutor.solved?'done':'good');refresh();
 }
 $('open-graph').onclick=()=>showGraph($('graph-mode').hidden);
-for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);if(!$('numbers-mode').hidden)showNumbers(false);});
+for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);if(!$('numbers-mode').hidden)showNumbers(false);if(!$('machine-mode').hidden)showMachine(false);});
 // Numbers: one whole number taken apart into its prime components (the marble fingerprint),
 // and written in every base. It opens on the biggest whole number in the equation.
 let numbers=null;
 function numberFromCards(){const whole=terms().filter(t=>!t.expr&&t.kind==='constant'&&t.value.d===1&&Math.abs(t.value.n)>=2).map(t=>Math.abs(t.value.n));return whole.length?Math.max(...whole):undefined;}
 async function showNumbers(on,n){
  if(on&&!$('graph-mode').hidden)await showGraph(false);
+ if(on&&!$('machine-mode').hidden)showMachine(false);
  document.body.classList.toggle('numbers-active',on);$('numbers-mode').hidden=!on;$('open-numbers').setAttribute('aria-pressed',String(on));
  if(on){entry.active=false;$('entry-bar').hidden=true;if(tutor)leaveTutor();
   if(!numbers){const {NumbersView}=await import('../numbers/numbers-app.js');numbers=new NumbersView();numbers.addEventListener('cards',event=>{showNumbers(false);safe(()=>controller.load(String(event.detail.n)));});}
@@ -261,6 +264,48 @@ async function showNumbers(on,n){
  return numbers;
 }
 $('open-numbers').onclick=()=>showNumbers($('numbers-mode').hidden);
+// Machine: PRIME's function machine in LED bulbs (src/machine), loaded on first use. Its
+// own keys, base and clock; To the cards hands Output's first value back in its base.
+let machine=null;
+async function showMachine(on,preset){
+ if(on&&!$('graph-mode').hidden)await showGraph(false);
+ if(on&&!$('numbers-mode').hidden)await showNumbers(false);
+ document.body.classList.toggle('machine-active',on);$('machine-mode').hidden=!on;$('open-machine').setAttribute('aria-pressed',String(on));
+ if(on){entry.active=false;$('entry-bar').hidden=true;if(tutor)leaveTutor();hideWatch();
+  try{
+   const {MachineView,presetFromQuery}=await import('../machine/machine-app.js');
+   if(!machine){machine=new MachineView();
+    machine.addEventListener('cards',event=>{showMachine(false);chooseBase(event.detail.base);safe(()=>controller.load(String(event.detail.value)));});
+    machine.addEventListener('leave',()=>showMachine(false));}
+   await machine.show(preset instanceof URLSearchParams?presetFromQuery(preset):preset);
+  }catch(error){console.error(error);showMachine(false);message(`The machine could not open: ${error.message}`);}
+ }
+ else{machine?.hide();controller.render();}
+ return machine;
+}
+$('open-machine').onclick=()=>showMachine($('machine-mode').hidden);
+// Watch in the machine: a × or ÷ term in base 2 or balanced ternary, tapped or focused,
+// can be replayed as a function machine. Integer operands only (parenthesised sums too),
+// and only when the machine can plan it within its limits.
+let watch=null,watchTimer=0;
+function hideWatch(){clearTimeout(watchTimer);watchTimer=0;watch=null;$('watch-machine').hidden=true;}
+const wholeTerm=t=>!t.expr&&t.kind==='constant'&&t.value.d===1;
+const watchable=t=>t?.expr?.ops.length&&t.expr.ops.every(op=>op==='×'||op==='÷')&&t.expr.operands.every(o=>!o.base&&o.value.d===1&&(!o.group||o.group.every(wholeTerm)));
+async function offerWatch(t){
+ hideWatch();const base=numeral.id;if(!['binary','ternary'].includes(base)||!watchable(t))return;
+ const shown=math.termText(t),text=shown.replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-'),token=watch={text,shown,base};
+ try{const [{parseExpression},{planMachine}]=await Promise.all([import('../machine/tree.js'),import('../machine/plan.js')]);
+  const parsed=parseExpression(text,base);if(!parsed.ok||!planMachine({tree:parsed.tree,inputs:parsed.inputs,base}).ok)return;}
+ catch(error){console.error(error);return;}
+ if(watch!==token||numeral.id!==base)return;
+ $('watch-machine').textContent=`Watch ${shown} in the machine`;$('watch-machine').hidden=false;watchLater();
+}
+// It goes 8 s after the term's animation ends.
+function watchLater(){clearTimeout(watchTimer);watchTimer=0;if(watch&&!controller.busy)watchTimer=setTimeout(hideWatch,8000);}
+controller.addEventListener('change',()=>{if(watch&&!$('watch-machine').hidden&&!controller.busy&&!watchTimer)watchLater();});
+$('watch-machine').onclick=()=>{if(!watch)return;const {text,base}=watch;hideWatch();showMachine(true,{expression:text,base});};
+$('stage').addEventListener('focusin',event=>{const term=event.target.closest?.('[data-term]');if(!term)return;const t=terms().find(t=>t.id===term.dataset.term);if(watch&&t&&watchable(t)&&math.termText(t)===watch.shown)return;if(t&&math.evaluable(t))offerWatch(t);else hideWatch();});
+{const load=controller.load.bind(controller);controller.load=input=>{hideWatch();return load(input);};}
 
 // Native apps: quick actions and shortcuts open a place; Android's back button closes
 // what is open before it leaves the app.
@@ -269,9 +314,10 @@ initNative({
   for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
   if(place==='graph'){leaveTutor();showGraph(true);}
   else if(place==='numbers'){leaveTutor();showNumbers(true);}
-  else if(place==='lessons'){if(!$('graph-mode').hidden)showGraph(false);$('lesson-dialog').showModal();}
+  else if(place==='machine'){leaveTutor();showMachine(true);}
+  else if(place==='lessons'){if(!$('graph-mode').hidden)showGraph(false);if(!$('machine-mode').hidden)showMachine(false);$('lesson-dialog').showModal();}
   else if(place==='pemdas'){startLesson(lessons.find(l=>l.id==='pemdas-all'));}
-  else if(place==='equation'){if(!$('graph-mode').hidden)showGraph(false);leaveTutor();$('open-equation').click();}
+  else if(place==='equation'){if(!$('graph-mode').hidden)showGraph(false);if(!$('machine-mode').hidden)showMachine(false);leaveTutor();$('open-equation').click();}
  },
  back:()=>{
   const dialog=document.querySelector('dialog[open]');if(dialog){dialog.close();return true;}
@@ -279,18 +325,19 @@ initNative({
   if(tutor){leaveTutor();return true;}
   if(!$('graph-mode').hidden){showGraph(false);return true;}
   if(!$('numbers-mode').hidden){showNumbers(false);return true;}
+  if(!$('machine-mode').hidden){showMachine(false);return true;}
   if(entry.active){enterKey('Escape');return true;}
   return false;
  },
 });
 
 // Style: the school sketchpad or the cyber look, for every view. Saved per device.
-onStyle(name=>{surface.restyle();graph?.restyle();controller.render();surface.prewarm(controller.options.camera);$('style').value=name;statusBarStyle(name);});
+onStyle(name=>{surface.restyle();graph?.restyle();machine?.restyle();controller.render();surface.prewarm(controller.options.camera);$('style').value=name;statusBarStyle(name);});
 $('style').onchange=event=>{setStyle(event.target.value);try{localStorage.setItem('abacus-style',event.target.value);}catch{}};
 if(document.documentElement.dataset.style==='cyber')setStyle('cyber');
 $('style').value=ink.name;
 // Numerals: the base the cards are drawn and regrouped in. Saved per device.
-onBase(id=>{controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
+onBase(id=>{hideWatch();controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
 const chooseBase=id=>{lessonBase=null;setBase(id);try{localStorage.setItem('abacus-base',id);}catch{}};
 $('numerals').onchange=event=>chooseBase(event.target.value);
 $('base-cycle').onclick=()=>chooseBase(baseOrder[(baseOrder.indexOf(numeral.id)+1)%baseOrder.length]);
@@ -298,3 +345,6 @@ $('base-cycle').onclick=()=>chooseBase(baseOrder[(baseOrder.indexOf(numeral.id)+
 // View ▸ Prime fingerprints: each whole number's prime components under its cards.
 $('fingerprints').onchange=event=>{controller.options.fingerprints=event.target.checked;controller.render();try{localStorage.setItem('abacus-fingerprints',event.target.checked?'1':'');}catch{}};
 {let on=false;try{on=new URLSearchParams(location.search).has('fingerprints')||localStorage.getItem('abacus-fingerprints')==='1';}catch{}if(on){$('fingerprints').checked=true;controller.options.fingerprints=true;controller.render();}}
+// Opened at ?machine, ?machine=empty or ?machine=<op or expression>&mbase=&input=&sp=&pace=&auto=
+// (design 4.1): the machine, preloaded from the URL.
+{const q=new URLSearchParams(location.search);if(q.has('machine'))showMachine(true,q);}

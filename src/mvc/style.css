@@ -166,3 +166,125 @@ body.numbers-active #workspace,body.numbers-active .original-dock,body.numbers-a
 @media(max-width:480px){#numbers-phase{flex:1 1 50px;min-width:50px;width:auto}.numbers-digits{font-size:12px}}
 /* LED bulbs: the place value in a tray's corner. */
 .place-value{font-family:Georgia,serif}
+/* Machine: PRIME's function machine in LED bulbs. A grid, so the same parts rearrange for
+   desktop (side panel), tablets (palette always up), phones in portrait (a palette strip and
+   a control row under the stage, Steps in a sheet) and in landscape (a right rail). */
+body.machine-active #workspace,body.machine-active .original-dock,body.machine-active #transport,body.machine-active #entry-bar,body.machine-active #tutor-bar{display:none!important}
+#open-machine[aria-pressed=true]{background:#2f5d6b;color:#fff;border-color:#2f5d6b}
+.nav-short{display:none}
+.visually-hidden{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+#watch-machine{background:#fff3d6;border-color:#b07a1d}
+#machine-mode{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto auto;grid-template-areas:"bar side" "stage side" "sentence side" "caption side" "result side" "status side" "ask side" "controls side";column-gap:10px}
+.machine-bar{grid-area:bar;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:14px;margin-bottom:6px}
+.machine-bar-more{display:contents}
+#machine-base{display:inline-flex;border:1px solid #777366;border-radius:8px;overflow:hidden;flex-shrink:0}
+#machine-base button{border:0;border-radius:0;padding:5px 10px;min-width:40px;background:#f8f5e9dd}
+#machine-base button+button{border-left:1px solid #b2aa92}
+#machine-base button[aria-checked=true]{background:#2f5d6b;color:#fff}
+.machine-in{display:flex;align-items:center;gap:6px}.machine-in span{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:#7a7263}
+#machine-input,#machine-expr{font:inherit;font-size:18px;padding:3px 10px;border:1px solid #8d8574;border-radius:18px;background:#fffdf4;width:8.5em;font-variant-numeric:lining-nums tabular-nums}
+#machine-expr{font-size:15px;width:11em;border-radius:8px}
+.machine-bar .primary,.machine-controls .primary,#machine-ask button:first-of-type{background:#3b6c78;color:#fff;border-color:#2f5d6b}
+#machine-stage{grid-area:stage;position:relative;min-height:160px;border:1px solid #292820;border-radius:23px;overflow:hidden;background:#fbf7ea8c;touch-action:none;outline:none}
+#machine-stage:focus-visible{box-shadow:0 0 0 2px #266a80}
+#machine-svg{display:block;position:absolute;inset:0;width:100%;height:100%;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.m-hit{fill:transparent;cursor:pointer}.m-hit-tower{cursor:help}
+.m-hit-socket{stroke:#2f5d6b;stroke-width:3;stroke-dasharray:6 7;stroke-opacity:0}.m-hit-socket:hover{stroke-opacity:.55}
+.m-hit-socket.selected,.m-hit-socket.target{stroke:#d18a1c;stroke-width:4;stroke-opacity:1}
+.m-hit-node.selected{stroke:#d18a1c;stroke-width:4;stroke-dasharray:8 6}
+.m-preview{fill:none;stroke:#d18a1c;stroke-width:3;stroke-dasharray:8 6;pointer-events:none}
+.m-output-note{font:600 28px Georgia,serif;fill:#b3261e;pointer-events:none}
+#machine-hud{position:absolute;left:14px;top:10px;z-index:1;opacity:.5;font-size:11px;letter-spacing:.12em;line-height:1.55;pointer-events:none;transition:opacity .2s}
+#machine-hud:hover{opacity:.9}.hud-title{font-size:19px;letter-spacing:.16em}
+.hud-row{display:flex;align-items:center;gap:7px}.hud-row>span:first-child{width:4.4em}
+.hud-bulb,.hud-bulbs i{display:inline-block;width:14px;height:14px;min-height:0;border-radius:50%;padding:0;border:1px solid #7b7564;background:#ebe5d2;vertical-align:middle}
+.hud-bulb{pointer-events:auto;cursor:pointer}.hud-bulbs{display:inline-flex;gap:3px}.hud-bulbs i{width:10px;height:10px}
+.hud-bulb.lit,.hud-bulbs i.lit{background:radial-gradient(circle,#e2f3ff 0 28%,#2f7fc4 62%);border-color:#4aa3ff;box-shadow:0 0 6px #4aa3ff}
+#machine-peek{position:absolute;z-index:3;display:flex;flex-direction:column;gap:1px;padding:8px 12px;border:1px solid #6d6655;border-radius:12px;background:#fffaf0f2;box-shadow:0 8px 20px #0003;font-size:14px;pointer-events:none;max-width:280px;overflow-wrap:anywhere}
+#machine-peek b{font-size:20px;font-weight:normal}#machine-peek small{color:#7a7263}
+#machine-sentence{grid-area:sentence;margin:6px 0 0;text-align:center;font-size:18px;min-height:1.35em;font-variant-numeric:lining-nums;overflow-wrap:anywhere}
+#machine-caption{grid-area:caption;margin:2px 0 0;text-align:center;font-size:15px;color:#4a463b;min-height:1.35em}
+.machine-result{grid-area:result;display:flex;justify-content:center;gap:8px;align-items:baseline;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:#7a7263}
+.machine-result output{font-size:17px;letter-spacing:0;text-transform:none;color:#25241e;font-variant-numeric:lining-nums}
+.machine-result:has(output:empty){display:none}
+#machine-status{grid-area:status;margin:2px 0 0;text-align:center;font-size:13px;color:#2f5d6b}#machine-status:empty{display:none}#machine-status[data-tone=refuse]{color:#923923}
+#machine-ask{grid-area:ask;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 8px;margin:4px 0 0;font-size:14px}
+.machine-rail{display:contents}
+#machine-palette{grid-area:stage;align-self:end;justify-self:center;z-index:2;display:flex;gap:6px;max-width:calc(100% - 24px);overflow-x:auto;padding:6px 10px;margin-bottom:8px;border:1px solid #6d6655;border-radius:16px;background:#fffaf0eb;box-shadow:0 6px 18px #0002;touch-action:pan-x;overscroll-behavior:contain;scrollbar-width:thin;transform:translateY(calc(100% - 22px));clip-path:inset(0 0 calc(100% - 22px) 0);transition:transform .5s,clip-path .5s}
+#machine-palette:hover,#machine-palette:focus-within,body.machine-dragging #machine-palette{transform:none;clip-path:inset(0)}
+#machine-palette button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex-shrink:0;min-width:58px;padding:3px 6px;font-size:11px;letter-spacing:.06em;touch-action:pan-x}
+#machine-palette button svg{display:block;width:44px;height:24px;pointer-events:none}
+.machine-controls{grid-area:controls;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin:6px 0 2px;font-size:14px}
+.machine-controls button,.machine-controls select{font-size:14px;padding:5px 10px}.machine-controls select{width:auto;border-radius:8px}
+#machine-auto[aria-pressed=true],#machine-pause[aria-pressed=true]{background:#2f5d6b;color:#fff;border-color:#2f5d6b}
+.machine-speed{display:inline-flex;align-items:center;gap:4px}#machine-speed{min-width:3.3em;text-align:center;font-variant-numeric:tabular-nums}
+.machine-check{display:flex;align-items:center;gap:4px}
+#machine-steps-toggle,#machine-sheet-close{display:none}
+#machine-side{grid-area:side;min-height:0;display:flex;flex-direction:column;border:1px solid #6d6655;border-radius:14px;background:#fffaf0d9;overflow:hidden}
+.machine-tabs{display:flex;border-bottom:1px solid #d4cbb3}
+.machine-tabs [role=tab]{flex:1;border:0;border-radius:0;background:none;padding:8px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#7a7263}
+.machine-tabs [role=tab][aria-selected=true]{color:#25241e;box-shadow:inset 0 -2px #2f5d6b}
+#machine-sheet-close{border:0;background:none;font-size:22px;padding:4px 12px}
+#machine-steps-panel,#machine-parts-panel{flex:1;min-height:0;overflow:auto;padding:6px 8px}
+#machine-steps{margin:0;padding:0;list-style:none}
+#machine-steps button{display:flex;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:5px 6px;font-size:14px;line-height:1.3}
+#machine-steps button span{min-width:1.7em;color:#7a7263;font-variant-numeric:tabular-nums}
+#machine-steps button[aria-current]{background:#fff3d6;box-shadow:inset 3px 0 #d18a1c}
+#machine-outline ul{list-style:none;margin:0;padding-left:16px}#machine-outline>ul{padding-left:0}
+#machine-outline [role=treeitem]{outline:none}#machine-outline [role=treeitem]>span{display:block;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:14px}
+#machine-outline [role=treeitem]:focus>span{box-shadow:0 0 0 2px #266a80}
+#machine-outline [aria-selected=true]>span{background:#fff3d6;box-shadow:inset 3px 0 #d18a1c}
+.machine-help{font-size:13px;color:#5d584c;margin:4px 0 8px}
+.machine-ghost{position:fixed;left:0;top:0;z-index:50;pointer-events:none;display:flex;flex-direction:column;align-items:center;padding:4px 6px;border:1px solid #6d6655;border-radius:10px;background:#fffaf0;box-shadow:0 8px 18px #0004;font-size:11px;letter-spacing:.06em}
+.machine-ghost svg{width:44px;height:24px}
+.shake{animation:machine-shake .4s}
+@keyframes machine-shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+@media(prefers-reduced-motion:reduce){.shake{animation:none;box-shadow:0 0 0 2px #b3261e}#machine-palette{transition:none}}
+@media(pointer:coarse){.machine-bar button,.machine-controls button,.machine-controls select,#machine-base button{min-height:44px}#machine-steps button{min-height:40px}}
+/* Touch screens: the palette is always up; tablets get 48 px blocks. */
+@media(hover:none){#machine-palette{transform:none;clip-path:none}}
+@media(hover:none) and (min-width:700px){#machine-palette button{min-width:64px;min-height:48px}}
+@media(max-width:1023px){#machine-mode{grid-template-columns:minmax(0,1fr) 250px}}
+/* Phones in portrait: the bar wraps to two rows, the stage takes the height, and a palette
+   strip and a control row sit under the sentence; Steps and Parts open in a sheet. During a
+   run the strip and the bar's second row fold away, giving the stage about 100 px more. */
+@media(max-width:699px){
+ #machine-mode{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto auto auto;grid-template-areas:"bar" "stage" "sentence" "caption" "result" "status" "ask" "palette" "controls"}
+ .machine-bar{gap:5px;margin-bottom:4px}.machine-in{flex:1;min-width:0}.machine-in span{display:none}#machine-input{flex:1;min-width:0;width:auto;font-size:17px}
+ .machine-bar-more{display:flex;gap:5px;flex:1 1 100%}#machine-expr{flex:1;min-width:0;width:auto;font-size:16px}
+ #machine-mode.running .machine-bar-more,#machine-mode.running #machine-palette{display:none}
+ #machine-stage{border-radius:16px;min-height:200px}
+ #machine-sentence{font-size:16px;margin-top:4px}#machine-caption{font-size:14px}
+ #machine-palette{grid-area:palette;transform:none;clip-path:none;align-self:stretch;justify-self:stretch;max-width:none;height:56px;margin:6px 0 0;padding:3px 6px;border-radius:12px;box-shadow:none}
+ #machine-palette button{min-width:52px;min-height:44px;padding:1px 4px;font-size:10px}#machine-palette button svg{width:38px;height:20px}
+ .machine-controls{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;gap:5px;margin-top:6px;padding-bottom:2px;scrollbar-width:none}
+ .machine-controls>*{flex-shrink:0;min-height:44px}.machine-controls button,.machine-controls select{font-size:13px;padding:4px 9px;min-height:44px}
+ #machine-step{min-width:64px;order:1}#machine-auto{order:2}.machine-speed{order:3}#machine-back{order:4;min-width:44px}#machine-rebuild{order:5}#machine-steps-toggle{display:inline-block;order:6}
+ #machine-pause{order:7}#machine-pace{order:8}.machine-check{order:9}#machine-centre{order:10}#machine-overview{order:11}
+ .machine-speed button{min-width:44px}
+ #machine-side{position:fixed;left:0;right:0;bottom:0;z-index:20;max-height:62vh;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0003;display:none;padding-bottom:max(0px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px))}
+ #machine-side.open{display:flex}#machine-sheet-close{display:block}
+}
+/* Phones in landscape: the palette and the controls form a right rail beside the stage. */
+@media(max-height:520px) and (min-aspect-ratio:3/2){
+ #machine-mode{grid-column:1/-1;grid-row:3/7;grid-template-columns:minmax(0,1fr) 210px;grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto;grid-template-areas:"bar rail" "stage rail" "sentence rail" "caption rail" "result rail" "status rail" "ask rail"}
+ .machine-bar{flex-wrap:nowrap;margin-bottom:3px}.machine-bar-more{display:flex;gap:5px;flex:1;min-width:0}#machine-expr{flex:1;min-width:0;width:auto}#machine-input{width:7em}
+ #machine-mode.running .machine-bar-more{display:none}
+ .machine-rail{grid-area:rail;display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+ #machine-palette{transform:none;clip-path:none;align-self:auto;justify-self:auto;max-width:none;margin:0;flex-wrap:wrap;overflow:visible;padding:4px;border-radius:12px;box-shadow:none;touch-action:pan-y;flex-shrink:0}
+ #machine-palette button{min-width:44px;min-height:44px;padding:1px 3px;font-size:9px;touch-action:pan-y}#machine-palette button svg{width:34px;height:18px}
+ .machine-controls{margin:0;justify-content:flex-start;gap:4px}.machine-controls button,.machine-controls select{min-height:40px;font-size:12px;padding:3px 7px}
+ #machine-steps-toggle{display:inline-block}
+ #machine-stage{border-radius:14px;min-height:120px}#machine-sentence{font-size:15px;margin-top:2px}#machine-caption{font-size:13px}
+ #machine-side{position:fixed;top:0;right:0;bottom:0;width:min(360px,60vw);z-index:20;border-radius:16px 0 0 16px;box-shadow:-10px 0 30px #0003;display:none}
+ #machine-side.open{display:flex}#machine-sheet-close{display:block}
+}
+/* Recording mode (&recording, the silent videos): only the stage, unless a build scene
+   asks for the bar and palette. The burned-in caption takes the bottom band. */
+body.machine-recording #machine-caption,body.machine-recording #machine-sentence,body.machine-recording #machine-side,body.machine-recording .machine-controls,body.machine-recording .machine-result,body.machine-recording #machine-status,body.machine-recording #machine-ask{display:none!important}
+body.machine-recording:not(.machine-chrome-build) .machine-bar,body.machine-recording:not(.machine-chrome-build) #machine-palette{display:none!important}
+body.machine-recording #machine-mode{grid-template-columns:minmax(0,1fr) 0;column-gap:0}
+body.machine-recording #machine-palette{transform:none;clip-path:none}
+@media(max-width:699px),(max-height:520px){#machine-hud{left:10px;top:6px;font-size:9px}.hud-title{font-size:13px}.hud-bulb{width:12px;height:12px}.hud-bulbs i{width:8px;height:8px}}
+/* Six header buttons on a 360 px phone: no motto, tighter buttons, "Eq." for Equation. */
+@media(max-width:420px){.brand small{display:none!important}nav{gap:2px}nav button{padding:5px 4px;font-size:12px}.nav-long{display:none}.nav-short{display:inline}}
