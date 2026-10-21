@@ -201,7 +201,7 @@
  linear-gradient(var(--cyan),var(--cyan)) bottom right/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) bottom right/1px 16px no-repeat,radial-gradient(80% 70% at 50% 40%,#0b1a22 0,#05080c 100%)}
 [data-style=cyber] #machine-stage:focus-visible{box-shadow:0 0 0 1px var(--cyan)}
 [data-style=cyber] #machine-svg text{font-family:var(--mono)}
-[data-style=cyber] .m-hit-socket{stroke:var(--cyan)}[data-style=cyber] .m-hit-socket.selected,[data-style=cyber] .m-hit-socket.target,[data-style=cyber] .m-hit-node.selected,[data-style=cyber] .m-preview{stroke:var(--amber)}
+[data-style=cyber] .m-hit-socket{stroke:var(--cyan)}[data-style=cyber] .m-hit-socket.target,[data-style=cyber] .m-preview{stroke:var(--amber)}
 [data-style=cyber] .m-output-note{fill:var(--magenta);font-family:var(--mono)}
 [data-style=cyber] #machine-hud{font-family:var(--mono);color:var(--cyan)}
 [data-style=cyber] .hud-title{font-weight:300;letter-spacing:.3em}

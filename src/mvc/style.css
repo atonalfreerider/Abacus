@@ -190,8 +190,7 @@ body.machine-active #workspace,body.machine-active .original-dock,body.machine-a
 #machine-svg{display:block;position:absolute;inset:0;width:100%;height:100%;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .m-hit{fill:transparent;cursor:pointer}.m-hit-tower{cursor:help}
 .m-hit-socket{stroke:#2f5d6b;stroke-width:3;stroke-dasharray:6 7;stroke-opacity:0}.m-hit-socket:hover{stroke-opacity:.55}
-.m-hit-socket.selected,.m-hit-socket.target{stroke:#d18a1c;stroke-width:4;stroke-opacity:1}
-.m-hit-node.selected{stroke:#d18a1c;stroke-width:4;stroke-dasharray:8 6}
+.m-hit-socket.target{stroke:#d18a1c;stroke-width:4;stroke-opacity:1}
 .m-preview{fill:none;stroke:#d18a1c;stroke-width:3;stroke-dasharray:8 6;pointer-events:none}
 .m-output-note{font:600 28px Georgia,serif;fill:#b3261e;pointer-events:none}
 #machine-hud{position:absolute;left:14px;top:10px;z-index:1;opacity:.5;font-size:11px;letter-spacing:.12em;line-height:1.55;pointer-events:none;transition:opacity .2s}

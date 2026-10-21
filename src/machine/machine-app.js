@@ -343,15 +343,30 @@ export class MachineView extends EventTarget {
   }
   sentenceAt(k) { try { return this.planned.display ? '' : sentence(snapshotAt(this.planned, k)); } catch { return ''; } }
   viewport() { return { width: Math.max(1, this.stage.clientWidth), height: Math.max(1, this.stage.clientHeight) }; }
-  inset() { if (!this.recording) return {}; const { width, height } = this.viewport(); return { bottom: height > width ? 170 : 120 }; }
+  // The camera frames what is left of the stage: above the burned-in caption band in
+  // recording mode, and above the palette where it lies over the stage (desktop, tablets).
+  inset() {
+    const { width, height } = this.viewport(), band = this.recording ? (height > width ? 170 : 120) : 0;
+    const p = $('machine-palette').getBoundingClientRect(), st = this.stage.getBoundingClientRect();
+    const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0;
+    return band || over ? { bottom: Math.max(band, Math.round(over)) } : {};
+  }
   draw(t) {
-    const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset() };
+    const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset(), active: this.active(t) };
     if (this.manual) view.camera = this.fit(this.manual);
     const out = renderMachine(this.planned, t, this.layout, ink, view);
     this.cam = parseBox(out.viewBox) ?? view.camera;
     parser.innerHTML = `<svg>${inner(out.svg)}</svg>`; patch(this.$scene, parser.content.firstChild);
     if (this.cam) this.svg.setAttribute('viewBox', boxText(this.cam));
     this.lastT = t; this.dirty = false; this.hits(t);
+  }
+  // The node at work: the beat in motion's, else the one just finished (while it stands),
+  // else the next one's. The renderer draws place values and digits beside it.
+  active(t) {
+    const beats = this.planned.beats, n = beats.length; if (!n || t <= 0) return 'io';
+    const i = Math.min(n - 1, Math.ceil(t - 1e-9) - 1), here = beats[i].node;
+    if (Math.abs(t - Math.round(t)) > 1e-9 || here === 'io' || snapshotAt(this.planned, i + 1).nodes[here]) return here;
+    return beats[i + 1]?.node ?? 'io';
   }
   // A manual camera keeps the viewport's shape, so pans and pinches never distort.
   fit(c) {
