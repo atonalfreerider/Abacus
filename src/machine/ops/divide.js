@@ -89,13 +89,8 @@ function divide(b, node, [A, B], op) {
         b.end();
         borrowBeats(b, node, R, last ? finish : null);
       }
-      if (!last) {
-        b.begin('descend', node, {caption: caption.descend(Dk / radix), ledger: {law: 'move', value: String(Dk / radix)}});
-        descend(b, B, Dk / radix);
-        b.end();
-      }
     }
-    if (ternary && !last) {
+    if (!last) {
       b.begin('descend', node, {caption: caption.descend(Dk / radix), ledger: {law: 'move', value: String(Dk / radix)}});
       descend(b, B, Dk / radix);
       b.end();

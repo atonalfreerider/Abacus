@@ -60,15 +60,15 @@ export function planMachine({tree, inputs, base, pace = 'together'}) {
     return fail('tooBig', TOO_BIG, {result});
   }
 }
-// Any computed value or shift past the tower cap is refused before planning.
+// Any computed value or shift count past the tower cap is refused before planning (b^k
+// itself stands k + 1 levels tall). Partial products past it are caught while planning.
 function tooTall(tree, pre, base) {
   const cap = LIMITS[base]?.levels; if (!cap) return false;
-  const levels = v => digits(v, base).length + 1;   // +1: a lamp form may need one more bit
   for (const [id, {args, values}] of Object.entries(pre.nodes)) {
     const op = tree[id].op;
     if (op === 'shl' && Number(args[1]) + 1 > cap) return true;
     if (op === 'shr' && Number(args[1]) > LIMITS[base].shr) return true;
-    if ([...args, ...values].some(v => levels(v) > cap + 1)) return true;
+    if ([...args, ...values].some(v => digits(v, base).length > cap)) return true;
   }
   return false;
 }
@@ -217,8 +217,8 @@ export function evaluateScene(scene, base) {
   const value = id => {
     const node = nodes[id], op = node.op, C = at.get(`${id}.C`), sockets = socketsOf(op);
     if (radix && QUOTIENT_OPS.includes(op)) {
-      const R = at.get(`${id}.Q`) ? at.get(`${id}.Q`) : null;
-      if (R) return qadd(lift(R.value), qdiv(lift(at.get(`${id}.L`).value), lift(node.arg)));
+      const register = at.get(`${id}.Q`);
+      if (register) return qadd(lift(register.value), qdiv(lift(at.get(`${id}.L`).value), lift(node.arg)));
       if (op === 'shr' && node.glyph === 0) return qadd(lift(at.get(`${id}.L`).value), qdiv(lift(at.get(`${id}.R`).value), lift(node.arg)));
       const [a, d] = sockets.map(s => operand(id, s));
       if (!isQ(a) || !isQ(d)) return symbolic(op, [a, d]);

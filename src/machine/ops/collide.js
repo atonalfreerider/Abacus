@@ -27,9 +27,9 @@ export function survivor({base, r = null, i = null, c = null}) {
 // Together pace: resolve every level at once. With `evaporate` (XOR, SUM) nothing carries:
 // a would-be climber rises half a level and fades. Returns the survivors by level, the
 // bulbs that fade (with their level), and the number of climbs.
-export function ripple(base, R, I, {evaporate = false, carry = null} = {}) {
+export function ripple(base, R, I, {evaporate = false} = {}) {
   const cells = [], fades = [];
-  let climbs = 0;
+  let climbs = 0, carry = null;
   for (let k = 0; k < R.length || k < I.length || carry; k++) {
     const r = R[k] ?? null, i = I[k] ?? null, c = carry;
     const res = survivor({base, r: r?.s ?? null, i: i?.s ?? null, c: c?.s ?? null});
@@ -37,7 +37,7 @@ export function ripple(base, R, I, {evaporate = false, carry = null} = {}) {
     carry = null;
     if (res.climb) {
       climbs++;
-      if (evaporate) fades.push({id: r.id, l: k + 0.5, up: true, via: res.via});
+      if (evaporate) fades.push({id: r.id, l: k + 0.5, via: res.via});
       else carry = {id: r.id, s: res.cOut, via: res.via};
     }
     cells[k] = {id: who[res.stay].id, s: res.d, burst: res.burst, via: res.stay === 'C' ? c.via : null};
