@@ -326,7 +326,7 @@ test('heights: rounded ln, clamped below the next level; only powers of e sit on
     const v = E.parse(x), h = height(v);
     assert.ok(Math.abs(h - Number(l)) <= 1e-4 + 1e-12, `${x}: ${h} against ln ${l}`);
     assert.ok(Math.abs(ln(v) - Number(l)) < 1e-12, `ln ${x}`);
-    assert.equal(Math.round(h * 1e4), h * 1e4 > 0 ? Math.round(h * 1e4) : Math.round(h * 1e4));
+    assert.ok(Math.abs(h * 1e4 - Math.round(h * 1e4)) < 1e-6, `${x}: a height has four decimals at most`);
     if (!v.isPower()) assert.ok(!Number.isInteger(h), `${x} is no power of e, so it stands off the level`);
   }
   for (let k = -14; k <= 20; k++) assert.equal(height(E.e(k)), k);
