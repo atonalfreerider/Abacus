@@ -63,7 +63,10 @@ const ePile = finish('e', {n1: {op: 'add', parent: 'io', socket: 'C'}},
       bulbs: {b5: {t: 't1', slot: 2}, b6: {t: 't1', slot: 3}, b7: {t: 't1', slot: 2}, b8: {t: 't1', slot: 3}, b9: {t: 't1', l: 1, s: 1, slot: 4}, b10: {t: 't1', l: 1, s: 1, slot: 5}, b11: {t: 't1', l: 1, s: 1, slot: 6}, b12: {t: 't1', l: 1, s: 1, slot: 7}}}),
    flow('fold', 'n1', {towers: {t1: {form: 'light', text: '4e + 4', reading: 'ln(4e + 4) ≈ 2.6995', pile: null, dust: null}},
       bulbs: {b1: null, b2: null, b3: null, b4: null, b5: null, b6: null, b7: null, b8: null, b9: null, b10: null, b11: null, b12: null, b13: {t: 't1', l: 2.6995, s: 1, k: 'light'}}},
-    {motion: {b13: {from: {t: 't1', l: 1}}, ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(k => [`b${k}`, {to: {t: 't1', l: 2.6995}, fade: [.4, 1]}]))}})],
+    {motion: {b13: {from: {t: 't1', l: 1}}, ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(k => [`b${k}`, {to: {t: 't1', l: 2.6995}, fade: [.4, 1]}]))}}),
+   // a level at a time: the light leaves its deposit at level 2 and rests lower on a shorter rail
+   flow('unfold', 'n1', {towers: {t1: {pending: true, reading: '≈ 1.09 bulbs’ worth at e¹'}}, bulbs: {b13: {l: 1.0384}, b14: {t: 't1', l: 2, s: 1, slot: 0}}},
+    {motion: {b13: {path: [[0, 2.6995], [.9, 1.0384]]}, b14: {in: [.2, .28], grow: true}}})],
   {values: ['4e+4'], text: '[4e + 4]'});
 
 const SYNTHETIC = {notLamp, owedBorrow, divMarks, ePile};

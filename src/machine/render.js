@@ -302,14 +302,16 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     // a light's rail: integer ticks from min(−3, ⌊h⌋) to ⌊h⌋ + 1
     const ra = ta && !collapsedT(ta) ? railOf(ta, bulbsA) : null, rz = tz && !collapsedT(tz) ? railOf(tz, bulbsZ) : null;
     if (ra || rz) {
-      const op = fadeBoth(!!ra, !!rz, [0, .3], [.9, 1]), from = Math.min(ra?.from ?? Infinity, rz?.from ?? Infinity), to = Math.max(ra?.to ?? -Infinity, rz?.to ?? -Infinity);
+      // a rail that changes its span (a light rising or falling past levels) eases to the new one
+      const k = reduced ? (v < .5 ? 0 : 1) : E(u, [0, 1]), op = fadeBoth(!!ra, !!rz, [0, .3], [.9, 1]);
+      const from = ra && rz ? lerp(ra.from, rz.from, k) : (ra || rz).from, to = ra && rz ? lerp(ra.to, rz.to, k) : (ra || rz).to;
       if (r(op) > 0) {
         let svg = `<path d="M${r(o.x)} ${r(o.y - PITCH * from + 10)}V${r(o.y - PITCH * to - 10)}" stroke="${m.rail}" stroke-width="3" stroke-linecap="round"/>`;
         // ticks on the rail, their numbers clear of the level's sockets
         const nx = o.x + UNITS.eSlots[0] - R * UNITS.eScale - 10;
         // (the Digits view's place values take the numbers' place at the active node)
         const numbers = !(digits && view.active && atActive(lt || tz || ta));
-        for (let l = from; l <= to; l++) svg += `<path d="M${r(o.x - 10)} ${r(o.y - PITCH * l)}h20" stroke="${m.rail}" stroke-width="${l === 0 ? 3.5 : 2}"/>` + (numbers ? `<text x="${r(nx)}" y="${r(o.y - PITCH * l)}" font-size="20" text-anchor="end" dominant-baseline="central" fill="${m.rail}">${l < 0 ? '−' + -l : l}</text>` : '');
+        for (let l = Math.ceil(from - 1e-9); l <= to + 1e-9; l++) svg += `<path d="M${r(o.x - 10)} ${r(o.y - PITCH * l)}h20" stroke="${m.rail}" stroke-width="${l === 0 ? 3.5 : 2}"/>` + (numbers ? `<text x="${r(nx)}" y="${r(o.y - PITCH * l)}" font-size="20" text-anchor="end" dominant-baseline="central" fill="${m.rail}">${l < 0 ? '−' + -l : l}</text>` : '');
         parts.furniture.push(`<g class="rail"${attr('opacity', op)}>${svg}</g>`);
       }
     }

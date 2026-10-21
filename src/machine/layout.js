@@ -80,7 +80,10 @@ export function pillLines(tower, digits = true) {
   return lines;
 }
 export const pillWidth = lines => Math.max(...lines.map(textWidth));
-const floorLevel = (base, tower, bulbs) => base === 'e' && tower.form === 'tower' && !isCollapsed(tower) ? Math.min(FURNITURE.floor, ...bulbs.map(b => Math.floor(b.l))) : null;
+// Digit bulbs (not the light) of a base-e tower; a light that is unfolding a level at a time
+// already holds its deposits.
+const digitBulbs = bulbs => bulbs.filter(b => b.k !== 'light');
+const floorLevel = (base, tower, bulbs) => base === 'e' && !isCollapsed(tower) && (tower.form === 'tower' || tower.form === 'light' && digitBulbs(bulbs).length) ? Math.min(FURNITURE.floor, ...digitBulbs(bulbs).map(b => Math.floor(b.l))) : null;
 // The rail of a light: integer ticks from min(−3, ⌊h⌋) to ⌊h⌋ + 1.
 export function railOf(tower, bulbs) {
   if (tower.form !== 'light' || isCollapsed(tower)) return null;
@@ -91,7 +94,7 @@ export function railOf(tower, bulbs) {
 export function furnitureOf(base, tower, bulbs) {
   const floor = floorLevel(base, tower, bulbs);
   if (floor === null) return null;
-  return {floor, top: Math.max(0, ...bulbs.map(b => Math.floor(b.l)))};
+  return {floor, top: Math.max(0, ...digitBulbs(bulbs).map(b => Math.floor(b.l)))};
 }
 const bulbsOf = (scene, id) => Object.values(scene.bulbs).filter(b => b.t === id);
 
