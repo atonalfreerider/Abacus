@@ -97,7 +97,7 @@ const bulbsOf = (scene, id) => Object.values(scene.bulbs).filter(b => b.t === id
 
 // The extent of a tower about its place at a beat boundary: bulbs, lamp ghosts, lanes, the
 // digit gutter, base-e furniture, rail and dust. topEdge is what the pill stands on.
-export function towerShape(base, tower, bulbs) {
+export function towerShape(base, tower, bulbs, {gutter = true} = {}) {
   const box = {left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity};
   const add = (x, y, r) => { box.left = Math.min(box.left, x - r); box.right = Math.max(box.right, x + r); box.top = Math.min(box.top, y - r); box.bottom = Math.max(box.bottom, y + r); };
   const collapsed = isCollapsed(tower);
@@ -110,7 +110,7 @@ export function towerShape(base, tower, bulbs) {
   const furniture = furnitureOf(base, tower, bulbs);
   if (furniture) for (let l = furniture.floor; l <= furniture.top; l++) { add(UNITS.eSlots[0], -UNITS.pitch * l, R * UNITS.eScale); add(UNITS.eSlots[2], -UNITS.pitch * l, R * UNITS.eScale); }
   const topEdge = box.top;
-  if (tower.form === 'tower' && !collapsed) box.right = Math.max(box.right, (base === 'e' ? UNITS.eSlots[2] + R * UNITS.eScale : R) + UNITS.gutter);
+  if (gutter && tower.form === 'tower' && !collapsed) box.right = Math.max(box.right, (base === 'e' ? UNITS.eSlots[2] + R * UNITS.eScale : R) + UNITS.gutter);
   const rail = railOf(tower, bulbs);
   if (rail) { box.top = Math.min(box.top, -UNITS.pitch * rail.to - 8); box.bottom = Math.max(box.bottom, -UNITS.pitch * rail.from + 8); box.left = Math.min(box.left, -R); }
   if (tower.dust && !collapsed) box.bottom = Math.max(box.bottom, dustBox().bottom);
@@ -179,26 +179,71 @@ export function layoutPlan(plan) {
     return Math.max(px, (rRight.get(id) ?? 14) + 8 + w / 2);
   };
 
-  // 3. Extents per node: half-width W (with the place-value column on the leftmost place),
-  // up above the centre line and down below it.
-  for (const n of nodes.values()) {
-    let W = blockW / 2, up = 44, down = 44, minX = Infinity;
-    for (const {p, list} of atNode.get(n.id) || []) {
-      const o = offset(n.id, p.socket, p.i);
-      for (const e of list) minX = Math.min(minX, o.x + e.shape.left);
-    }
-    for (const {p, list} of atNode.get(n.id) || []) {
-      const o = offset(n.id, p.socket, p.i);
-      for (const e of list) {
-        const s = e.shape, left = o.x + s.left === minX ? o.x + s.left - UNITS.placeCol : o.x + s.left;
-        const cx = pillX(n.id, p.socket, p.i, o.x, e.width), noteX = e.note ? (p.socket === 'L' && p.i === null ? cx - e.width / 2 - 6 - e.note : cx + e.width / 2 + 6 + e.note) : cx;
-        W = Math.max(W, -left, o.x + s.right, Math.abs(cx - e.width / 2), Math.abs(cx + e.width / 2), Math.abs(noteX));
-        up = Math.max(up, -(o.y + s.topEdge - (UNITS.labelGap - R) - UNITS.pillLine * e.lines), -(o.y + s.top));
-        down = Math.max(down, o.y + s.bottom);
+  // IO's coin rows: io:0 sits in the eye, so a single result stands in it; the rest take
+  // turns right and left. in:i and out:i stand on their pills, never across the centre line.
+  const ioGap = rowGap('io'), ioX = i => i === 0 ? 0 : ioGap * Math.ceil(i / 2) * (i % 2 ? 1 : -1);
+  const pillRow = (key, sign) => {
+    const n = rowCount(key), g = rowGap(key);
+    const centre = sign * Math.max(IO.pillX, g * (n - 1) / 2 + g / 2 + 10);
+    return i => centre + g * (i - (n - 1) / 2);
+  };
+  const inX = pillRow('in', -1), outX = pillRow('out', 1);
+  const inputsText = '[' + Object.entries(plan.start.towers).filter(([, t]) => t.at.startsWith('in:')).sort((a, b) => parsePlace(a[1].at).i - parsePlace(b[1].at).i).map(([, t]) => t.text).join(', ') + ']';
+  const result = plan.result || {values: [], text: ''};
+  const ioPills = {
+    in: {x: -IO.pillX, lines: [inputsText], w: Math.max(...[inputsText, 'Input'].map(textWidth))},
+    out: {x: IO.pillX, lines: result.label ? [result.text, result.label] : [result.text], w: Math.max(...[result.text, result.label || '', 'Output'].map(textWidth))},
+  };
+  for (const p of Object.values(ioPills)) { p.bottom = IO.pillY + UNITS.pillLine / 2; p.top = p.bottom - UNITS.pillLine * p.lines.length; }
+  const standY = pill => pill.top - 8 - R;
+  // A place relative to its node's centre (IO's places are relative to IO, at the origin).
+  const relPlace = at => {
+    const p = parsePlace(at);
+    if (p.io === 'io') return {x: ioX(p.i), y: 0};
+    if (p.io === 'in') return {x: inX(p.i), y: standY(ioPills.in)};
+    if (p.io === 'out') return {x: outX(p.i), y: standY(ioPills.out)};
+    return offset(p.node, p.socket, p.i);
+  };
+  // A tower's pill relative to its node: 42 above its top bulb, centred, shifted outward at
+  // .L, .R and .Q. A .C pill that would meet a sibling tower or its pill (COMP's verdict and
+  // DIV's ghost stand between A and B) climbs above them; the picture draws a leader.
+  function relPill(scene, id, digits = true) {
+    const t = scene.towers[id], p = parsePlace(t.at), o = relPlace(t.at), shape = towerShape(base, t, bulbsOf(scene, id));
+    const lines = pillLines(t, digits), w = pillWidth(lines), h = UNITS.pillLine * lines.length;
+    const cx = p.io ? o.x : pillX(p.node, p.socket, p.i, o.x, w);
+    const natural = o.y + shape.topEdge - (UNITS.labelGap - R);
+    let bottom = natural;
+    if (p.node && p.socket === 'C' && p.i === null) {
+      // siblings: their bulbs (without the shared gutter) and their pills
+      const others = Object.keys(scene.towers).filter(sid => { const q = parsePlace(scene.towers[sid].at); return sid !== id && q.node === p.node && q.i === null && q.socket !== 'C'; }).flatMap(sid => {
+        const so = relPlace(scene.towers[sid].at), ss = towerShape(base, scene.towers[sid], bulbsOf(scene, sid), {gutter: false});
+        return [boxOf(so.x + ss.left, so.y + ss.top, so.x + ss.right, so.y + ss.bottom), relPill(scene, sid, digits)];
+      });
+      for (let moved = true, k = 0; moved && k <= others.length; k++) {
+        moved = false;
+        for (const b of others) if (cx - w / 2 < b.x + b.w && b.x < cx + w / 2 && bottom - h < b.y + b.h && b.y < bottom) { bottom = b.y - 6; moved = true; }
       }
     }
-    Object.assign(n, {W, up, down});
+    return {x: cx - w / 2, y: bottom - h, w, h, lines, lift: bottom - natural};
   }
+  const relNote = (scene, id, digits = true) => {
+    const t = scene.towers[id]; if (!t.note) return null;
+    const pill = relPill(scene, id, digits), w = textWidth(t.note), p = parsePlace(t.at), left = p.socket === 'L' && p.i === null ? pill.x - 6 - w : pill.x + pill.w + 6;
+    return {x: left, y: pill.y + pill.h - UNITS.pillLine, w, h: UNITS.pillLine};
+  };
+
+  // 3. Extents per node over every scene: half-width W (with the place-value column left of
+  // the leftmost tower), up above the centre line and down below it.
+  for (const n of nodes.values()) Object.assign(n, {W: blockW / 2, up: 44, down: 44, minLeft: Infinity});
+  for (const scene of scenes) for (const [id, t] of Object.entries(scene.towers)) {
+    const p = parsePlace(t.at), n = nodes.get(p.node); if (!n) continue;
+    const o = relPlace(t.at), s = towerShape(base, t, bulbsOf(scene, id)), pill = relPill(scene, id), note = relNote(scene, id);
+    n.minLeft = Math.min(n.minLeft, o.x + s.left);
+    n.W = Math.max(n.W, -(o.x + s.left), o.x + s.right, -pill.x, pill.x + pill.w, ...(note ? [-note.x, note.x + note.w] : []));
+    n.up = Math.max(n.up, -(o.y + s.top), -pill.y);
+    n.down = Math.max(n.down, o.y + s.bottom);
+  }
+  for (const n of nodes.values()) { if (n.minLeft < Infinity) n.W = Math.max(n.W, -(n.minLeft - UNITS.placeCol)); delete n.minLeft; }
   // 4. Rows: every node at depth d shares row d.
   const rows = [];
   for (const n of nodes.values()) { const r = rows[n.depth] ||= {up: 44, down: 44}; r.up = Math.max(r.up, n.up); r.down = Math.max(r.down, n.down); }
@@ -230,35 +275,10 @@ export function layoutPlan(plan) {
   }
   for (const n of nodes.values()) delete n.kids;
 
-  // IO's coin rows: io:0 sits in the eye, so a single result stands in it; the rest take
-  // turns right and left. in:i and out:i stand on their pills, never across the centre line.
-  const ioGap = rowGap('io'), ioX = i => i === 0 ? 0 : ioGap * Math.ceil(i / 2) * (i % 2 ? 1 : -1);
-  const pillRow = (key, sign) => {
-    const n = rowCount(key), g = rowGap(key);
-    const centre = sign * Math.max(IO.pillX, g * (n - 1) / 2 + g / 2 + 10);
-    return i => centre + g * (i - (n - 1) / 2);
-  };
-  const inX = pillRow('in', -1), outX = pillRow('out', 1);
-  const inputsText = '[' + Object.entries(plan.start.towers).filter(([, t]) => t.at.startsWith('in:')).sort((a, b) => parsePlace(a[1].at).i - parsePlace(b[1].at).i).map(([, t]) => t.text).join(', ') + ']';
-  const result = plan.result || {values: [], text: ''};
-  const ioPills = {
-    in: {x: -IO.pillX, lines: [inputsText], w: Math.max(...[inputsText, 'Input'].map(textWidth))},
-    out: {x: IO.pillX, lines: result.label ? [result.text, result.label] : [result.text], w: Math.max(...[result.text, result.label || '', 'Output'].map(textWidth))},
-  };
-  for (const p of Object.values(ioPills)) { p.bottom = IO.pillY + UNITS.pillLine / 2; p.top = p.bottom - UNITS.pillLine * p.lines.length; }
-  const standY = pill => pill.top - 8 - R;
 
   const nodeAt = id => { const n = nodes.get(id); return n ? {x: n.x, y: n.y, depth: n.depth} : null; };
-  function placeAt(at) {
-    const p = parsePlace(at);
-    if (p.io === 'io') return {x: ioX(p.i), y: 0};
-    if (p.io === 'in') return {x: inX(p.i), y: standY(ioPills.in)};
-    if (p.io === 'out') return {x: outX(p.i), y: standY(ioPills.out)};
-    const n = nodes.get(p.node);
-    if (!n) throw Error(`no node ${p.node} for ${at}`);
-    const o = offset(p.node, p.socket, p.i);
-    return {x: n.x + o.x, y: n.y + o.y};
-  }
+  const originOf = at => { const p = parsePlace(at); if (p.io) return {x: 0, y: 0}; const n = nodes.get(p.node); if (!n) throw Error(`no node ${p.node} for ${at}`); return n; };
+  function placeAt(at) { const n = originOf(at), o = relPlace(at); return {x: n.x + o.x, y: n.y + o.y}; }
   const placeMemo = new Map();
   const placeOf = at => { let v = placeMemo.get(at); if (!v) placeMemo.set(at, v = placeAt(at)); return v; };
   // place(at, slot): a lane (binary/ternary) or a base-e socket; slot omitted = the column.
@@ -285,23 +305,19 @@ export function layoutPlan(plan) {
     wires.set(n.id, s.x === hub.x ? [[s.x, s.y], [hub.x, hub.y]] : [[s.x, s.y], [s.x, mid], [hub.x, mid], [hub.x, hub.y]]);
   }
   // Pills and boxes at a beat boundary.
-  function pillBox(scene, id, digits = true) {
-    const t = scene.towers[id], bulbs = bulbsOf(scene, id), shape = towerShape(base, t, bulbs), o = placeOf(t.at);
-    const lines = pillLines(t, digits), w = pillWidth(lines), cx = pillCentre(t.at, w), bottom = o.y + shape.topEdge - (UNITS.labelGap - R);
-    return {x: cx - w / 2, y: bottom - UNITS.pillLine * lines.length, w, h: UNITS.pillLine * lines.length, lines};
+  const shift = (box, at) => box && {...box, x: box.x + originOf(at).x, y: box.y + originOf(at).y};
+  const pillBox = (scene, id, digits = true) => shift(relPill(scene, id, digits), scene.towers[id].at);
+  const noteBox = (scene, id, digits = true) => shift(relNote(scene, id, digits), scene.towers[id].at);
+  // How far a pill climbs (0 or less) above where it would stand on its own tower.
+  const pillLift = (scene, id, digits = true) => relPill(scene, id, digits).lift;
+  // gutter: false leaves out the digit gutter, which the towers of one block may share
+  // A tower's parts: its bulbs and furniture, its pill and its note (a raised pill stands
+  // apart from its tower, so siblings are kept apart part by part).
+  function towerParts(scene, id, {gutter = true} = {}) {
+    const t = scene.towers[id], shape = towerShape(base, t, bulbsOf(scene, id), {gutter}), o = placeOf(t.at);
+    return [boxOf(o.x + shape.left, o.y + shape.top, o.x + shape.right, o.y + shape.bottom), pillBox(scene, id), noteBox(scene, id)].filter(Boolean);
   }
-  function noteBox(scene, id, digits = true) {
-    const t = scene.towers[id]; if (!t.note) return null;
-    const pill = pillBox(scene, id, digits), w = textWidth(t.note), p = parsePlace(t.at), left = p.socket === 'L' && p.i === null ? pill.x - 6 - w : pill.x + pill.w + 6;
-    return {x: left, y: pill.y + pill.h - UNITS.pillLine, w, h: UNITS.pillLine};
-  }
-  function towerBox(scene, id) {
-    const t = scene.towers[id], shape = towerShape(base, t, bulbsOf(scene, id)), o = placeOf(t.at);
-    let box = boxOf(o.x + shape.left, o.y + shape.top, o.x + shape.right, o.y + shape.bottom);
-    box = union(box, pillBox(scene, id));
-    const note = noteBox(scene, id); if (note) box = union(box, note);
-    return box;
-  }
+  const towerBox = (scene, id, options) => towerParts(scene, id, options).reduce(union, null);
   // The place-value column stands left of a node's leftmost tower.
   const placeColumnX = (scene, id) => {
     let left = Infinity;
@@ -333,7 +349,7 @@ export function layoutPlan(plan) {
     nodes: [...nodes.values()].sort(byId).map(n => n.id),
     parentOf: id => nodes.get(id)?.parent, socketOf: id => nodes.get(id)?.socket,
     socketPoint: id => socketPoint(nodes.get(id)),
-    place: placeSlot, placeOf, pillCentre, nodeAt, nodeBox, towerBox, pillBox, noteBox, placeColumnX,
+    place: placeSlot, placeOf, pillCentre, nodeAt, nodeBox, towerBox, towerParts, pillBox, noteBox, pillLift, placeColumnX,
     wire: id => wires.get(id), ioBoxes, bounds,
   };
 }

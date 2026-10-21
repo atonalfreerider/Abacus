@@ -82,13 +82,14 @@ function glyphBody(op, palette, base, tilt = 0) {
   }
 }
 // The block itself: a face between its sockets, the sockets' rings, the glyph and the hub.
-function blockSVG(op, palette, base, {glyph = 1, tilt = 0, oldOp = null, oldGlyph = 0, sx = 88, w = 176, P = 'm-', q = null} = {}) {
+function blockSVG(op, palette, base, {glyph = 1, tilt = 0, oldOp = null, oldGlyph = 0, sx = 88, w = 176, P = 'm-', q = null, id = null} = {}) {
   const m = palette.machine, h = UNITS.block[1];
-  const ring = x => `<circle cx="${x}" cy="0" r="44" fill="${m.block}" stroke="${m.blockEdge}" stroke-width="2.5"/><circle cx="${x}" cy="0" r="${R + 2}" fill="${palette.bulb.off.fill}" fill-opacity=".6" stroke="${m.blockEdge}" stroke-width="1.5" stroke-opacity=".5"/>`;
+  // the socket rings carry data-socket ("n1.L"), so a tap on the stage can name its socket
+  const ring = (x, socket) => `<circle cx="${x}" cy="0" r="44" fill="${m.block}" stroke="${m.blockEdge}" stroke-width="2.5"${id ? ` data-socket="${id}.${socket}"` : ''}/><circle cx="${x}" cy="0" r="${R + 2}" fill="${palette.bulb.off.fill}" fill-opacity=".6" stroke="${m.blockEdge}" stroke-width="1.5" stroke-opacity=".5" pointer-events="none"/>`;
   let svg = `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="22" fill="${m.block}" stroke="${m.blockEdge}" stroke-width="2.5"/>`;
   // base-e towers bring their own sockets, so a base-e unary block has no centre ring
-  svg += UNARY.has(op) ? (base === 'e' ? '' : ring(0)) : ring(-sx) + ring(sx);
-  if (q !== null) svg += `<circle cx="${r(q)}" cy="0" r="44" fill="none" stroke="${m.blockEdge}" stroke-width="2" stroke-dasharray="6 6" stroke-opacity=".7"/>`;
+  svg += UNARY.has(op) ? (base === 'e' ? '' : ring(0, 'C')) : ring(-sx, 'L') + ring(sx, 'R');
+  if (q !== null && r(q.o) > 0) svg += `<circle cx="${r(q.x)}" cy="0" r="44" fill="none" stroke="${m.blockEdge}" stroke-width="2" stroke-dasharray="6 6" stroke-opacity=".7"${attr('opacity', q.o)}/>`;
   if (oldOp && r(oldGlyph) > 0) svg += `<g class="glyph"${attr('opacity', oldGlyph)}>${glyphBody(oldOp, palette, base, tilt)}</g>`;
   if (r(glyph) > 0) svg += `<g class="glyph"${attr('opacity', glyph)}>${glyphBody(op, palette, base, tilt)}</g>`;
   return svg;
@@ -173,10 +174,18 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     if (base === 'e' && slot === 2 && lit !== 0) body += `<use href="#${P}overhang"/>`;
     if (owed) body += `<use href="#${P}owed"/>`;
     if (r(dissolve) > 0) body += `<circle r="${R * .62}" fill="#fff" opacity="${r(dissolve * .9)}"/>`;
-    if (glyph) body += glyph;
     const dominant = layers.reduce((p, q) => q.o > p.o ? q : p).s;
-    return `<g class="mb" ${was ? 'data-was' : 'data-b'}="${id}" data-s="${dominant}" data-l="${r(level)}" data-t="${tower}" transform="translate(${r(x)} ${r(y)})${r(scale) === 1 ? '' : ` scale(${r(scale)})`}"${attr('opacity', opacity)}>${body}</g>`;
+    const head = `<g class="mb" ${was ? 'data-was' : 'data-b'}="${id}" data-s="${dominant}" data-l="${r(level)}" data-t="${tower}" transform="translate(${r(x)} ${r(y)})${r(scale) === 1 ? '' : ` scale(${r(scale)})`}"${attr('opacity', opacity)}>`;
+    return {x, y, scale, o: opacity, glyph, svg: show => head + body + (show && glyph ? glyph : '') + '</g>'};
   };
+  // A digit glyph stays hidden where it would land on another bulb (the towers of one block
+  // share the space between them: COMP's verdict stands in .L's gutter).
+  const withGlyphs = list => list.map(item => {
+    if (!item.glyph) return item.svg(false);
+    const gx = item.x + (R + UNITS.gutter / 2) * item.scale, gy = item.y;
+    const covered = [parts.removed, parts.resting, parts.moving].some(l => l.some(other => other !== item && r(other.o) > .05 && Math.abs(other.x - gx) < R * other.scale + 12 * item.scale && Math.abs(other.y - gy) < R * other.scale * .8));
+    return item.svg(!covered);
+  });
   // the digit glyph right of a column bulb (T is a barred 1)
   const glyphFor = (t, b, s) => {
     if (!digits || !t || t.form !== 'tower' || collapsedT(t) || t.pending || base === 'e' || (b.slot ?? 0) !== 0) return '';
@@ -316,8 +325,10 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const lines = pillLines(t, digits), w = pillWidth(lines), h = UNITS.pillLine * lines.length;
       const wa = ta ? pillWidth(pillLines(ta, digits)) : w, wz = tz ? pillWidth(pillLines(tz, digits)) : w;
       const cx = at ?? (ta && tz && !reduced ? lerp(layout.pillCentre(ta.at, wa), layout.pillCentre(tz.at, wz), E(u, [0, 1])) : layout.pillCentre(t.at, w));
-      const bottom = topY - (UNITS.labelGap - R), top = bottom - h, place = parsePlace(t.at);
-      let svg = `<rect x="${r(cx - w / 2)}" y="${r(top)}" width="${w}" height="${h}" rx="18" fill="${m.labelFill}" fill-opacity=".85" stroke="${m.label}" stroke-width="1.2"/>`;
+      const lift = layout.pillLift(scene, tid, digits), bottom = topY - (UNITS.labelGap - R) + lift, top = bottom - h, place = parsePlace(t.at);
+      // a pill that climbed over its neighbours hangs a leader down to its tower
+      let svg = lift < 0 ? `<path d="M${r(cx)} ${r(bottom)}V${r(bottom - lift)}" stroke="${m.label}" stroke-width="1.5" stroke-dasharray="3 4" opacity=".6"/>` : '';
+      svg += `<rect x="${r(cx - w / 2)}" y="${r(top)}" width="${w}" height="${h}" rx="18" fill="${m.labelFill}" fill-opacity=".85" stroke="${m.label}" stroke-width="1.2"/>`;
       lines.forEach((line, j) => { svg += `<text x="${r(cx)}" y="${r(top + UNITS.pillLine * (j + .5) + 1)}" font-size="${j ? 22 : 27}" text-anchor="middle" dominant-baseline="central" fill="${m.label}"${j ? ' opacity=".8"' : ''}>${esc(line)}</text>`; });
       if (t.note) {
         const nw = textWidth(t.note), left = place.socket === 'L' && place.i === null ? cx - w / 2 - 6 - nw : cx + w / 2 + 6;
@@ -387,10 +398,14 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     const fadeGlyph = na && !nz && !reduced ? 1 - E(u, [0, .5]) : 1;
     const opChange = na && nz && na.op !== nz.op, swap = reduced ? v : E(u, [0, .15]);
     const tilt = na && nz ? lerp(na.tilt ?? 0, nz.tilt ?? 0, k) : n.tilt ?? 0;
-    const q = nz?.op === 'div' || nz?.op === 'mod' || (!nz && (na.op === 'div' || na.op === 'mod')) ? layout.placeOf(`${nid}.Q`).x - at.x : null;
-    let body = blockSVG(opChange ? nz.op : n.op, palette, base, {glyph: alive * fadeGlyph * (opChange ? swap : 1), oldOp: opChange ? na.op : null, oldGlyph: alive * (1 - swap), tilt, sx: layout.socketX, w: layout.blockW, P, q});
-    if (view.highlight === nid) body += `<rect x="${-layout.blockW / 2 - 8}" y="${-UNITS.block[1] / 2 - 8}" width="${layout.blockW + 16}" height="${UNITS.block[1] + 16}" rx="28" fill="none" stroke="${m.error}" stroke-width="5" class="error"/>`;
-    if (view.selected === nid) body += `<rect x="${-layout.blockW / 2 - 14}" y="${-UNITS.block[1] / 2 - 14}" width="${layout.blockW + 28}" height="${UNITS.block[1] + 28}" rx="32" fill="none" stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"/>`;
+    // the quotient register's ring, while a register stands there
+    const qa = Object.values(a.towers).some(t => t.at === `${nid}.Q`), qz = Object.values(z.towers).some(t => t.at === `${nid}.Q`);
+    const q = qa || qz ? {x: layout.placeOf(`${nid}.Q`).x - at.x, o: qz ? (qa ? 1 : reduced ? v : E(u, [0, .3])) : reduced ? 1 - v : 1 - E(u, [.3, 1])} : null;
+    let body = blockSVG(opChange ? nz.op : n.op, palette, base, {glyph: alive * fadeGlyph * (opChange ? swap : 1), oldOp: opChange ? na.op : null, oldGlyph: alive * (1 - swap), tilt, sx: layout.socketX, w: layout.blockW, P, q, id: nid});
+    // outlines round the whole block, its socket rings included
+    const span = UNARY.has(n.op) ? layout.blockW / 2 : Math.max(layout.blockW / 2, layout.socketX + 44), ring = (g, extra) => `<rect x="${-span - g}" y="${-44 - g}" width="${2 * (span + g)}" height="${88 + 2 * g}" rx="${44 + g}" fill="none" ${extra}/>`;
+    if (view.highlight === nid) body += ring(8, `stroke="${m.error}" stroke-width="5" class="error"`);
+    if (view.selected === nid) body += ring(16, `stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"`);
     const sel = typeof view.selected === 'string' && view.selected.startsWith(nid + '.') ? view.selected.slice(nid.length + 1) : null;
     if (sel) body += `<circle cx="${sel === 'L' ? -layout.socketX : sel === 'R' ? layout.socketX : 0}" cy="0" r="52" fill="none" stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"/>`;
     const hub = pts.at(-1);
@@ -402,7 +417,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     const b = layout.bounds, pills = layout.ioPills;
     parts.io.push(`<rect x="${r(b.x - 1000)}" y="${IO.horizon - 3}" width="${r(b.w + 2000)}" height="6" fill="${m.rail}" opacity=".12"/><rect x="${r(b.x - 1000)}" y="${IO.horizon - .75}" width="${r(b.w + 2000)}" height="1.5" fill="${m.rail}" opacity=".35"/>`);
     parts.wires.unshift(`<path d="M${pills.in.x} ${IO.pillY}L0 0M${pills.out.x} ${IO.pillY}L0 0" stroke="${m.wire}" stroke-width="${UNITS.wire}"/>`);
-    parts.io.push(`<path d="M${-IO.half} ${IO.top}H${IO.half}L0 ${IO.tip}ZM${IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${-IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${IO.eye} 0Z" fill="${m.block}" fill-rule="evenodd" stroke="${m.blockEdge}" stroke-width="2.5" stroke-linejoin="round"/><circle r="${IO.eye}" fill="${palette.bulb.off.fill}" stroke="${m.blockEdge}" stroke-width="1.5"/>`);
+    parts.io.push(`<path d="M${-IO.half} ${IO.top}H${IO.half}L0 ${IO.tip}ZM${IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${-IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${IO.eye} 0Z" fill="${m.block}" fill-rule="evenodd" stroke="${m.blockEdge}" stroke-width="2.5" stroke-linejoin="round"/><circle r="${IO.eye}" fill="${palette.bulb.off.fill}" stroke="${m.blockEdge}" stroke-width="1.5" data-socket="io"/>`);
     if (view.selected === 'io') parts.io.push(`<circle r="52" fill="none" stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"/>`);
     const shown = Object.values(labelScene.towers).some(t => t.at.startsWith('out:'));
     for (const [key, p] of Object.entries(pills)) {
@@ -455,7 +470,8 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
   const order = ['io', 'wires', 'blocks', 'furniture', 'removed', 'resting', 'moving', 'edigits', 'column', 'bursts', 'marks', 'beads', 'pills', 'arrows', 'hud'];
   // the horizon lies behind everything, the triangle over its wires
   const io = parts.io.shift() || '';
-  return `<g class="machine" font-family="${esc(m.font)}">${io}${parts.wires.join('')}${parts.io.join('')}` + order.slice(2).map(k => parts[k].join('')).join('') + '</g>';
+  const drawn = {removed: withGlyphs(parts.removed), resting: withGlyphs(parts.resting), moving: withGlyphs(parts.moving)};
+  return `<g class="machine" font-family="${esc(m.font)}">${io}${parts.wires.join('')}${parts.io.join('')}` + order.slice(2).map(k => (drawn[k] || parts[k]).join('')).join('') + '</g>';
 }
 function arrowSVG(p, q, colour, opacity) {
   const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, ex = q.x - ux * 20, ey = q.y - uy * 20;

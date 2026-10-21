@@ -39,7 +39,7 @@ for (const scene of scenes) {
   const layout = layoutPlan(scene.plan), group = scene.source === 'e-fixture' ? 'e' : 'main';
   const times = scene.beats.length ? scene.beats.flatMap(b => US.map(u => [`b${b}-u${u}`, b + u])) : [['static', 0]];
   for (const [label, t] of times) for (const style of ['sketchpad', 'cyber']) for (const format of Object.keys(FORMATS)) {
-    const name = `${scene.name}-${label}-${style}-${format}`, doc = frameDocument(scene.plan, layout, t, style, format, scene.view);
+    const name = `${scene.name.replace(/[^\w.+-]/g, '_')}-${label}-${style}-${format}`, doc = frameDocument(scene.plan, layout, t, style, format, scene.view);
     if (/NaN|undefined|Infinity/.test(doc)) { console.error(`${name}: NaN or undefined in the frame`); process.exitCode = 1; }
     fs.writeFileSync(path.join(out, `${name}.svg`), doc);
     results[group][name] = crypto.createHash('sha256').update(doc).digest('hex');

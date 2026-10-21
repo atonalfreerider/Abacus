@@ -25,8 +25,14 @@ test('the layout keeps towers, blocks, wires and pills apart at every beat bound
     const layout = layoutPlan(plan);
     scenesOf(plan).forEach((scene, i) => {
       const where = `${name} beat boundary ${i}`;
-      const towers = Object.keys(scene.towers).map(id => ({id, at: parsePlace(scene.towers[id].at), box: layout.towerBox(scene, id)}));
-      for (const [j, a] of towers.entries()) for (const b of towers.slice(j + 1)) assert.ok(!intersects(a.box, b.box), `${where}: towers ${a.id} and ${b.id} overlap`);
+      const towers = Object.keys(scene.towers).map(id => ({id, at: parsePlace(scene.towers[id].at), box: layout.towerBox(scene, id), parts: layout.towerParts(scene, id, {gutter: false})}));
+      // The towers of one block are kept apart part by part (bulbs, pill, note) and may share
+      // their digit gutters (the renderer hides a glyph that would land on a sibling's bulb);
+      // towers of different blocks keep their whole boxes apart.
+      for (const [j, a] of towers.entries()) for (const b of towers.slice(j + 1)) {
+        if (a.at.node && a.at.node === b.at.node) { for (const p of a.parts) for (const q of b.parts) assert.ok(!intersects(p, q), `${where}: towers ${a.id} and ${b.id} overlap`); }
+        else assert.ok(!intersects(a.box, b.box), `${where}: towers ${a.id} and ${b.id} overlap`);
+      }
       for (const t of towers) {
         for (const id of Object.keys(scene.nodes)) {
           if (layout.nodeAt(id) && t.at.node !== id) assert.ok(!intersects(t.box, layout.nodeBox(id)), `${where}: tower ${t.id} at ${scene.towers[t.id].at} crosses block ${id}`);
