@@ -308,8 +308,9 @@ $('stage').addEventListener('focusin',event=>{const term=event.target.closest?.(
 {const load=controller.load.bind(controller);controller.load=input=>{hideWatch();return load(input);};}
 
 // Native apps: quick actions and shortcuts open a place; Android's back button closes
-// what is open before it leaves the app.
-initNative({
+// what is open before it leaves the app. (&automation exposes both, so browser tests can
+// press Android's back button without a native shell.)
+const nativeHandlers={
  open:place=>{
   for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
   if(place==='graph'){leaveTutor();showGraph(true);}
@@ -329,7 +330,9 @@ initNative({
   if(entry.active){enterKey('Escape');return true;}
   return false;
  },
-});
+};
+initNative(nativeHandlers);
+if(new URLSearchParams(location.search).has('automation'))window.__native=nativeHandlers;
 
 // Style: the school sketchpad or the cyber look, for every view. Saved per device.
 onStyle(name=>{surface.restyle();graph?.restyle();machine?.restyle();controller.render();surface.prewarm(controller.options.camera);$('style').value=name;statusBarStyle(name);});

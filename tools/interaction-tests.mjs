@@ -1,6 +1,8 @@
 // Real-browser interaction checks (headless Chrome): pointer drags through the
 // mirror membrane, snapping, springing home, tapping products, keyboard moves, the
-// tutor flow, and graph mode (tracer detents, systems, the area sweep).
+// tutor flow, graph mode (tracer detents, systems, the area sweep) and the Machine mode
+// (design 6.9; its checks are reported as pending until the machine's core and picture
+// modules are present).
 // Usage: npm run test:browser
 import {spawn} from 'node:child_process';
 import {launch,chromePath} from './browser.mjs';
@@ -15,8 +17,10 @@ const mirror=()=>page.eval(`(()=>{const r=document.querySelector('#equation-svg 
 async function load(text){await page.eval(`(()=>{const i=document.getElementById('equation-input');document.getElementById('open-equation').click();i.value=${JSON.stringify(text)};document.getElementById('equation-form').requestSubmit();})()`);await wait(250);}
 async function drag(from,to,steps=30){await page.mouse('mouseMoved',from.x,from.y,{buttons:0});await page.mouse('mousePressed',from.x,from.y);for(let i=1;i<=steps;i++){await page.mouse('mouseMoved',from.x+(to.x-from.x)*i/steps,from.y+(to.y-from.y)*i/steps);await wait(16);}await wait(250);await page.mouse('mouseReleased',to.x,to.y);}
 const idle=async(limit=9000)=>{for(let t=0;t<limit;t+=100){if(!(await page.eval(`document.getElementById('skip')&&document.getElementById('solve').disabled`)))return;await wait(100);}};
-async function check(name,fn,viewport){
- page=await launch(origin+'/?examples=written',viewport);
+// ONLY=machine (any part of a name) runs just the matching checks.
+async function check(name,fn,viewport,path='/?examples=written'){
+ if(process.env.ONLY&&!name.includes(process.env.ONLY))return;
+ page=await launch(origin+path,viewport);
  try{await wait(400);await fn();if(page.errors.length)throw Error('page errors: '+page.errors.join(' | '));results.push([name,null]);}
  catch(e){results.push([name,e.message]);}
  finally{await page.close();}
@@ -195,8 +199,202 @@ try{
   const ms=await page.eval(`(()=>{const f=window.__frames,d=f.slice(1).map((t,i)=>t-f[i]).sort((a,b)=>a-b);return d[Math.floor(d.length*.9)];})()`);
   const budget=Number(process.env.FRAME_BUDGET_MS||34);if(ms>budget)throw Error(`p90 frame ${ms.toFixed(1)} ms exceeds ${budget} ms`);
  });
+ // ---------- machine mode (design 6.9) ----------
+ const have=async file=>(await fetch(`${origin}/src/machine/${file}`)).ok;
+ const machineReady=(await Promise.all(['plan.js','tree.js','scene.js','layout.js','render.js'].map(have))).every(Boolean),eReady=await have('e-base.js');
+ const MACHINE='/?examples=written&automation&machine';
+ // A check that needs the machine's core and picture, or base e, waits for them: pending.
+ async function mcheck(name,fn,viewport,{path=MACHINE,needs=[]}={}){if(process.env.ONLY&&!name.includes(process.env.ONLY))return;if(!machineReady||needs.includes('e')&&!eReady){results.push([name,null,true]);return;}await check(name,fn,viewport,path);}
+ const mstate=()=>page.eval(`window.__machine.state()`);
+ const until=async(pred,what,limit=25000)=>{for(let t=0;t<limit;t+=100){const s=await mstate();if(pred(s))return s;await wait(100);}throw Error(`timed out waiting for ${what}: ${JSON.stringify(await mstate())}`);};
+ const KEYS={Enter:['Enter',13,'\r'],ArrowLeft:['ArrowLeft',37],ArrowRight:['ArrowRight',39],Tab:['Tab',9],Escape:['Escape',27],'[':['BracketLeft',219,'['],']':['BracketRight',221,']'],a:['KeyA',65,'a'],t:['KeyT',84,'t']};
+ const press=async key=>{const [code,vk,text]=KEYS[key];await page.send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk,...(text?{text}:{})});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});};
+ const box=sel=>page.eval(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width,h:r.height};})()`);
+ const click=async sel=>{const p=await box(sel);if(!p)throw Error(`no ${sel}`);await page.mouse('mouseMoved',p.x,p.y,{buttons:0});await page.mouse('mousePressed',p.x,p.y);await page.mouse('mouseReleased',p.x,p.y);};
+ const active=()=>page.eval(`document.activeElement?.id||document.activeElement?.tagName`);
+ const mload=params=>page.eval(`window.__machine.load(${JSON.stringify(params)})`);
+ const raise=async()=>{const p=await box('#machine-palette');await page.mouse('mouseMoved',p.x,p.y+p.h/2-6,{buttons:0});await wait(700);};
+ // Phones: a touch screen, so (pointer: coarse) and no hover.
+ const touch=async()=>{await page.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});await page.send('Emulation.setEmulatedMedia',{features:[{name:'pointer',value:'coarse'},{name:'hover',value:'none'}]}).catch(()=>{});};
+ const golden=['7 = 4 + 3, so 16 × 7 = 16 × 4 + 16 × 3.','16 × 4: 2 dark bulbs slide under 16; it rises 2 levels. 64.','64 rides up.','3 = 2 + 1, so 16 × 3 = 16 × 2 + 16 × 1.','16 × 2: 1 dark bulb slides under 16; it rises 1 level. 32.','32 rides up.','16 × 1: the 1 dissolves; 16 stays put.','16 rides up.','32 + 16: nothing carries. 48.','48 rides up.','64 + 48: nothing carries. 112.','112 rides up into the triangle.'];
+ // Every bulb that moves in a beat, placed by the layout and eased as the renderer does
+ // (6.3), mapped to the screen through the stage's own transform: is it on the stage and
+ // at least 18 px across at each sampled u?
+ const movers=us=>page.eval(`(async()=>{
+  const {layoutPlan}=await import('/src/machine/layout.js'),{snapshotAt}=await import('/src/machine/scene.js');
+  const plan=window.__machine.plan(),L=layoutPlan(plan),svg=document.getElementById('machine-svg'),stage=document.getElementById('machine-stage').getBoundingClientRect();
+  const ease=u=>1-(1-u)**2,frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const at=(scene,b)=>{const t=scene.towers[b.t];if(!t)return null;const p=L.place(t.at,b.slot);return {x:p.x,y:p.y-(t.form==='coin'?6:84)*b.l,tower:t.form!=='coin'};};
+  const out=[];
+  for(let i=0;i<plan.beats.length;i++){
+   const a=snapshotAt(plan,i),b=snapshotAt(plan,i+1),m=plan.beats[i].motion||{},moving=[];
+   for(const id of new Set([...Object.keys(a.bulbs),...Object.keys(b.bulbs)])){
+    const A=a.bulbs[id],B=b.bulbs[id];let p0=null,p1=null;
+    if(A&&B){p0=at(a,A);p1=at(b,B);}else if(A&&m[id]?.to){p0=at(a,A);p1=at(b,m[id].to);}else if(B&&m[id]?.from){p0=at(a,m[id].from);p1=at(b,B);}
+    if(p0&&p1&&(p0.tower||p1.tower)&&Math.hypot(p1.x-p0.x,p1.y-p0.y)>=1)moving.push([id,p0,p1]);
+   }
+   if(!moving.length)continue;
+   const seen=new Map(moving.map(([id])=>[id,0])),fails=[];
+   for(const u of ${JSON.stringify(us)}){
+    window.__machine.seek(i+u);await frame();
+    const c=svg.getScreenCTM(),px=74*Math.hypot(c.a,c.b);
+    for(const [id,p0,p1] of moving){const k=ease(u),x=p0.x+(p1.x-p0.x)*k,y=p0.y+(p1.y-p0.y)*k,sx=c.a*x+c.c*y+c.e,sy=c.b*x+c.d*y+c.f;
+     if(px>=18&&sx>=stage.left&&sx<=stage.right&&sy>=stage.top&&sy<=stage.bottom)seen.set(id,seen.get(id)+1);else fails.push({id,u,px:Math.round(px*10)/10,x:Math.round(sx),y:Math.round(sy)});}
+   }
+   out.push({i,kind:plan.beats[i].kind,moving:moving.length,least:Math.min(...seen.values()),fails:fails.slice(0,3)});
+  }
+  return out;})()`);
+ await mcheck('machine 1: opens from the header with × under IO and [16,7] focused; Enter with AUTO on gives [112]',async()=>{
+  await click('#open-machine');await wait(900);
+  expect(await page.eval(`document.getElementById('open-machine').getAttribute('aria-pressed')`),'true','header button pressed');
+  expect(JSON.stringify(await page.eval(`window.__machine.plan().tree`)),JSON.stringify({n1:{op:'mul',parent:'io',socket:'C'}}),'a × block hangs under IO');
+  expect(await page.eval(`(()=>{const i=document.getElementById('machine-input');return [i.value,document.activeElement===i,i.selectionStart===0&&i.selectionEnd===i.value.length].join('|');})()`),'[16,7]|true|true','Input holds [16,7], focused and selected');
+  expect((await mstate()).auto,true,'AUTO defaults to on');
+  await mload({sp:.25});await page.eval(`document.getElementById('machine-input').focus()`);
+  await press('Enter');await until(s=>s.output==='[112]','Output [112]');
+  expect(await page.eval(`document.getElementById('machine-output').textContent`),'[112]','Output text');
+ },undefined,{path:'/?examples=written&automation'});
+ await mcheck('machine 2: AUTO off, 16 Enters in Input play beats 0–15 with the golden captions; Enter mid-run finishes the beat; ← goes back',async()=>{
+  const captions=[];
+  for(let k=0;k<16;k++){await press('Enter');await wait(60);const s=await until(s=>!s.playing,`beat ${k}`,4000);expect(s.beat,k,`Enter ${k+1} plays beat ${k}`);captions.push(s.caption);}
+  expect(await active(),'machine-input','focus stayed in Input');
+  expect(JSON.stringify(captions.slice(3,15)),JSON.stringify(golden),'captions of beats 3–14');
+  expect((await mstate()).output,'[112]','Output');
+  await mload({auto:1,sp:1});await page.eval(`document.getElementById('machine-input').focus()`);
+  await press('Enter');await wait(1400);const mid=await mstate();await press('Enter');await wait(50);const after=await mstate();
+  if(!(mid.t>1&&mid.t<2)||!(after.t>=2)||after.beat<2||!after.playing)throw Error(`mid-run Enter: ${JSON.stringify({mid,after})}`);
+  await mload({auto:0,sp:.25});await page.eval(`document.getElementById('machine-input').focus()`);
+  for(let k=0;k<3;k++){await press('Enter');await wait(60);await until(s=>!s.playing,'beat',3000);}
+  await page.eval(`document.getElementById('machine-stage').focus()`);await press('ArrowLeft');await wait(100);
+  expect((await mstate()).t,2,'← on the stage goes back one beat');
+ },undefined,{path:MACHINE+'&auto=0&sp=0.25'});
+ await mcheck('machine 3: typing [, a, t and ] in Input fires no shortcut; >> in the expression field is refused',async()=>{
+  const before=await mstate();await page.eval(`(()=>{const i=document.getElementById('machine-input');i.focus();i.value='';})()`);
+  for(const k of ['[','a','t',']'])await press(k);await wait(150);
+  const after=await mstate();
+  expect(await page.eval(`document.getElementById('machine-input').value`),'[at]','the keys were typed');
+  expect(JSON.stringify([after.auto,after.sp,after.t]),JSON.stringify([before.auto,before.sp,before.t]),'AUTO, speed and time unchanged');
+  await page.eval(`document.getElementById('machine-expr').focus()`);await page.send('Input.insertText',{text:'12>>1'});await press('Enter');await wait(200);
+  const text=await page.eval(`document.getElementById('machine-status').textContent`);
+  if(!/truncates toward zero/.test(text))throw Error('status: '+text);
+ });
+ await mcheck('machine 4: the ternary switch plays [5,−4] → [−20]',async()=>{
+  await click('#machine-base [data-base=ternary]');await wait(200);expect((await mstate()).base,'ternary','base');
+  await mload({sp:.25,input:'[5,-4]'});await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');
+  await until(s=>s.output==='[−20]','Output [−20]');
+ });
+ await mcheck('machine 4e: the base-e switch lazy-loads e-base.js and plays MEASURE 3',async()=>{
+  expect(await page.eval(`performance.getEntriesByType('resource').some(r=>r.name.includes('e-base.js'))`),false,'e-base.js not loaded at start');
+  await click('#machine-base [data-base=e]');await wait(600);
+  expect(await page.eval(`performance.getEntriesByType('resource').some(r=>r.name.includes('e-base.js'))`),true,'e-base.js loaded on first use');
+  await mload({op:'measure',input:'3',sp:.25,auto:1});await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');
+  await until(s=>s.output==='[3]','Output [3]');
+ },undefined,{needs:['e']});
+ await mcheck('machine 5: tap-to-attach and drag-to-attach; an edit after OUTPUT rewinds and shows the full tree',async()=>{
+  await mload({tree:{}});await wait(200);
+  await click('#machine-svg [data-socket=io]');await raise();
+  await click('#machine-palette [data-op=add]');await wait(200);
+  const tree=await page.eval(`window.__machine.plan().tree`),root=Object.keys(tree).find(k=>tree[k].parent==='io');
+  expect(tree[root]?.op,'add','tapped ADD hangs under the triangle');
+  await raise();await wait(100);
+  const from=await box('#machine-palette [data-op=mul]'),to=await box(`#machine-svg [data-socket="${root}.R"]`);
+  await page.drag(from,to,{steps:25});await wait(300);
+  const t2=await page.eval(`window.__machine.plan().tree`),mul=Object.keys(t2).find(k=>t2[k].op==='mul');
+  expect(mul&&`${t2[mul].parent}.${t2[mul].socket}`,`${root}.R`,'dragged MULT hangs in the right socket');
+  await mload({op:'mul',input:'[16,7]',sp:.25,auto:1});await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');await until(s=>s.output==='[112]','Output');
+  await click('#machine-svg [data-socket="n1.L"]');await wait(100);await page.eval(`document.querySelector('#machine-palette [data-op=add]').click()`);await wait(300);
+  expect((await mstate()).t,0,'rewound to beat 0');
+  expect(await page.eval(`document.querySelectorAll('#machine-svg [data-node]').length`),2,'both blocks are back on the stage');
+ });
+ await mcheck('machine 5t: on touch a sideways swipe scrolls the palette and starts no drag',async()=>{
+  await touch();await page.goto(origin+MACHINE);await wait(600);
+  const p=await box('#machine-palette'),before=await page.eval(`JSON.stringify(window.__machine.plan().tree)`);
+  const pt=x=>[{x,y:p.y}];await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:pt(p.x+p.w*.35)});
+  for(let k=1;k<=12;k++){await page.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:pt(p.x+p.w*.35-k*14)});await wait(16);}
+  await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await wait(400);
+  if(!(await page.eval(`document.getElementById('machine-palette').scrollLeft`)>0))throw Error('the palette did not scroll');
+  expect(await page.eval(`!document.querySelector('.machine-ghost')&&JSON.stringify(window.__machine.plan().tree)`),before,'no drag, no new block');
+ },{width:390,height:844});
+ for(const [w,h] of [[390,844],[844,390]]){
+  await mcheck(`machine 6: phone ${w}×${h}: stage focused, palette reachable, every moving bulb on screen and ≥ 18 px`,async()=>{
+   await touch();await page.goto(origin+MACHINE);await wait(700);
+   expect(await active(),'machine-stage','the stage has focus, no input');
+   const pal=await box('#machine-palette [data-op=add]');if(!pal||pal.w<30||pal.y>h||pal.y<0)throw Error('palette not reachable: '+JSON.stringify(pal));
+   let bad=(await movers([.1,.5,.9])).filter(b=>b.least<3);if(bad.length)throw Error('[16,7]: '+JSON.stringify(bad.slice(0,3)));
+   await mload({op:'add',input:'[1048575,1]'});await wait(300);
+   bad=(await movers([.1,.3,.5,.7,.9])).filter(b=>b.least<2);if(bad.length)throw Error('[1048575,1]: '+JSON.stringify(bad.slice(0,3)));
+  },{width:w,height:h});
+ }
+ await check('machine 7: at 360×740 the six header buttons neither wrap nor overflow, in both styles',async()=>{
+  for(const style of ['sketchpad','cyber']){
+   await page.eval(`document.documentElement.dataset.style='${style}'`);await wait(100);
+   const r=await page.eval(`(()=>{const h=document.querySelector('header'),b=[...document.querySelectorAll('nav button')].map(x=>x.getBoundingClientRect());return {n:b.length,rows:new Set(b.map(x=>Math.round(x.top))).size,over:h.scrollWidth>h.clientWidth||document.documentElement.scrollWidth>innerWidth};})()`);
+   expect(JSON.stringify(r),JSON.stringify({n:6,rows:1,over:false}),style);
+  }
+ },{width:360,height:740});
+ await mcheck('machine 8: emulated reduced motion plays the same beats',async()=>{
+  const normal=await page.eval(`JSON.stringify(window.__machine.beats().map(b=>[b.kind,b.caption]))`);
+  await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await page.goto(origin+MACHINE);await wait(600);
+  const s=await mstate();expect(JSON.stringify([s.sp,await page.eval(`document.getElementById('machine-readalong').checked`)]),'[1.5,true]','reduced motion: 1.5 s beats, Read along on');
+  expect(await page.eval(`JSON.stringify(window.__machine.beats().map(b=>[b.kind,b.caption]))`),normal,'the same beats');
+  await page.eval(`document.getElementById('machine-readalong').click()`);await mload({sp:.25});await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');
+  await until(s=>s.output==='[112]','Output [112]');
+ });
+ await mcheck('machine 9: switching style mid-run works, and digit glyphs are light on the cyber stage',async()=>{
+  await mload({sp:.5});await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');await wait(1500);
+  await page.eval(`(()=>{const s=document.getElementById('style');s.value='cyber';s.dispatchEvent(new Event('change'));})()`);await wait(400);
+  const mid=await mstate();if(!mid.playing||mid.t<2)throw Error('the run stopped: '+JSON.stringify(mid));
+  await until(s=>s.output==='[112]','Output after the switch');
+  await page.eval(`document.getElementById('machine-digits').click()`);await page.eval(`window.__machine.seek(3)`);await wait(300);
+  const r=await page.eval(`(async()=>{const {ink}=await import('/src/mvc/theme.js');const texts=[...document.querySelectorAll('#machine-svg .m-scene text')].map(t=>(t.getAttribute('fill')||getComputedStyle(t).fill).toLowerCase());return {glyph:ink.machine?.glyph?.toLowerCase(),light:texts.filter(f=>f===ink.machine?.glyph?.toLowerCase()).length,dark:texts.filter(f=>f==='#050504').length};})()`);
+  if(!r.glyph||!r.light||r.dark)throw Error('digit glyphs: '+JSON.stringify(r));
+ });
+ await mcheck('machine 10: leaving returns keys to the equation space; a lesson, the equation dialog and Android back close the machine',async()=>{
+  await click('#open-machine');await wait(300);expect(await page.eval(`document.body.classList.contains('machine-active')`),false,'the header button closes it');
+  await page.eval(`document.activeElement.blur()`);await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'5',code:'Digit5',text:'5',windowsVirtualKeyCode:53});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'5',code:'Digit5',windowsVirtualKeyCode:53});await wait(100);
+  expect(await page.eval(`document.getElementById('entry-text').textContent`),'5','keys reach the equation space');
+  const opened=async()=>{await page.eval(`window.__native.open('machine')`);await wait(500);expect(await page.eval(`!document.getElementById('machine-mode').hidden`),true,'abacus://open/machine opens it');};
+  await opened();await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`document.querySelector('#lessons button').click()`);await wait(500);
+  expect(await page.eval(`document.getElementById('machine-mode').hidden`),true,'a lesson closes it');await page.eval(`document.getElementById('tutor-close').click()`);
+  await opened();await page.eval(`document.getElementById('open-equation').click()`);await wait(300);
+  expect(await page.eval(`document.getElementById('machine-mode').hidden`),true,'the equation dialog closes it');await page.eval(`document.getElementById('equation-dialog').close()`);
+  await opened();expect(await page.eval(`window.__native.back()`),true,'back is handled');await wait(200);
+  expect(await page.eval(`document.getElementById('machine-mode').hidden`),true,'Android back closes it');
+ });
+ await mcheck('machine 11: 9/(3−3) outlines the DIV block, names the zero divisor and shows [—]',async()=>{
+  await page.eval(`document.getElementById('machine-expr').focus()`);await page.send('Input.insertText',{text:'9/(3-3)'});await press('Enter');await wait(400);
+  expect((await mstate()).output,'[—]','Output');
+  if(!/zero/i.test(await page.eval(`document.getElementById('machine-status').textContent`)))throw Error('the status does not name the zero divisor');
+  const outlined=await page.eval(`(async()=>{const {ink}=await import('/src/mvc/theme.js');const c=(ink.machine?.error||'').toLowerCase();return !!c&&[...document.querySelectorAll('#machine-svg .m-scene [stroke]')].some(e=>e.getAttribute('stroke').toLowerCase()===c);})()`);
+  expect(outlined,true,'a block outlined in machine.error');
+  expect(await page.eval(`(()=>{const t=window.__machine.plan().tree;return t[Object.keys(t).find(k=>t[k].parent==='io')].op;})()`),'div','the DIV block is the root');
+ });
+ await mcheck('machine 12: tapping 16 × 7 in base 2 offers Watch in the machine, which opens it preloaded; To the cards refuses (2³² − 1)²',async()=>{
+  await page.eval(`(()=>{const s=document.getElementById('numerals');s.value='binary';s.dispatchEvent(new Event('change'));})()`);await load('16*7');
+  const [product]=await terms();await page.mouse('mousePressed',product.x,product.y);await page.mouse('mouseReleased',product.x,product.y);
+  for(let t=0;t<30&&await page.eval(`document.getElementById('watch-machine').hidden`);t++)await wait(100);
+  expect(await page.eval(`document.getElementById('watch-machine').textContent`),'Watch 16 × 7 in the machine','the button');
+  await page.eval(`document.getElementById('watch-machine').click()`);await wait(900);
+  expect(await page.eval(`(()=>{const p=window.__machine.plan();return JSON.stringify([p.base,Object.values(p.tree).map(n=>n.op),p.inputs]);})()`),JSON.stringify(['binary',['mul'],['16','7']]),'preloaded');
+  await mload({op:'mul',input:'[4294967295,4294967295]'});await wait(200);
+  expect(await page.eval(`(()=>{const b=document.getElementById('machine-to-cards');return b.disabled&&/^Too large for the cards/.test(b.title);})()`),true,'To the cards disabled with its reason');
+  await mload({op:'mul',input:'[16,7]'});await page.eval(`document.getElementById('machine-to-cards').click()`);await wait(500);
+  expect(await page.eval(`document.getElementById('machine-mode').hidden`),true,'back to the cards');
+  if(!/^112\b/.test(await status()))throw Error('cards: '+await status());
+ },undefined,{path:'/?examples=written&automation'});
+ await mcheck('machine 13: the outline is not reachable by Tab while its sheet is closed',async()=>{
+  await touch();await page.goto(origin+MACHINE);await wait(600);
+  const tabbing=async n=>{const seen=[];for(let k=0;k<n;k++){await press('Tab');seen.push(await page.eval(`!!document.activeElement.closest('#machine-outline')`));}return seen.some(Boolean);};
+  await page.eval(`document.getElementById('machine-stage').focus()`);
+  expect(await tabbing(40),false,'sheet closed: the outline is skipped');
+  expect(await page.eval(`document.getElementById('machine-outline').inert`),true,'inert');
+  await page.eval(`document.getElementById('machine-steps-toggle').click()`);await page.eval(`document.getElementById('machine-tab-parts').click()`);await wait(100);
+  expect(await page.eval(`document.getElementById('machine-outline').inert`),false,'open on Parts: reachable');
+  await page.eval(`document.getElementById('machine-tab-parts').focus()`);expect(await tabbing(4),true,'Tab reaches the outline');
+ },{width:390,height:844});
 }finally{server.kill();}
-for(const [name,error] of results)console.log(`${error?'FAIL':'ok  '} ${name}${error?`\n     ${error}`:''}`);
-const failed=results.filter(r=>r[1]).length;
-console.log(failed?`${failed} of ${results.length} interaction checks failed.`:`PASS: ${results.length} interaction checks in headless Chrome.`);
+for(const [name,error,waiting] of results)console.log(`${waiting?'pend':error?'FAIL':'ok  '} ${name}${error?`\n     ${error}`:''}`);
+const failed=results.filter(r=>r[1]).length,pendingCount=results.filter(r=>r[2]).length;
+if(pendingCount)console.log(`${pendingCount} machine checks are pending: the machine's core (plan.js, tree.js, scene.js), picture (layout.js, render.js) or base e (e-base.js) is not in this checkout yet.`);
+console.log(failed?`${failed} of ${results.length} interaction checks failed.`:`PASS: ${results.length-pendingCount} interaction checks in headless Chrome.`);
 process.exitCode=failed?1:0;

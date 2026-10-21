@@ -17,6 +17,7 @@ import { renderMachine, machineDefs, blockGlyphSVG } from './render.js';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const media = q => typeof matchMedia === 'function' && matchMedia(q).matches;
+const touchFirst = () => media('(pointer: coarse)');
 export const BASES = ['binary', 'ternary', 'e'];
 const BASE_SHORT = { binary: '2', ternary: '±3', e: 'e' }, BASE_NAME = { binary: 'binary', ternary: 'balanced ternary', e: 'base e' };
 // Palette names (PRIME's FunctBar spelled them out) and what the outline calls each block.
@@ -100,8 +101,9 @@ export class MachineView extends EventTarget {
   async show(preset) {
     this.visible = true; this.dirty = true;
     if (preset && Object.keys(preset).length) await this.load(preset);
-    // A fine pointer types straight away; on touch the stage takes focus so no keyboard rises.
-    if (!this.recording && media('(pointer: fine)')) { this.$input.focus({ preventScroll: true }); this.$input.select(); }
+    // A fine pointer (or none: a keyboard) types straight away; on touch the stage takes
+    // focus so no soft keyboard rises.
+    if (!this.recording && !touchFirst()) { this.$input.focus({ preventScroll: true }); this.$input.select(); }
     else this.stage.focus({ preventScroll: true });
     this.sync(this.clock.t(performance.now()), true);
   }
@@ -386,7 +388,7 @@ export class MachineView extends EventTarget {
   }
   prompt() {
     if (this.refusal?.reason === 'empty') return 'Tap the triangle, then a block in the palette (or drag one under it).';
-    return this.refusal ? '' : media('(pointer: fine)') ? 'Press Enter' : 'Tap Run';
+    return this.refusal ? '' : touchFirst() ? 'Tap Run' : 'Press Enter';
   }
   status(text, tone = '') { const el = $('machine-status'); el.textContent = text; el.dataset.tone = tone; }
   announce(text) { if (!text) return; const el = $('machine-live'); el.textContent = ''; requestAnimationFrame(() => { el.textContent = text; }); }
