@@ -41,7 +41,7 @@ MADE FOR TOUCH
 • Phone and tablet layouts, portrait or landscape.
 • Haptic feedback as cards snap, cancel and cross the mirror.
 • Press and hold (or press firmly) on any card to peek inside it: its places as stacks of cards, or every step of a calculation still to be worked out.
-• Long-press the app icon to jump straight to Lessons, PEMDAS, Graph or a new equation.
+• Long-press the app icon to jump straight to Lessons, Graph, Numbers or a new equation.
 
 SAFE FOR CHILDREN
 No ads, no accounts, no in-app purchases and no data collection. Abacus works completely offline.

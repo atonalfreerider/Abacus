@@ -6,11 +6,6 @@
         <intent android:action="android.intent.action.VIEW" android:data="abacus://open/lessons"
             android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
     </shortcut>
-    <shortcut android:shortcutId="pemdas" android:enabled="true" android:icon="@drawable/shortcut_pemdas"
-        android:shortcutShortLabel="@string/shortcut_pemdas" android:shortcutLongLabel="@string/shortcut_pemdas_long">
-        <intent android:action="android.intent.action.VIEW" android:data="abacus://open/pemdas"
-            android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
-    </shortcut>
     <shortcut android:shortcutId="graph" android:enabled="true" android:icon="@drawable/shortcut_graph"
         android:shortcutShortLabel="@string/shortcut_graph" android:shortcutLongLabel="@string/shortcut_graph_long">
         <intent android:action="android.intent.action.VIEW" android:data="abacus://open/graph"

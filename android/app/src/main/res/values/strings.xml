@@ -6,8 +6,6 @@
     <string name="custom_url_scheme">abacus</string>
     <string name="shortcut_lessons">Lessons</string>
     <string name="shortcut_lessons_long">Choose a lesson</string>
-    <string name="shortcut_pemdas">PEMDAS</string>
-    <string name="shortcut_pemdas_long">Order of operations</string>
     <string name="shortcut_graph">Graph</string>
     <string name="shortcut_graph_long">Graph an equation</string>
     <string name="shortcut_numbers">Numbers</string>
