@@ -75,6 +75,8 @@ const ZERO = new E();
 const SUPS = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁻': '-', '⁺': '+' };
 // Terms are counted before they combine, because the typed limit is on what was written.
 export function parseTerms(text) {
+  // Spaces may sit beside an operator, never between two numbers: "16 7" is a list of two.
+  if (/[\d.)e⁰¹²³⁴⁵⁶⁷⁸⁹]\s+[\d.(e]/.test(String(text).trim())) throw Error(`${String(text).trim()} is more than one number`);
   let s = String(text).trim().replace(/[−–]/g, '-').replace(/[·×]/g, '*').replace(/\s+/g, '');
   s = s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, m => '^(' + [...m].map(c => SUPS[c]).join('') + ')');
   if (!s) throw Error('Type a number');

@@ -5,10 +5,9 @@
  "beats":[
  {"i":0,"kind":"input","node":"io","caption":"[112] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"}}}},
  {"i":1,"kind":"deliver","node":"n1","caption":"112 rides down the wire to the ruler.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"}}}},
- {"i":2,"kind":"fanout","node":"n1","caption":"112 drop into the sockets and stand up.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C","form":"tower","reading":null,"dust":true,"digits":"20010.001…ₑ"}},"bulbs":{"b1":null,"b2":{"t":"t1","l":-3,"s":1,"slot":0},"b3":{"t":"t1","l":1,"s":1,"slot":0},"b4":{"t":"t1","l":4,"s":1,"slot":0},"b5":{"t":"t1","l":4,"s":1,"slot":1}}},"motion":{"b1":{"fade":[0,0.3]}}},
- {"i":3,"kind":"fold","node":"n1","caption":"Fold: the bulbs merge into one light at height ln 112 ≈ 4.7185.","ledger":{"law":"fold","value":"112","h":4.7185},"set":{"towers":{"t1":{"form":"light","dust":null,"digits":null,"reading":"ln 112 ≈ 4.7185"}},"bulbs":{"b2":{"l":4.7185,"slot":null,"k":"light"},"b3":null,"b4":null,"b5":null}},"motion":{"b3":{"to":{"t":"t1","l":1.0309},"move":[0.225,0.45],"fade":[0.225,0.45]},"b4":{"to":{"t":"t1","l":4.0501},"move":[0.45,0.675],"fade":[0.45,0.675]},"b5":{"to":{"t":"t1","l":4.7185},"move":[0.675,0.9],"fade":[0.675,0.9]},"b2":{"path":[[0,-3],[0.225,-2.4602],[0.45,1.0309],[0.675,4.0501],[0.9,4.7185]]}}},
- {"i":4,"kind":"read","node":"n1","caption":"ln 112 ≈ 4.7185: the height of the folded light.","ledger":{"law":"read","value":"112","h":4.7185},"set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":{"value":"ln(112)","text":"ln 112 ≈ 4.7185","reading":null}}}},
- {"i":5,"kind":"return","node":"n1","caption":"ln 112 ≈ 4.7185 rides up into the triangle.","ledger":{"law":"move","value":"ln(112)"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
- {"i":6,"kind":"output","node":"io","caption":"Output [ln 112 ≈ 4.7185].","ledger":{"law":"move","value":"ln(112)"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
+ {"i":2,"kind":"fanout","node":"n1","caption":"112 arrives as one light at height ln 112 ≈ 4.7185.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C"}}}},
+ {"i":3,"kind":"read","node":"n1","caption":"ln 112 ≈ 4.7185: the height of the folded light.","ledger":{"law":"read","value":"112","h":4.7185},"set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":{"value":"ln(112)","text":"ln 112 ≈ 4.7185","reading":null}}}},
+ {"i":4,"kind":"return","node":"n1","caption":"ln 112 ≈ 4.7185 rides up into the triangle.","ledger":{"law":"move","value":"ln(112)"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
+ {"i":5,"kind":"output","node":"io","caption":"Output [ln 112 ≈ 4.7185].","ledger":{"law":"move","value":"ln(112)"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
  "result":{"values":["ln(112)"],"text":"[ln 112 ≈ 4.7185]"},
- "stats":{"beats":7,"nodes":1,"maxLevels":8,"maxBulbs":4}}
+ "stats":{"beats":6,"nodes":1,"maxLevels":0,"maxBulbs":1}}

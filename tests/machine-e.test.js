@@ -103,49 +103,67 @@ class StandIn {
   }
 }
 Builder ??= StandIn;
-// The flow beats (input, deliver, fanout, return, output) as 6.4 and 6.5 write them.
+// The flow beats (input, deliver, fanout, return, output) the way A's plan.js plays them:
+// FANOUT re-places each number (a light only where MEASURE or LN reads it) and expands
+// ×eᵏ's count into e^k; a node answering {result: null} is solved again; RETURN clears notes.
 const ARITY = { add: 2, sub: 2, mul: 2, mule: 2, cmp: 2, measure: 1, ln: 1 };
 const NAMES = { add: '+ block', sub: '− block', mul: '× block', mule: '×eᵏ block', cmp: 'comparator', measure: 'ruler', ln: 'ruler' };
 const socketsOf = (nodes, id) => ARITY[nodes[id].op] === 1 ? ['C'] : ['L', 'R'];
 const childAt = (nodes, id, s) => Object.keys(nodes).find(k => nodes[k].parent === id && nodes[k].socket === s);
 const openSockets = (tree, id) => socketsOf(tree, id).flatMap(s => childAt(tree, id, s) ? openSockets(tree, childAt(tree, id, s)) : [`${id}.${s}`]);
 const SUPS = '⁰¹²³⁴⁵⁶⁷⁸⁹', sup = k => String(k).replace(/\d/g, d => SUPS[d]).replace('-', '⁻');
+const listed = xs => xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
 function standInPlan({ tree, inputs, pace = 'together' }) {
   const root = Object.keys(tree).find(k => tree[k].parent === 'io'), open = openSockets(tree, root);
   const b = new Builder({ base: 'e', tree, inputs, pace }), T = id => b.scene.towers[id];
-  const ids = inputs.map((_, i) => `t${i + 1}`), texts = ids.map(t => T(t).text);
+  const ids = Object.keys(b.scene.towers), texts = ids.map(t => T(t).text);
   b.begin('input', 'io', { caption: `[${texts.join(', ')}] goes in.`, ledger: { law: 'move' } }); ids.forEach((t, i) => b.tower(t, { at: `io:${i}` })); b.end();
   b.begin('deliver', root, { caption: ids.length === 1 ? `${texts[0]} rides down the wire to the ${NAMES[tree[root].op]}.` : `The numbers ride down the wire to the ${NAMES[tree[root].op]}.`, ledger: { law: 'move' } });
   ids.forEach((t, i) => b.tower(t, { at: `${root}.C:${i}` })); b.end();
-  const opAt = i => tree[open[i].split('.')[0]].op, light = i => opAt(i) === 'measure', count = i => opAt(i) === 'mule' && open[i].endsWith('.R');
-  const powers = ids.filter((_, i) => count(i)).map(t => Number(T(t).value));
+  // what FANOUT will do, worked out first so the beat opens with its caption
+  const plan = ids.map((t, i) => { const [node, s] = open[i].split('.'), op = tree[node].op; return { t, node, op, count: op === 'mule' && s === 'R', light: ['measure', 'ln'].includes(op) && T(t).value !== '0' }; });
+  const counts = plan.filter(x => x.count).map(x => ({ x, k: Number(T(x.t).value) }));
+  const items = plan.map(x => ({ text: T(x.t).text, reading: x.light ? eSpec.display(T(x.t).value, { form: 'light' }).reading : undefined, note: x.count ? `×e${sup(T(x.t).value)}` : undefined }));
+  const powers = items.filter(x => x.note).map(x => `; ${x.text} becomes ${x.note}`).join('');
   b.begin('fanout', root, {
-    caption: ids.length === 1 && light(0) ? `${texts[0]} arrives as one light at height ${T(ids[0]).reading}.` : `${texts.slice(0, -1).join(', ')}${ids.length > 1 ? ' and ' : ''}${texts.at(-1)} drop into the sockets and stand up.`,
-    ledger: powers.length ? { law: 'power', k: powers[0], out: eSpec.power(powers[0]) } : { law: 'move' },
+    caption: items.length === 1 && items[0].reading ? `${items[0].text} arrives as one light at height ${items[0].reading}.`
+      : items.length === 1 ? `${items[0].text} drops into the socket and stands up${powers}.` : `${listed(items.map(x => x.text))} drop into the sockets and stand up${powers}.`,
+    ledger: counts.length ? { law: 'power', k: counts[0].k, out: eSpec.power(counts[0].k) } : { law: 'move' },
   });
-  ids.forEach((t, i) => {
-    b.tower(t, { at: open[i] });
-    if (light(i)) return;
-    // A light coin expands into its tower as it lands; ×eᵏ's count k becomes e^k (2.5).
-    const value = count(i) ? eSpec.power(T(t).value) : T(t).value;
-    for (const [id] of b.bulbsOf(t)) b.drop(id, { fade: [0, 0.3] });
-    b.tower(t, { form: 'tower', value, ...(count(i) ? { note: `×e${sup(T(t).value)}` } : {}) });
-    eSpec.place(b, t, value);
+  plan.forEach(({ t, node, count, light }, i) => {
+    b.tower(t, T(t).form === 'coin' ? { at: open[i], form: 'tower' } : { at: open[i] });
+    if (!count) { eSpec.place(b, t, T(t).value, { asLight: light }); return; }
+    const k = Number(T(t).value), power = eSpec.power(k);
+    for (const [id] of b.bulbsOf(t)) b.drop(id);
+    b.tower(t, { value: power, note: `×e${sup(k)}` });
+    eSpec.place(b, t, power, {});
+    b.node(node, { arg: power });
   });
   b.end();
-  const plan = id => {
-    for (const s of socketsOf(b.scene.nodes, id)) {
-      const child = childAt(b.scene.nodes, id, s); if (!child) continue;
-      const r = plan(child);
-      b.begin('return', child, { caption: `${T(r).text} rides up.`, ledger: { law: 'move', value: T(r).value } }); b.dropNode(child); b.tower(r, { at: `${id}.${s}` }); b.end();
+  const solve = id => {
+    for (;;) {
+      const sockets = socketsOf(b.scene.nodes, id);
+      for (const s of sockets) { const child = childAt(b.scene.nodes, id, s); if (child) solve(child); }
+      const towers = sockets.map(s => Object.keys(b.scene.towers).find(t => b.scene.towers[t].at === `${id}.${s}`));
+      const out = eSpec.ops[b.scene.nodes[id].op](b, id, towers);
+      if (out?.result) return finish(id, out.result);
     }
-    const operands = socketsOf(b.scene.nodes, id).map(s => Object.keys(b.scene.towers).find(t => b.scene.towers[t].at === `${id}.${s}`));
-    return eSpec.ops[b.scene.nodes[id].op](b, id, operands).result;
   };
-  const r = plan(root);
-  b.begin('return', root, { caption: `${T(r).text} rides up into the triangle.`, ledger: { law: 'move', value: T(r).value } }); b.dropNode(root); b.tower(r, { at: 'io:0' }); b.end();
-  b.begin('output', 'io', { caption: `Output [${T(r).text}].`, ledger: { law: 'move', value: T(r).value } }); b.tower(r, { at: 'out:0', form: 'coin' }); b.end();
-  return b.finish({ values: [T(r).value], text: `[${T(r).text}]` });
+  const finish = (id, r) => {
+    const { parent, socket } = b.scene.nodes[id], top = parent === 'io', t = T(r);
+    b.begin('return', id, { caption: top ? `${t.reading ?? t.text} rides up into the triangle.` : `${t.reading ?? t.text} rides up.`, ledger: { law: 'move', value: t.value } });
+    b.dropNode(id);
+    b.tower(r, { at: top ? 'io:0' : `${parent}.${socket}`, note: null });
+    for (const x of Object.keys(b.scene.towers)) if (T(x).at.startsWith(`${id}.`)) b.dropTower(x);
+    b.end();
+  };
+  solve(root);
+  const outs = Object.keys(b.scene.towers).filter(t => /^io:\d+$/.test(T(t).at)), text = `[${outs.map(t => T(t).reading ?? T(t).text).join(', ')}]`;
+  const result = { values: outs.map(t => T(t).value), text };
+  b.begin('output', 'io', { caption: `Output ${text}.`, ledger: { law: 'move', value: result.values[0] } });
+  outs.forEach((t, i) => b.tower(t, { at: `out:${i}`, form: 'coin' }));
+  b.end();
+  return b.finish(result);
 }
 const one = op => ({ n1: { op, parent: 'io', socket: 'C' } });
 function plan(op, inputs, pace = 'together') {
@@ -548,6 +566,11 @@ test('the base entry: typed limits, refusals with reasons, display strings', () 
   assert.equal(parseValue('300000000*e^0+e^12*1000').ok, false);
   assert.match(parseValue('1000000e^12').error, /past e²⁰/);
   assert.equal(parseValue('2 + ').ok, false);
+  assert.equal(parseValue('16 7').ok, false, 'a space between numbers makes a list, as in [16 7]');
+  assert.equal(parseValue('2 e').ok, false);
+  assert.equal(parseValue('e^2 + 2').value, 'e^2+2', 'spaces beside an operator are fine');
+  assert.deepEqual(evaluate('mul', ['e^12', 'e^10']), { ok: false, reason: 'tooBig', message: 'e²² is past e²⁰, the top of a base-e tower' }, 'a computed value past the tower is refused before planning');
+  assert.equal(evaluate('mul', ['1/1000000', 'e^-6']).reason, 'tooBig');
   assert.equal(checkLimits('e^-15'), 'e⁻¹⁵ is below e⁻¹⁴, past the end of the rail');
   assert.equal(checkLimits('0'), null);
   for (const op of ['div', 'mod', 'and', 'xor', 'not', 'shl']) assert.equal(evaluate(op, ['3', '2']).ok, false, op);

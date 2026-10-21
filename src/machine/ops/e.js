@@ -77,21 +77,24 @@ export function evaluate(op, args) {
   if (args.some(a => readingOf(a))) return { ok: false, reason: 'domain', message: 'ln gives a reading, not a number: it can only go to Output.' };
   if (!E_OPS[op]) return { ok: false, reason: 'domain', message: NO[op] ?? 'Logic needs whole-number levels; base e has none.' };
   const [a, b] = args.map(v => E.parse(v));
+  // A value past the tower's reach cannot be planned: the pre-check refuses it as too big
+  // (the whole-number bases' tower cap does the same through their level count).
+  const value = x => { const limit = checkLimits(x.key()); return limit ? { ok: false, reason: 'tooBig', message: limit } : { ok: true, values: [x.key()] }; };
   switch (op) {
-    case 'add': return { ok: true, values: [a.add(b).key()] };
-    case 'sub': return { ok: true, values: [a.sub(b).key()] };
-    case 'mul': return { ok: true, values: [a.mul(b).key()] };
+    case 'add': return value(a.add(b));
+    case 'sub': return value(a.sub(b));
+    case 'mul': return value(a.mul(b));
     case 'mule': {
       // The count k, as typed. After FANOUT the socket holds the power e^k instead (like
       // SHL's 2^k), and a scene evaluates that by multiplying; a power that cannot be a
       // count (e, e², e⁻¹, …) is accepted here as that multiplier too.
-      if (!b.isInteger() && b.abs().isPower()) return { ok: true, values: [a.mul(b).key()] };
+      if (!b.isInteger() && b.abs().isPower()) return value(a.mul(b));
       const k = shiftOf(b);
       if (k === null) return { ok: false, reason: 'domain', message: `×eᵏ needs a whole k from ${s2(MIN_EXP)} to ${MAX_EXP}: ${b.text()} is not one` };
-      return { ok: true, values: [a.shift(k).key()] };
+      return value(a.shift(k));
     }
     case 'cmp': return { ok: true, values: [String(compare(a, b))] };
-    case 'measure': return { ok: true, values: [a.key()] };
+    case 'measure': return value(a);
     case 'ln': return sign(a) > 0 ? { ok: true, values: [`ln(${a.key()})`] }
       : { ok: false, reason: 'domain', message: `ln needs a positive number: ${a.text()} has no logarithm; its light would fall forever.` };
   }
