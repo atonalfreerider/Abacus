@@ -1,0 +1,14 @@
+{"v":1,"base":"e","pace":"together","tree":{"n1":{"op":"add","parent":"io","socket":"C"}},"inputs":["1","e"],
+ "start":{"nodes":{"n1":{"op":"add","parent":"io","socket":"C"}},
+  "towers":{"t1":{"at":"in:0","form":"light","value":"1","text":"1","reading":"ln 1 = 0"},"t2":{"at":"in:1","form":"light","value":"e","text":"e","approx":"≈ 2.718","reading":"ln e = 1"}},
+  "bulbs":{"b1":{"t":"t1","l":0,"s":1,"k":"light"},"b2":{"t":"t2","l":1,"s":1,"k":"light"}}},
+ "beats":[
+ {"i":0,"kind":"input","node":"io","caption":"[1, e] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"},"t2":{"at":"io:1"}}}},
+ {"i":1,"kind":"deliver","node":"n1","caption":"The numbers ride down the wire to the + block.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"},"t2":{"at":"n1.C:1"}}}},
+ {"i":2,"kind":"fanout","node":"n1","caption":"1 and e drop into the sockets and stand up.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.L","form":"tower","digits":"1ₑ","reading":null},"t2":{"at":"n1.R","form":"tower","digits":"10ₑ","reading":null}},"bulbs":{"b1":null,"b3":{"t":"t1","l":0,"s":1,"slot":0},"b2":null,"b4":{"t":"t2","l":1,"s":1,"slot":0}}}},
+ {"i":3,"kind":"pile","node":"n1","caption":"1 + e: the bulbs pile up level by level; nothing climbs.","ledger":{"law":"sum","a":"1","b":"e","out":"e+1"},"set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":null,"t2":{"at":"n1.C","value":"e+1","text":"e + 1","approx":"≈ 3.718","digits":"1|1ₑ","pile":true}},"bulbs":{"b3":{"t":"t2"}}}},
+ {"i":4,"kind":"legal","node":"n1","caption":"Every level is legal, so the pile is already a numeral: e + 1 = 11ₑ exactly.","ledger":{"law":"regroup","value":"e+1"},"set":{"towers":{"t2":{"digits":"11ₑ","pile":null}}},"marks":[{"k":"scan","node":"n1","from":0,"stop":1}]},
+ {"i":5,"kind":"return","node":"n1","caption":"e + 1 rides up into the triangle.","ledger":{"law":"move","value":"e+1"},"set":{"nodes":{"n1":null},"towers":{"t2":{"at":"io:0"}}}},
+ {"i":6,"kind":"output","node":"io","caption":"Output [e + 1].","ledger":{"law":"move","value":"e+1"},"set":{"towers":{"t2":{"at":"out:0","form":"coin"}}}}],
+ "result":{"values":["e+1"],"text":"[e + 1]"},
+ "stats":{"beats":7,"nodes":1,"maxLevels":5,"maxBulbs":2}}
