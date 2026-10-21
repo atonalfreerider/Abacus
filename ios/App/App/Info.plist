@@ -78,16 +78,6 @@
 		</dict>
 		<dict>
 			<key>UIApplicationShortcutItemType</key>
-			<string>com.metavirtuoso.abacus.pemdas</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>PEMDAS</string>
-			<key>UIApplicationShortcutItemSubtitle</key>
-			<string>Order of operations</string>
-			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>parentheses</string>
-		</dict>
-		<dict>
-			<key>UIApplicationShortcutItemType</key>
 			<string>com.metavirtuoso.abacus.graph</string>
 			<key>UIApplicationShortcutItemTitle</key>
 			<string>Graph</string>
