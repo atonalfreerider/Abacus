@@ -16,6 +16,11 @@
         <intent android:action="android.intent.action.VIEW" android:data="abacus://open/graph"
             android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
     </shortcut>
+    <shortcut android:shortcutId="numbers" android:enabled="true" android:icon="@drawable/shortcut_numbers"
+        android:shortcutShortLabel="@string/shortcut_numbers" android:shortcutLongLabel="@string/shortcut_numbers_long">
+        <intent android:action="android.intent.action.VIEW" android:data="abacus://open/numbers"
+            android:targetPackage="com.metavirtuoso.abacus" android:targetClass="com.metavirtuoso.abacus.MainActivity" />
+    </shortcut>
     <shortcut android:shortcutId="equation" android:enabled="true" android:icon="@drawable/shortcut_equation"
         android:shortcutShortLabel="@string/shortcut_equation" android:shortcutLongLabel="@string/shortcut_equation_long">
         <intent android:action="android.intent.action.VIEW" android:data="abacus://open/equation"

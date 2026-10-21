@@ -10,6 +10,8 @@
     <string name="shortcut_pemdas_long">Order of operations</string>
     <string name="shortcut_graph">Graph</string>
     <string name="shortcut_graph_long">Graph an equation</string>
+    <string name="shortcut_numbers">Numbers</string>
+    <string name="shortcut_numbers_long">Take a number apart</string>
     <string name="shortcut_equation">Equation</string>
     <string name="shortcut_equation_long">Type a new equation</string>
 </resources>
