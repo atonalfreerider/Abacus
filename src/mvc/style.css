@@ -264,17 +264,22 @@ body.machine-active #workspace,body.machine-active .original-dock,body.machine-a
  #machine-side{position:fixed;left:0;right:0;bottom:0;z-index:20;max-height:62vh;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0003;display:none;padding-bottom:max(0px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px))}
  #machine-side.open{display:flex}#machine-sheet-close{display:block}
 }
-/* Phones in landscape: the palette and the controls form a right rail beside the stage. */
+/* Phones in landscape: the stage takes the whole height; the bar, the sentence and caption,
+   the palette and the controls form a right rail beside it, like the dock. */
 @media(max-height:520px) and (min-aspect-ratio:3/2){
- #machine-mode{grid-column:1/-1;grid-row:3/7;grid-template-columns:minmax(0,1fr) 210px;grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto;grid-template-areas:"bar rail" "stage rail" "sentence rail" "caption rail" "result rail" "status rail" "ask rail"}
- .machine-bar{flex-wrap:nowrap;margin-bottom:3px}.machine-bar-more{display:flex;gap:5px;flex:1;min-width:0}#machine-expr{flex:1;min-width:0;width:auto}#machine-input{width:7em}
+ #machine-mode{grid-column:1/-1;grid-row:3/7;grid-template-columns:minmax(0,1fr) 250px;grid-template-rows:auto auto auto auto auto auto minmax(0,1fr);grid-template-areas:"stage bar" "stage sentence" "stage caption" "stage result" "stage status" "stage ask" "stage rail"}
+ .machine-bar{gap:4px;margin-bottom:2px}.machine-in{flex:1;min-width:0}.machine-in span{display:none}#machine-input{flex:1;min-width:0;width:auto;font-size:15px;padding:3px 6px}
+ #machine-base button{min-width:30px;padding:4px 6px}#machine-run{padding:4px 8px}
+ .machine-bar-more{display:flex;gap:4px;flex:1 1 100%}#machine-expr{flex:1;min-width:0;width:auto;font-size:14px}
  #machine-mode.running .machine-bar-more{display:none}
- .machine-rail{grid-area:rail;display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+ #machine-sentence,#machine-caption,#machine-status,.machine-result{text-align:left;justify-content:flex-start}
+ #machine-sentence{font-size:15px;margin-top:2px}#machine-caption{font-size:13px;line-height:1.3}
+ .machine-rail{grid-area:rail;display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin-top:4px}
  #machine-palette{transform:none;clip-path:none;align-self:auto;justify-self:auto;max-width:none;margin:0;flex-wrap:wrap;overflow:visible;padding:4px;border-radius:12px;box-shadow:none;touch-action:pan-y;flex-shrink:0}
  #machine-palette button{min-width:44px;min-height:44px;padding:1px 3px;font-size:9px;touch-action:pan-y}#machine-palette button svg{width:34px;height:18px}
  .machine-controls{margin:0;justify-content:flex-start;gap:4px}.machine-controls button,.machine-controls select{min-height:40px;font-size:12px;padding:3px 7px}
  #machine-steps-toggle{display:inline-block}
- #machine-stage{border-radius:14px;min-height:120px}#machine-sentence{font-size:15px;margin-top:2px}#machine-caption{font-size:13px}
+ #machine-stage{border-radius:14px;min-height:120px}
  #machine-side{position:fixed;top:0;right:0;bottom:0;width:min(360px,60vw);z-index:20;border-radius:16px 0 0 16px;box-shadow:-10px 0 30px #0003;display:none}
  #machine-side.open{display:flex}#machine-sheet-close{display:block}
 }

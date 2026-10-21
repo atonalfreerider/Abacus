@@ -204,7 +204,10 @@ try{
  const machineReady=(await Promise.all(['plan.js','tree.js','scene.js','layout.js','render.js'].map(have))).every(Boolean),eReady=await have('e-base.js');
  const MACHINE='/?examples=written&automation&machine';
  // A check that needs the machine's core and picture, or base e, waits for them: pending.
- async function mcheck(name,fn,viewport,{path=MACHINE,needs=[]}={}){if(process.env.ONLY&&!name.includes(process.env.ONLY))return;if(!machineReady||needs.includes('e')&&!eReady){results.push([name,null,true]);return;}await check(name,fn,viewport,path);}
+ async function mcheck(name,fn,viewport,{path=MACHINE,needs=[]}={}){if(process.env.ONLY&&!name.includes(process.env.ONLY))return;if(!machineReady||needs.includes('e')&&!eReady){results.push([name,null,true]);return;}await check(name,async()=>{if(path.includes('&machine'))await ready();await fn();},viewport,path);}
+ // The machine loads on first use: wait for its automation hook.
+ const ready=async()=>{for(let t=0;t<10000;t+=50){if(await page.eval(`!!window.__machine`))return;await wait(50);}throw Error('the machine did not open');};
+ const reopen=async()=>{await page.goto(origin+MACHINE);await ready();await wait(300);};
  const mstate=()=>page.eval(`window.__machine.state()`);
  const until=async(pred,what,limit=25000)=>{for(let t=0;t<limit;t+=100){const s=await mstate();if(pred(s))return s;await wait(100);}throw Error(`timed out waiting for ${what}: ${JSON.stringify(await mstate())}`);};
  const KEYS={Enter:['Enter',13,'\r'],ArrowLeft:['ArrowLeft',37],ArrowRight:['ArrowRight',39],Tab:['Tab',9],Escape:['Escape',27],'[':['BracketLeft',219,'['],']':['BracketRight',221,']'],a:['KeyA',65,'a'],t:['KeyT',84,'t']};
@@ -222,7 +225,7 @@ try{
  // at least 18 px across at each sampled u?
  const movers=us=>page.eval(`(async()=>{
   const {layoutPlan}=await import('/src/machine/layout.js'),{snapshotAt}=await import('/src/machine/scene.js');
-  const plan=window.__machine.plan(),L=layoutPlan(plan),svg=document.getElementById('machine-svg'),stage=document.getElementById('machine-stage').getBoundingClientRect();
+  const plan=window.__machine.plan(),L=layoutPlan(plan),svg=document.getElementById('machine-svg');
   const ease=u=>1-(1-u)**2,frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   const at=(scene,b)=>{const t=scene.towers[b.t];if(!t)return null;const p=L.place(t.at,b.slot);return {x:p.x,y:p.y-(t.form==='coin'?6:84)*b.l,tower:t.form!=='coin'};};
   const out=[];
@@ -237,7 +240,8 @@ try{
    const seen=new Map(moving.map(([id])=>[id,0])),fails=[];
    for(const u of ${JSON.stringify(us)}){
     window.__machine.seek(i+u);await frame();
-    const c=svg.getScreenCTM(),px=74*Math.hypot(c.a,c.b);
+    // the stage grows on phones once a run is under way (the palette folds away)
+    const c=svg.getScreenCTM(),px=74*Math.hypot(c.a,c.b),stage=document.getElementById('machine-stage').getBoundingClientRect();
     for(const [id,p0,p1] of moving){const k=ease(u),x=p0.x+(p1.x-p0.x)*k,y=p0.y+(p1.y-p0.y)*k,sx=c.a*x+c.c*y+c.e,sy=c.b*x+c.d*y+c.f;
      if(px>=18&&sx>=stage.left&&sx<=stage.right&&sy>=stage.top&&sy<=stage.bottom)seen.set(id,seen.get(id)+1);else fails.push({id,u,px:Math.round(px*10)/10,x:Math.round(sx),y:Math.round(sy)});}
    }
@@ -245,7 +249,7 @@ try{
   }
   return out;})()`);
  await mcheck('machine 1: opens from the header with × under IO and [16,7] focused; Enter with AUTO on gives [112]',async()=>{
-  await click('#open-machine');await wait(900);
+  await click('#open-machine');await ready();await wait(300);
   expect(await page.eval(`document.getElementById('open-machine').getAttribute('aria-pressed')`),'true','header button pressed');
   expect(JSON.stringify(await page.eval(`window.__machine.plan().tree`)),JSON.stringify({n1:{op:'mul',parent:'io',socket:'C'}}),'a × block hangs under IO');
   expect(await page.eval(`(()=>{const i=document.getElementById('machine-input');return [i.value,document.activeElement===i,i.selectionStart===0&&i.selectionEnd===i.value.length].join('|');})()`),'[16,7]|true|true','Input holds [16,7], focused and selected');
@@ -307,7 +311,7 @@ try{
   expect(await page.eval(`document.querySelectorAll('#machine-svg [data-node]').length`),2,'both blocks are back on the stage');
  });
  await mcheck('machine 5t: on touch a sideways swipe scrolls the palette and starts no drag',async()=>{
-  await touch();await page.goto(origin+MACHINE);await wait(600);
+  await touch();await reopen();
   const p=await box('#machine-palette'),before=await page.eval(`JSON.stringify(window.__machine.plan().tree)`);
   const pt=x=>[{x,y:p.y}];await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:pt(p.x+p.w*.35)});
   for(let k=1;k<=12;k++){await page.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:pt(p.x+p.w*.35-k*14)});await wait(16);}
@@ -317,7 +321,7 @@ try{
  },{width:390,height:844});
  for(const [w,h] of [[390,844],[844,390]]){
   await mcheck(`machine 6: phone ${w}×${h}: stage focused, palette reachable, every moving bulb on screen and ≥ 18 px`,async()=>{
-   await touch();await page.goto(origin+MACHINE);await wait(700);
+   await touch();await reopen();
    expect(await active(),'machine-stage','the stage has focus, no input');
    const pal=await box('#machine-palette [data-op=add]');if(!pal||pal.w<30||pal.y>h||pal.y<0)throw Error('palette not reachable: '+JSON.stringify(pal));
    let bad=(await movers([.1,.5,.9])).filter(b=>b.least<3);if(bad.length)throw Error('[16,7]: '+JSON.stringify(bad.slice(0,3)));
@@ -334,7 +338,7 @@ try{
  },{width:360,height:740});
  await mcheck('machine 8: emulated reduced motion plays the same beats',async()=>{
   const normal=await page.eval(`JSON.stringify(window.__machine.beats().map(b=>[b.kind,b.caption]))`);
-  await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await page.goto(origin+MACHINE);await wait(600);
+  await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await reopen();
   const s=await mstate();expect(JSON.stringify([s.sp,await page.eval(`document.getElementById('machine-readalong').checked`)]),'[1.5,true]','reduced motion: 1.5 s beats, Read along on');
   expect(await page.eval(`JSON.stringify(window.__machine.beats().map(b=>[b.kind,b.caption]))`),normal,'the same beats');
   await page.eval(`document.getElementById('machine-readalong').click()`);await mload({sp:.25});await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');
@@ -374,7 +378,7 @@ try{
   const [product]=await terms();await page.mouse('mousePressed',product.x,product.y);await page.mouse('mouseReleased',product.x,product.y);
   for(let t=0;t<30&&await page.eval(`document.getElementById('watch-machine').hidden`);t++)await wait(100);
   expect(await page.eval(`document.getElementById('watch-machine').textContent`),'Watch 16 × 7 in the machine','the button');
-  await page.eval(`document.getElementById('watch-machine').click()`);await wait(900);
+  await page.eval(`document.getElementById('watch-machine').click()`);await ready();await wait(300);
   expect(await page.eval(`(()=>{const p=window.__machine.plan();return JSON.stringify([p.base,Object.values(p.tree).map(n=>n.op),p.inputs]);})()`),JSON.stringify(['binary',['mul'],['16','7']]),'preloaded');
   await mload({op:'mul',input:'[4294967295,4294967295]'});await wait(200);
   expect(await page.eval(`(()=>{const b=document.getElementById('machine-to-cards');return b.disabled&&/^Too large for the cards/.test(b.title);})()`),true,'To the cards disabled with its reason');
@@ -383,7 +387,7 @@ try{
   if(!/^112\b/.test(await status()))throw Error('cards: '+await status());
  },undefined,{path:'/?examples=written&automation'});
  await mcheck('machine 13: the outline is not reachable by Tab while its sheet is closed',async()=>{
-  await touch();await page.goto(origin+MACHINE);await wait(600);
+  await touch();await reopen();
   const tabbing=async n=>{const seen=[];for(let k=0;k<n;k++){await press('Tab');seen.push(await page.eval(`!!document.activeElement.closest('#machine-outline')`));}return seen.some(Boolean);};
   await page.eval(`document.getElementById('machine-stage').focus()`);
   expect(await tabbing(40),false,'sheet closed: the outline is skipped');
