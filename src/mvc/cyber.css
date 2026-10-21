@@ -81,7 +81,7 @@
 [data-style=cyber] #equation-status{color:var(--text)}
 [data-style=cyber] #feedback{color:var(--magenta);font-family:var(--mono)}
 /* Dialogs and panels: glass with a hairline and a cyan edge on top. */
-[data-style=cyber] dialog,[data-style=cyber] #tutor-bar,[data-style=cyber] #graph-panel,[data-style=cyber] #peek,[data-style=cyber] .numbers-panel{background:var(--glass);border:1px solid var(--line-bright);border-top-color:var(--cyan);border-radius:4px;color:var(--text);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+[data-style=cyber] dialog,[data-style=cyber] #tutor-bar,[data-style=cyber] #graph-panel,[data-style=cyber] #peek,[data-style=cyber] #numbers-panel{background:var(--glass);border:1px solid var(--line-bright);border-top-color:var(--cyan);border-radius:4px;color:var(--text);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 [data-style=cyber] dialog{background:var(--glass-solid)}
 [data-style=cyber] dialog::backdrop{background:#000a}
 [data-style=cyber] .heading h1{font-family:var(--mono);text-transform:uppercase;letter-spacing:.24em;font-size:18px;color:var(--cyan)}
@@ -158,3 +158,26 @@
 [data-style=cyber] #equation-svg .numeral-bar{stroke:var(--magenta);filter:drop-shadow(0 0 4px #ff3d8b)}
 [data-style=cyber] #equation-svg .digit-ellipsis circle{fill:var(--cyan)}
 [data-style=cyber] #base-cycle{color:var(--cyan);border-color:var(--cyan)}
+/* Numbers and fingerprints */
+[data-style=cyber] #numbers-stage{border:1px solid var(--line);border-radius:4px;
+ background:linear-gradient(var(--cyan),var(--cyan)) top left/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) top left/1px 16px no-repeat,
+ linear-gradient(var(--cyan),var(--cyan)) top right/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) top right/1px 16px no-repeat,
+ linear-gradient(var(--cyan),var(--cyan)) bottom left/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) bottom left/1px 16px no-repeat,
+ linear-gradient(var(--cyan),var(--cyan)) bottom right/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) bottom right/1px 16px no-repeat,radial-gradient(70% 70% at 50% 50%,#0b1a22 0,#05080c 100%)}
+[data-style=cyber] #numbers-n{background:#060b10;border:1px solid var(--line-bright);border-radius:3px;color:var(--cyan);font-family:var(--mono)}
+[data-style=cyber] .numbers-bar .primary{background:#36e6ff22;color:var(--cyan);border-color:var(--cyan)}
+[data-style=cyber] .numbers-digits{font-family:var(--mono);font-size:12px;color:var(--dim)}
+[data-style=cyber] #numbers-panel h2{color:var(--dim);font-family:var(--mono)}
+[data-style=cyber] .numbers-kind{font-family:var(--mono);font-size:15px}
+[data-style=cyber] .numbers-legend{color:var(--dim)}
+[data-style=cyber] .base-head{font-family:var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+[data-style=cyber] .base-head output{font-family:var(--mono);color:var(--cyan);text-transform:none;letter-spacing:0;font-size:14px}
+[data-style=cyber] .card-row .numeral{fill:#f1fdff;font-family:var(--mono);font-weight:200;stroke:#05070b;stroke-width:5px;paint-order:stroke}
+[data-style=cyber] .card-row .digit-tray>rect:first-child{stroke:var(--line-bright);fill-opacity:.035}
+[data-style=cyber] .card-row .digit-tray rect[stroke="#858274"]{stroke:var(--cyan);stroke-opacity:.12}
+[data-style=cyber] .card-row path,[data-style=cyber] .card-row .group-comma path{stroke:var(--cyan)}
+[data-style=cyber] .card-row .numeral-bar{stroke:var(--magenta)}[data-style=cyber] .card-row .digit-ellipsis circle{fill:var(--cyan)}
+[data-style=cyber] .fingerprint .fp-rings,[data-style=cyber] .fingerprint .fp-cup{filter:drop-shadow(0 0 1.5px #ffd23d)}
+[data-style=cyber] .fingerprint .fp-labels text{font-family:var(--mono)}
+[data-style=cyber] .peek-fingerprint p{color:var(--text);font-family:var(--mono);font-size:13px}
+@media(max-width:480px){[data-style=cyber] .brand small{padding:2px 0 0 1.9em;letter-spacing:.04em}[data-style=cyber] nav button{padding:5px 4px;letter-spacing:0}}

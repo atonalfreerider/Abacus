@@ -10,6 +10,8 @@ import { placeMetadata } from '../place-value.js';
 import { setStyle,onStyle,ink } from './theme.js';
 import { statusBarStyle } from '../native.js';
 import { numeral,setBase,onBase,bases,baseOrder,baseSpec,baseText,placeMeta,digitGlyph } from './bases.js';
+import { fingerprintSVG } from '../numbers/fingerprint.js';
+import { describe } from '../numbers/primes.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
 const surface=new Surface($('stage'));
@@ -81,9 +83,15 @@ function peekText(t){
  return `<h2>${escapeHtml(math.termText(t,true))} in cards</h2><ol>${places.map(p=>`<li>${p.d} ${name(p.meta)}${p.d>1?'s':''}: ${p.d} ${p.meta.cardCount>1?`stacks of ${p.meta.cardCount} cards`:p.d>1?'cards':'card'}</li>`).join('')}</ol><p>${math.negative(t)?'Red: a negative amount.':'Blue: a positive amount.'}</p>`;
 }
 const escapeHtml=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// A whole number's prime components, as its marble fingerprint, head the peek.
+function fingerprintPeek(t){
+ if(t.expr||t.kind!=='constant'||t.value.d!==1||Math.abs(t.value.n)<2)return '';
+ const n=Math.abs(t.value.n);
+ return `<div class="peek-fingerprint">${fingerprintSVG(n,{palette:ink.marble,unit:11,title:describe(n)})}<p>${escapeHtml(describe(n))}</p></div>`;
+}
 function peek(id,at){
  const t=terms().find(t=>t.id===id);if(!t)return;
- const box=$('peek'),stage=$('workspace').getBoundingClientRect();box.innerHTML=peekText(t);box.hidden=false;haptic('peek');
+ const box=$('peek'),stage=$('workspace').getBoundingClientRect();box.innerHTML=fingerprintPeek(t)+peekText(t);box.hidden=false;haptic('peek');
  const w=box.offsetWidth,h=box.offsetHeight;box.style.left=`${Math.max(8,Math.min(stage.width-w-8,at.x-stage.left-w/2))}px`;box.style.top=`${Math.max(8,at.y-stage.top-h-28)}px`;
 }
 refresh();surface.prewarm(controller.options.camera);
@@ -214,12 +222,13 @@ for(let n=1;n<=9;n++){const b=document.createElement('button');b.dataset.inputKe
 $('keypad').onpointerleave=()=>illuminate(0);
 for(const b of document.querySelectorAll('[data-input-key]'))b.onclick=()=>enterKey(b.dataset.inputKey);
 $('entry-done').onclick=()=>enterKey('ArrowUp');
-document.addEventListener('keydown',event=>{if(document.body.classList.contains('graph-active')||event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
+document.addEventListener('keydown',event=>{if(document.body.classList.contains('graph-active')||document.body.classList.contains('numbers-active')||event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,dialog'))return;if(/^[0-9xX.+\-*/=(),:÷]$/.test(event.key)||['Backspace','Enter','ArrowUp','Escape'].includes(event.key)){event.preventDefault();enterKey(event.key);}});
 $('clear').onclick=()=>{entry.clear();$('entry-text').textContent='0';$('entry-bar').hidden=false;safe(()=>{controller.load('0');leaveTutor();});};
 $('open-tests').onclick=()=>location.href='./tests.html';
 // Graph mode loads on first use and shares the page; card-space input pauses while it is open.
 let graph=null;
 async function showGraph(on){
+ if(on&&!$('numbers-mode').hidden)showNumbers(false);
  document.body.classList.toggle('graph-active',on);$('graph-mode').hidden=!on;$('open-graph').setAttribute('aria-pressed',String(on));
  if(on){entry.active=false;$('entry-bar').hidden=true;if(tutor&&!tutor.lesson.graph)leaveTutor();if(!graph){const {Graph}=await import('../graph/graph-app.js');graph=new Graph({cardsEquation:()=>math.equationText(controller.model.state)});graph.addEventListener('point',graphPoint);}graph.show();}
  else{graph?.hide();if(tutor?.lesson.graph)leaveTutor();controller.render();}
@@ -237,7 +246,21 @@ function graphPoint(event){
  say(`Found it: (${at.replace(/-/g,'−')}). ${why}${worked?` ${worked}.`:''} ${tutor.solved?'Well done: New problem for another, or Next lesson.':'Now find where it crosses the x axis.'}`,tutor.solved?'done':'good');refresh();
 }
 $('open-graph').onclick=()=>showGraph($('graph-mode').hidden);
-for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);});
+for(const id of ['open-equation','open-tutor'])$(id).addEventListener('click',()=>{if(!$('graph-mode').hidden)showGraph(false);if(!$('numbers-mode').hidden)showNumbers(false);});
+// Numbers: one whole number taken apart into its prime components (the marble fingerprint),
+// and written in every base. It opens on the biggest whole number in the equation.
+let numbers=null;
+function numberFromCards(){const whole=terms().filter(t=>!t.expr&&t.kind==='constant'&&t.value.d===1&&Math.abs(t.value.n)>=2).map(t=>Math.abs(t.value.n));return whole.length?Math.max(...whole):undefined;}
+async function showNumbers(on,n){
+ if(on&&!$('graph-mode').hidden)await showGraph(false);
+ document.body.classList.toggle('numbers-active',on);$('numbers-mode').hidden=!on;$('open-numbers').setAttribute('aria-pressed',String(on));
+ if(on){entry.active=false;$('entry-bar').hidden=true;if(tutor)leaveTutor();
+  if(!numbers){const {NumbersView}=await import('../numbers/numbers-app.js');numbers=new NumbersView();numbers.addEventListener('cards',event=>{showNumbers(false);safe(()=>controller.load(String(event.detail.n)));});}
+  numbers.show(n??numberFromCards());}
+ else{numbers?.hide();controller.render();}
+ return numbers;
+}
+$('open-numbers').onclick=()=>showNumbers($('numbers-mode').hidden);
 
 // Native apps: quick actions and shortcuts open a place; Android's back button closes
 // what is open before it leaves the app.
@@ -245,6 +268,7 @@ initNative({
  open:place=>{
   for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
   if(place==='graph'){leaveTutor();showGraph(true);}
+  else if(place==='numbers'){leaveTutor();showNumbers(true);}
   else if(place==='lessons'){if(!$('graph-mode').hidden)showGraph(false);$('lesson-dialog').showModal();}
   else if(place==='pemdas'){startLesson(lessons.find(l=>l.id==='pemdas-all'));}
   else if(place==='equation'){if(!$('graph-mode').hidden)showGraph(false);leaveTutor();$('open-equation').click();}
@@ -254,6 +278,7 @@ initNative({
   if(!$('peek').hidden){$('peek').hidden=true;return true;}
   if(tutor){leaveTutor();return true;}
   if(!$('graph-mode').hidden){showGraph(false);return true;}
+  if(!$('numbers-mode').hidden){showNumbers(false);return true;}
   if(entry.active){enterKey('Escape');return true;}
   return false;
  },
@@ -270,3 +295,6 @@ const chooseBase=id=>{lessonBase=null;setBase(id);try{localStorage.setItem('abac
 $('numerals').onchange=event=>chooseBase(event.target.value);
 $('base-cycle').onclick=()=>chooseBase(baseOrder[(baseOrder.indexOf(numeral.id)+1)%baseOrder.length]);
 {let saved=null;try{saved=new URLSearchParams(location.search).get('base')||localStorage.getItem('abacus-base');}catch{}if(bases[saved])setBase(saved);}
+// View ▸ Prime fingerprints: each whole number's prime components under its cards.
+$('fingerprints').onchange=event=>{controller.options.fingerprints=event.target.checked;controller.render();try{localStorage.setItem('abacus-fingerprints',event.target.checked?'1':'');}catch{}};
+{let on=false;try{on=new URLSearchParams(location.search).has('fingerprints')||localStorage.getItem('abacus-fingerprints')==='1';}catch{}if(on){$('fingerprints').checked=true;controller.options.fingerprints=true;controller.render();}}

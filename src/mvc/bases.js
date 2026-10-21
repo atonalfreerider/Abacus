@@ -12,7 +12,7 @@ import { placeMetadata as decimalMeta } from '../place-value.js';
 export const bases={
  decimal:{id:'decimal',name:'Decimal',short:'10',radix:10,group:3,slots:9,sub:'₁₀'},
  binary:{id:'binary',name:'Base 2',short:'2',radix:2,group:4,slots:1,sub:'₂'},
- ternary:{id:'ternary',name:'Balanced ternary',short:'±3',radix:3,group:3,slots:1,balanced:true,sub:'₃̄'},
+ ternary:{id:'ternary',name:'Balanced ternary',short:'±3',radix:3,group:3,slots:1,balanced:true,sub:' bal₃'},
  e:{id:'e',name:'Base e',short:'e',radix:Math.E,group:3,slots:2,sub:'ₑ',fraction:3,irrational:true},
 };
 export const baseOrder=['decimal','binary','ternary','e'];
@@ -85,7 +85,7 @@ export function digitsOf(value,base=numeral.id,{fraction}={}){
  return {places:digits,exact:true,minPlace:digits.at(-1).exponent,maxPlace:digits[0].exponent};
 }
 export const digitGlyph=(digit,base=numeral.id)=>bases[base].balanced&&digit<0?'T':String(Math.abs(digit));
-// Plain text in a base: 1011₂, 1T0₃̄ (balanced ternary), 2.1201…ₑ.
+// Plain text in a base: 1011₂, 1T0 bal₃ (balanced ternary), 2.1201…ₑ.
 export function baseText(value,base=numeral.id,{subscript=true}={}){
  if(base==='decimal'){const t=value.d===1?String(value.n):String(value.n/value.d);return t+(subscript?'₁₀':'');}
  const spec=digitsOf(value,base),b=bases[base];
