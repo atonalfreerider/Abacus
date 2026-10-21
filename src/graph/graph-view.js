@@ -7,8 +7,10 @@
 // outlined as a group. The area module deposits columns of card strips.
 import { show, curveText } from './polynomial.js';
 import { numeric } from '../engine.js';
+import { ink, patternDefs } from '../mvc/theme.js';
 
-export const COLORS = ['#2f5d6b', '#9a5b10', '#6b3f8a'];
+// Curve colours follow the style (theme.js updates this array in place).
+export const COLORS = ink.curves;
 const r = n => Math.round(n * 100) / 100;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 export const toX = (v, x) => v.width / 2 + (x - v.cx) * v.unit;
@@ -21,16 +23,16 @@ export function snapStep(unit) { for (const s of [0.01, 0.05, 0.1, 0.25, 0.5, 1,
 export const fx = (curve, x) => curve.poly.reduceRight((a, c) => a * x + numeric(c), 0);
 
 export function textureDefs() {
-  return [['blue', 25], ['red', 23], ['paper', 24]].map(([name, id]) => `<pattern id="g-${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('');
+  return patternDefs('g-');
 }
 // Square cards one grid unit wide, tiled from (x, y): a face like a tray card with a
 // thin gap between neighbours; too small to read, they become a plain fill.
 function squareCards(id, color, x, y, u, along) {
   const gap = Math.min(3, Math.max(.6, u * .05)), framed = u >= 7, round = Math.min(8, u * 5 / 43), border = Math.min(1.6, Math.max(.7, u / 43));
-  let svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(u)}" height="${r(u)}">${framed ? `<rect x="${r(gap / 2)}" y="${r(gap / 2)}" width="${r(u - gap)}" height="${r(u - gap)}" rx="${r(round)}" fill="url(#g-${color})" stroke="#191a16" stroke-width="${r(border)}"/>` : `<rect width="${r(u)}" height="${r(u)}" fill="url(#g-${color})"/>`}</pattern>`;
+  let svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(u)}" height="${r(u)}">${framed ? `<rect x="${r(gap / 2)}" y="${r(gap / 2)}" width="${r(u - gap)}" height="${r(u - gap)}" rx="${r(round)}" fill="url(#g-${color})" stroke="${ink.stroke[color]}" stroke-width="${r(border)}"/>` : `<rect width="${r(u)}" height="${r(u)}" fill="url(#g-${color})"/>`}</pattern>`;
   if (u * 10 >= 24) {
     const [gw, gh] = along === 'y' ? [u, u * 10] : [u * 10, u];
-    svg += `<pattern id="${id}-ten" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(gw)}" height="${r(gh)}"><rect x=".8" y=".8" width="${r(gw - 1.6)}" height="${r(gh - 1.6)}" rx="${r(round + 1)}" fill="none" stroke="#10170f" stroke-width="2.4"/></pattern>`;
+    svg += `<pattern id="${id}-ten" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(gw)}" height="${r(gh)}"><rect x=".8" y=".8" width="${r(gw - 1.6)}" height="${r(gh - 1.6)}" rx="${r(round + 1)}" fill="none" stroke="${ink.tenOutline}" stroke-width="2.4"/></pattern>`;
   }
   return svg;
 }
@@ -40,10 +42,10 @@ export const cardSide = (distance, unit) => Math.max(-1, Math.min(1, distance / 
 // A tiled fill of cards: tile w×h anchored at (x, y); every ten cards along `along` get a group outline.
 function cardPattern(id, color, x, y, w, h, along) {
   const border = Math.min(w, h) >= 6, round = Math.min(4, Math.min(w, h) / 5);
-  let svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}"><rect x="${border ? .75 : 0}" y="${border ? .75 : 0}" width="${r(Math.max(.5, w - (border ? 1.5 : 0)))}" height="${r(Math.max(.5, h - (border ? 1.5 : 0)))}" rx="${r(round)}" fill="url(#g-${color})"${border ? ' stroke="#191a16" stroke-width="1"' : ''}/></pattern>`;
+  let svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}"><rect x="${border ? .75 : 0}" y="${border ? .75 : 0}" width="${r(Math.max(.5, w - (border ? 1.5 : 0)))}" height="${r(Math.max(.5, h - (border ? 1.5 : 0)))}" rx="${r(round)}" fill="url(#g-${color})"${border ? ` stroke="${ink.stroke[color]}" stroke-width="1"` : ''}/></pattern>`;
   if (along && (along === 'y' ? h : w) * 10 >= 24) {
     const [gw, gh] = along === 'y' ? [w, h * 10] : [w * 10, h];
-    svg += `<pattern id="${id}-ten" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(gw)}" height="${r(gh)}"><rect x="1" y="1" width="${r(gw - 2)}" height="${r(gh - 2)}" rx="${r(round + 1)}" fill="none" stroke="#10170f" stroke-width="2.4"/></pattern>`;
+    svg += `<pattern id="${id}-ten" patternUnits="userSpaceOnUse" x="${r(x)}" y="${r(y)}" width="${r(gw)}" height="${r(gh)}"><rect x="1" y="1" width="${r(gw - 2)}" height="${r(gh - 2)}" rx="${r(round + 1)}" fill="none" stroke="${ink.tenOutline}" stroke-width="2.4"/></pattern>`;
   }
   return svg;
 }

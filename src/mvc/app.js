@@ -7,6 +7,8 @@ import { Tutor,lessons,narrate,feedback,finished,dealExamples,exampleOf } from '
 import { haptic } from '../haptics.js';
 import { initNative } from '../native.js';
 import { placeMetadata } from '../place-value.js';
+import { setStyle,onStyle,ink } from './theme.js';
+import { statusBarStyle } from '../native.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
 const surface=new Surface($('stage'));
@@ -232,3 +234,9 @@ initNative({
   return false;
  },
 });
+
+// Style: the school sketchpad or the cyber look, for every view. Saved per device.
+onStyle(name=>{surface.restyle();graph?.restyle();controller.render();surface.prewarm(controller.options.camera);$('style').value=name;statusBarStyle(name);});
+$('style').onchange=event=>{setStyle(event.target.value);try{localStorage.setItem('abacus-style',event.target.value);}catch{}};
+if(document.documentElement.dataset.style==='cyber')setStyle('cyber');
+$('style').value=ink.name;

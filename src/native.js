@@ -6,6 +6,10 @@
 const cap = globalThis.Capacitor;
 export const isNative = !!cap?.isNativePlatform?.();
 
+let statusBar = null, statusStyle = 'sketchpad';
+// Light content (white icons) over the cyber style's black, dark icons over paper.
+export function statusBarStyle(style) { statusStyle = style; statusBar?.setStyle({ style: style === 'cyber' ? 'DARK' : 'LIGHT' }).catch(() => {}); }
+
 export async function initNative({ open, back }) {
   if (!isNative) return;
   const root = document.documentElement;
@@ -22,7 +26,8 @@ export async function initNative({ open, back }) {
   try { route((await App.getLaunchUrl())?.url); } catch {}
   // Android back: close what is open, step out of a mode, and only then leave the app.
   App.addListener('backButton', () => { if (!back()) App.minimizeApp(); });
-  try { await StatusBar.setStyle({ style: 'LIGHT' }); } catch {}
+  statusBar = StatusBar;
+  try { await StatusBar.setStyle({ style: statusStyle === 'cyber' ? 'DARK' : 'LIGHT' }); } catch {}
   // The splash also hides itself (capacitor.config.json), so a failure here never strands it.
   try { await SplashScreen.hide(); } catch {}
 }

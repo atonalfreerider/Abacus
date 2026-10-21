@@ -64,6 +64,8 @@ export class Graph extends EventTarget {
     const loop = now => { requestAnimationFrame(loop); if (this.visible) try { this.frame(now); } catch (error) { console.error(error); this.area.phase = 'static'; } };
     requestAnimationFrame(loop);
   }
+  // A new style redraws the face patterns, the curves and the legend swatches.
+  restyle() { this.svg.querySelector('defs').innerHTML = textureDefs(); this.staticKey = null; this.parse(); this.update(); }
   show() { this.visible = true; this.resize(); this.fit(); this.stage.focus({ preventScroll: true }); }
   hide() { this.visible = false; }
   resize() {

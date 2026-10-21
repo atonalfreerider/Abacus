@@ -1,0 +1,156 @@
+/* Cyber: a minimalist future-punk style for every view. Neon hairlines on near-black
+   glass, monospace numerals, HUD corner brackets. Colours keep their meaning: cyan is
+   positive (blue), magenta negative (red), acid green x, amber a hint or a highlight.
+   Card faces and stack bitmaps take their colours from theme.js; everything else is here. */
+[data-style=cyber]{
+ --bg:#05070b;--glass:#0a1118d9;--glass-solid:#0a1118;--line:#16242e;--line-bright:#25404e;
+ --text:#d6e6ee;--dim:#7d909c;--cyan:#36e6ff;--magenta:#ff3d8b;--acid:#b8ff3c;--amber:#ffb21e;--violet:#c77dff;
+ --mono:"JetBrains Mono","IBM Plex Mono","SF Mono","Cascadia Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+ --sans:Inter,"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
+ --glow:0 0 0 1px #36e6ff66,0 0 14px #36e6ff33;
+ color-scheme:dark;font-family:var(--sans);color:var(--text);
+ background:radial-gradient(120% 70% at 50% -10%,#0d2a36 0,transparent 60%),linear-gradient(#36e6ff08 1px,transparent 1px) 0 0/32px 32px,linear-gradient(90deg,#36e6ff08 1px,transparent 1px) 0 0/32px 32px,var(--bg);
+}
+[data-style=cyber] body{background:transparent}
+[data-style=cyber] ::selection{background:#36e6ff55}
+/* Header */
+[data-style=cyber] .brand{font-family:var(--mono);color:var(--text);letter-spacing:.32em;text-transform:uppercase;font-size:24px;font-weight:300}
+[data-style=cyber] .brand::before{content:'';display:inline-block;width:.5em;height:.5em;margin-right:.45em;background:var(--cyan);box-shadow:0 0 10px var(--cyan);vertical-align:.12em}
+[data-style=cyber] .brand small{font-size:10px;letter-spacing:.24em;color:var(--dim);padding:6px 0 0 1.4em}
+[data-style=cyber] .brand small span{color:var(--cyan)}
+/* Controls */
+[data-style=cyber] button{background:#0b141bcc;border:1px solid var(--line-bright);border-radius:3px;color:var(--text);font-family:var(--mono);letter-spacing:.04em;transition:border-color .15s,box-shadow .15s,background .15s}
+[data-style=cyber] button:hover{background:#0f2029;border-color:var(--cyan);box-shadow:var(--glow)}
+[data-style=cyber] nav button{text-transform:uppercase;font-size:12px;letter-spacing:.14em}
+[data-style=cyber] button:focus-visible,[data-style=cyber] select:focus-visible,[data-style=cyber] input:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
+[data-style=cyber] input,[data-style=cyber] select{font-family:var(--mono)}
+[data-style=cyber] dialog input:not([type=range]),[data-style=cyber] select{background:#060b10;border:1px solid var(--line-bright);border-radius:3px;color:var(--text)}
+[data-style=cyber] input[type=range]{accent-color:var(--cyan)}
+[data-style=cyber] #open-graph[aria-pressed=true],[data-style=cyber] #open-numbers[aria-pressed=true]{background:#36e6ff22;color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow)}
+/* Equation space: a glass pane with HUD corner brackets. */
+[data-style=cyber] #workspace,[data-style=cyber] #graph-stage{border:1px solid var(--line);border-radius:4px;
+ background:linear-gradient(var(--cyan),var(--cyan)) top left/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) top left/1px 16px no-repeat,
+ linear-gradient(var(--cyan),var(--cyan)) top right/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) top right/1px 16px no-repeat,
+ linear-gradient(var(--cyan),var(--cyan)) bottom left/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) bottom left/1px 16px no-repeat,
+ linear-gradient(var(--cyan),var(--cyan)) bottom right/16px 1px no-repeat,linear-gradient(var(--cyan),var(--cyan)) bottom right/1px 16px no-repeat,#070c11b3}
+[data-style=cyber] #equation-svg,[data-style=cyber] #graph-svg{font-family:var(--mono)}
+[data-style=cyber] #equation-svg text{fill:var(--text);font-family:var(--mono)}
+[data-style=cyber] #equation-svg .numeral{fill:#f1fdff;font-weight:200;stroke:#05070b;stroke-width:5px;paint-order:stroke;stroke-linejoin:round}
+[data-style=cyber] .digit-tray>rect:first-child{stroke:var(--line-bright);stroke-width:1.2;fill-opacity:.035}
+[data-style=cyber] .digit-tray rect[stroke="#858274"]{stroke:var(--cyan);stroke-opacity:.12}
+[data-style=cyber] .group-comma path,[data-style=cyber] .decimal-comma path{stroke:var(--cyan);fill-opacity:.12}
+[data-style=cyber] .decimal-comma circle{fill:var(--cyan)}
+[data-style=cyber] .equals-mirror path{stroke:var(--cyan);stroke-opacity:.7}
+[data-style=cyber] .equals-mirror text{fill:var(--cyan)!important;filter:drop-shadow(0 0 6px #36e6ff88)}
+[data-style=cyber] .equals-mirror .balance-bars path{stroke:var(--cyan);stroke-opacity:1;filter:drop-shadow(0 0 5px #36e6ffaa)}
+[data-style=cyber] .term:focus .hit{stroke:var(--cyan)}
+[data-style=cyber] .term.dragging{filter:drop-shadow(0 0 10px #36e6ff66)}
+[data-style=cyber] .reorder-gap:hover{fill:#36e6ff1c}
+[data-style=cyber] .operation-frame{fill:#0d1c24;fill-opacity:.55;stroke:var(--amber);stroke-width:1.5}
+[data-style=cyber] .term.operation:hover .operation-frame{stroke:var(--cyan);fill-opacity:.75}
+[data-style=cyber] .multiplier-dot{fill:var(--acid)}
+[data-style=cyber] #equation-svg line[stroke="#171713"],[data-style=cyber] #equation-svg line[stroke="#25241e"],[data-style=cyber] #equation-svg rect[stroke="#25241e"]{stroke:var(--cyan)}
+[data-style=cyber] #equation-svg text[fill="#8c2a17"]{fill:var(--magenta)}
+[data-style=cyber] #equation-svg .paren{fill:var(--dim);font-weight:200}
+[data-style=cyber] #equation-svg .exponent{fill:var(--amber)}
+[data-style=cyber] #equation-svg .step-caption{fill:var(--cyan);stroke:var(--bg)}
+[data-style=cyber] #equation-svg .operation-caption{fill:var(--amber)}
+[data-style=cyber] #equation-svg path[stroke="#3d3a30"]{stroke:var(--amber)}
+[data-style=cyber] .card-strip,[data-style=cyber] .area-moving{stroke:#e8fbff;stroke-opacity:.55}
+[data-style=cyber] .drag-active .term.candidate .hit{stroke:var(--cyan)}
+[data-style=cyber] .term.snap-cancel .hit,[data-style=cyber] .term.snap-combine .hit{fill:#ffffff10}
+[data-style=cyber] .term.snap-cancel .hit{stroke:var(--magenta);filter:drop-shadow(0 0 6px #ff3d8b)}
+[data-style=cyber] .term.snap-combine .hit{stroke:var(--cyan);filter:drop-shadow(0 0 6px #36e6ff)}
+[data-style=cyber] .landing-ghost{fill:#36e6ff0d;stroke:var(--cyan)}
+[data-style=cyber] .term.hinted .hit,[data-style=cyber] .term.hint-target .hit{stroke:var(--amber)}
+[data-style=cyber] .hint-arrow path{stroke:var(--amber);filter:drop-shadow(0 0 4px #ffb21e88)}
+[data-style=cyber] .hint-arrow circle{fill:var(--amber)}
+/* The dock: the counting pad as a dark glass keypad. */
+[data-style=cyber] .original-dock{background:#0a1118cc;border:1px solid var(--line-bright);box-shadow:inset 0 0 0 1px #000,0 0 30px #36e6ff12}
+[data-style=cyber] .original-dock button,[data-style=cyber] .original-dock #keypad button{background:#0b151c;border:1px solid var(--line-bright);border-radius:3px;color:var(--text);text-shadow:none;font-family:var(--mono);font-weight:300}
+[data-style=cyber] .original-dock button:hover,[data-style=cyber] .original-dock button.lit,[data-style=cyber] .original-dock #keypad button.lit{background:#36e6ff26;border-color:var(--cyan);box-shadow:inset 0 0 12px #36e6ff40}
+[data-style=cyber] .original-dock #keypad{background:var(--line);border-radius:4px}
+[data-style=cyber] #pad-numeral{color:var(--cyan);opacity:.55;font-family:var(--mono);font-weight:200;text-shadow:0 0 18px #36e6ff}
+[data-style=cyber] .original-dock .deploy-triangle{background:var(--cyan);border:0;box-shadow:none}
+[data-style=cyber] .original-dock .deploy-triangle:hover{background:#9ff4ff}
+[data-style=cyber] .original-dock .decimal-fold{background:var(--line-bright);border:0;color:var(--cyan)}
+[data-style=cyber] #entry-text{font-family:var(--mono);color:var(--cyan)}
+[data-style=cyber] #entry-bar span{color:var(--dim);font-family:var(--mono)}
+/* Transport and feedback */
+[data-style=cyber] #transport{font-family:var(--mono);color:var(--dim)}
+[data-style=cyber] #equation-status{color:var(--text)}
+[data-style=cyber] #feedback{color:var(--magenta);font-family:var(--mono)}
+/* Dialogs and panels: glass with a hairline and a cyan edge on top. */
+[data-style=cyber] dialog,[data-style=cyber] #tutor-bar,[data-style=cyber] #graph-panel,[data-style=cyber] #peek,[data-style=cyber] .numbers-panel{background:var(--glass);border:1px solid var(--line-bright);border-top-color:var(--cyan);border-radius:4px;color:var(--text);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+[data-style=cyber] dialog{background:var(--glass-solid)}
+[data-style=cyber] dialog::backdrop{background:#000a}
+[data-style=cyber] .heading h1{font-family:var(--mono);text-transform:uppercase;letter-spacing:.24em;font-size:18px;color:var(--cyan)}
+[data-style=cyber] .heading button{color:var(--dim);box-shadow:none;background:none}
+[data-style=cyber] dialog label{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:var(--dim)}
+[data-style=cyber] dialog p{color:var(--dim)}
+[data-style=cyber] .about a,[data-style=cyber] dialog a{color:var(--cyan)}
+[data-style=cyber] #lessons h2,[data-style=cyber] #graph-panel h2,[data-style=cyber] #peek h2,[data-style=cyber] #lessons small{color:var(--dim);font-family:var(--mono)}
+[data-style=cyber] #lessons button{font-family:var(--sans);letter-spacing:0}
+/* Tutor */
+[data-style=cyber] #tutor-title{color:var(--text)}
+[data-style=cyber] #tutor-phase{background:none;border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;font-family:var(--mono)}
+[data-style=cyber] #tutor-phase[data-phase=practice]{border-color:var(--amber);color:var(--amber);background:none}
+[data-style=cyber] #tutor-prompt[data-tone=good],[data-style=cyber] #tutor-prompt[data-tone=done]{color:var(--acid)}
+[data-style=cyber] #tutor-prompt[data-tone=detour]{color:var(--amber)}
+[data-style=cyber] #tutor-prompt[data-tone=hint]{color:var(--cyan)}
+[data-style=cyber] .tutor-actions .primary,[data-style=cyber] .area-actions .primary{background:#36e6ff22;color:var(--cyan);border-color:var(--cyan)}
+[data-style=cyber] #tutor-action{background:#ffb21e1a;border-color:var(--amber);color:var(--amber)}
+@keyframes cyber-beckon{50%{box-shadow:0 0 0 1px #36e6ff,0 0 18px #36e6ff88}}
+[data-style=cyber] .tutor-actions .primary.ready{animation-name:cyber-beckon}
+/* Peek */
+[data-style=cyber] #peek{background:var(--glass-solid);box-shadow:0 0 30px #000c,0 0 0 1px #36e6ff22}
+[data-style=cyber] #peek p{color:var(--dim)}
+/* Graph */
+[data-style=cyber] .graph-eq{background:#060b10;border:1px solid var(--line-bright);border-radius:3px}
+[data-style=cyber] .graph-eq input{font-family:var(--mono);color:var(--text)}
+[data-style=cyber] .graph-eq:focus-within{outline:1px solid var(--cyan)}
+[data-style=cyber] .graph-eq.invalid{border-color:var(--magenta);background:#ff3d8b14}
+[data-style=cyber] .graph-eq button{background:none;border:0;box-shadow:none}
+[data-style=cyber] .graph-advanced{border:1px dashed var(--line-bright);border-radius:3px;font-family:var(--mono);font-size:12px}
+[data-style=cyber] .graph-grid path{stroke:var(--cyan);stroke-opacity:.08}
+[data-style=cyber] .graph-axes path{stroke:var(--dim);stroke-width:1.2}
+[data-style=cyber] .graph-labels text{fill:var(--dim);font-family:var(--mono);font-size:11px}
+[data-style=cyber] .axis-name{fill:var(--text);font-family:var(--mono)}
+[data-style=cyber] .graph-curve{stroke-width:2.4;filter:drop-shadow(0 0 3px #ffffff44)}
+[data-style=cyber] .special circle{fill:var(--bg);stroke:var(--text)}
+[data-style=cyber] .special.solution circle{fill:var(--amber);stroke:#fff3cf}
+[data-style=cyber] .tracer circle{fill:var(--bg);stroke:var(--cyan);filter:drop-shadow(0 0 6px #36e6ffaa)}
+[data-style=cyber] .tracer .tracer-dot{fill:var(--cyan)}
+[data-style=cyber] .tracer.snapped circle{stroke:var(--amber)}
+[data-style=cyber] .stack-label text,[data-style=cyber] .snap-label,[data-style=cyber] .tally-label,[data-style=cyber] .axis-hit text{fill:var(--text);stroke:var(--bg);font-family:var(--mono)}
+[data-style=cyber] .snap-label,[data-style=cyber] .tally-label.exact,[data-style=cyber] .axis-hit text{fill:var(--amber)}
+[data-style=cyber] .area-sample,[data-style=cyber] .area-handle path{fill:var(--cyan)}
+[data-style=cyber] .area-handle text{fill:var(--cyan)}
+[data-style=cyber] .area-ghost{stroke:var(--cyan)}
+[data-style=cyber] .exact-mark,[data-style=cyber] .axis-hit path,[data-style=cyber] .collision{stroke:var(--amber)}
+[data-style=cyber] #graph-readout .point{font-family:var(--mono);color:var(--cyan)}
+[data-style=cyber] .check{background:#0d171e;border-left:2px solid var(--line-bright)}
+[data-style=cyber] .check.ok{background:#b8ff3c12;border-left-color:var(--acid)}
+[data-style=cyber] .check.no{background:#ff3d8b12;border-left-color:var(--magenta)}
+[data-style=cyber] .check small{color:var(--dim)}
+[data-style=cyber] .solved-banner{background:none;border:1px solid var(--amber);color:var(--amber);font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;font-weight:normal;box-shadow:0 0 14px #ffb21e33}
+[data-style=cyber] #graph-points button i{background:var(--bg);border-color:var(--text)}
+[data-style=cyber] #graph-points button.solution i{background:var(--amber);border-color:var(--amber)}
+[data-style=cyber] .area-fields label{color:var(--dim);font-family:var(--mono)}
+[data-style=cyber] .area-fields input,[data-style=cyber] .area-fields select{background:#060b10;border:1px solid var(--line-bright);border-radius:3px}
+[data-style=cyber] .intercept{background:#ffb21e10;border:1px solid #ffb21e66;border-radius:3px}
+[data-style=cyber] .intercept h2{color:var(--amber)!important}
+[data-style=cyber] .intercept ol{font-family:var(--mono);font-size:14px}
+@media(prefers-reduced-motion:reduce){[data-style=cyber] button{transition:none}}
+[data-style=cyber] #graph-examples{max-width:220px}
+/* Small screens: the monospace brand and labels run wider than Garamond. */
+@media(max-width:700px){
+ [data-style=cyber] .brand{font-size:15px;letter-spacing:.2em}
+ [data-style=cyber] .brand small{font-size:8px;letter-spacing:.12em;padding-left:1.6em}
+ [data-style=cyber] nav button{font-size:10px;letter-spacing:.06em;padding:5px 6px}
+ [data-style=cyber] .original-dock>.dock-long>button,[data-style=cyber] .original-dock #solve{letter-spacing:0}
+}
+@media(max-width:560px) and (min-height:521px),(max-height:520px) and (min-aspect-ratio:3/2){
+ [data-style=cyber] .original-dock>:nth-child(2)>button{font-size:13px}[data-style=cyber] .original-dock #solve{font-size:17px}
+}
+@media(max-width:440px){[data-style=cyber] .brand{letter-spacing:.12em;font-size:14px}[data-style=cyber] .brand small{letter-spacing:.02em;font-size:7.5px;gap:.5em}[data-style=cyber] nav{gap:3px}[data-style=cyber] nav button{padding:5px 5px;letter-spacing:.02em}}
