@@ -5,13 +5,14 @@ import { placeMetadata } from '../place-value.js';
 import { ease,clamp,operationGroups } from './animation.js';
 import { renderOperation } from './operation-view.js';
 import { ink,patternDefs,onStyle } from './theme.js';
+import { numeral,bases,placeMeta,baseSpec,slotAt,digitGlyph,placeOffsetIn,isGroupEdge } from './bases.js';
 export const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export const round=n=>Math.round(n*1000)/1000;
 // Exact place-value text such as 0.001; 10**-3 prints differently across engines.
 const decimalUnit=exponent=>exponent<0?'0.'+'0'.repeat(-exponent-1)+'1':String(10**exponent);
 export const cameras={front:{pitch:.35},depth:{pitch:1},spread:{pitch:2.5}};
-export function stackGeometry(exponent,camera='front') {
-  const meta=placeMetadata(exponent),pitch=cameras[camera].pitch;
+export function stackGeometry(exponent,camera='front',base=numeral.id) {
+  const meta=placeMeta(exponent,base),pitch=cameras[camera].pitch;
   return {...meta,pitch,depth:meta.cardCount*pitch,dx:meta.cardCount*pitch,dy:meta.cardCount*pitch};
 }
 // Behind the top card a stack shows card stock: cream edges with fine separators, and
@@ -20,32 +21,50 @@ export function stackGeometry(exponent,camera='front') {
 export const cardEdge=ink.edge;
 export const cardRole=(layer,count)=>layer===1?'top':layer===count?'base':layer%10===1?'group':'support';
 export function face(x,y,size,color,meta,attributes='',role='top') {
-  if(role!=='top'){const stroke=role==='base'?cardEdge.base:role==='group'?cardEdge.group[color]:ink.edgeLine[color];return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="${cardEdge.paper}" stroke="${stroke}" stroke-width="${role==='support'?.45:1.1}"/></g>`;}
+  if(role!=='top'){const stroke=role==='base'?cardEdge.base:role==='group'?cardEdge.group[color]:ink.edgeLine[color];return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${role==='base'&&meta.partial<1?round(size*meta.partial):size}" height="${size}" rx="5" fill="${cardEdge.paper}" stroke="${stroke}" stroke-width="${role==='support'?.45:1.1}"/></g>`;}
   const border=1+meta.group*.55;
-  if(meta.exponent<0){const inner=round(size*meta.innerScale),inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="${ink.stroke[color]}" stroke-width="1"/><rect data-inner-area="${decimalUnit(meta.exponent)}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
+  if(meta.exponent<0){const inner=round(size*meta.innerScale),inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="${ink.stroke[color]}" stroke-width="1"/><rect data-inner-area="${meta.base?meta.name:decimalUnit(meta.exponent)}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
 
   let svg=`<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#${color})" stroke="${ink.stroke[color]}" stroke-width="${border}"/>`;
-  for(let level=0;level<meta.group;level++) {const inset=3+level*3;svg+=`<rect x="${round(x+inset)}" y="${round(y+inset)}" width="${size-2*inset}" height="${size-2*inset}" rx="3" fill="none" stroke="${ink.groupStroke[color]}" stroke-width="${1.2+meta.group*.55}"/>`;}
+  for(let level=0;level<Math.min(4,meta.group);level++) {const inset=3+level*3;svg+=`<rect x="${round(x+inset)}" y="${round(y+inset)}" width="${size-2*inset}" height="${size-2*inset}" rx="3" fill="none" stroke="${ink.groupStroke[color]}" stroke-width="${1.2+meta.group*.55}"/>`;}
   if(meta.mark)svg+=`<text x="${round(x+size-7)}" y="${round(y+size-6)}" text-anchor="end" font-size="12" font-weight="bold" fill="${ink.mark[color]}">${meta.mark}</text>`;
   return svg+'</g>';
 }
-export function tray(digit,color,exponent=0,camera='front',label=String(digit),unknown=false) {
-  const meta=stackGeometry(exponent,camera),size=43;
+export function tray(digit,color,exponent=0,camera='front',label=String(digit),unknown=false,base=numeral.id) {
+  const meta=stackGeometry(exponent,camera,base),size=43;
   let svg='<rect width="150" height="150" rx="12" fill="url(#paper)" fill-opacity=".16" stroke="#171713" stroke-width="2"/>';
-  for(let cell=0;cell<9;cell++) {
-    const x=7+cell%3*47,y=7+Math.floor(cell/3)*47;
+  for(let cell=0;cell<bases[base].slots;cell++) {
+    const {x,y}=slotAt(cell,base);
     svg+=`<rect x="${x}" y="${y}" width="${size}" height="${size}" rx="5" fill="none" stroke="#858274" stroke-opacity=".2"/>`;
     if(cell<digit) {
       let clip='';
       if(digit-cell<1){const id=`slice-${exponent}-${cell}-${String(digit).replace('.','_')}`;svg+=`<defs><clipPath id="${id}"><rect x="${x}" y="${y}" width="${size*(digit-cell)+meta.depth}" height="${size+meta.depth}"/></clipPath></defs>`;clip=` clip-path="url(#${id})"`;}
-      svg+=`<g opacity="${unknown?.25:1}"${clip}>${stackUnit(x,y,color,exponent,camera)}</g>`;
+      svg+=`<g opacity="${unknown?.25:1}"${clip}>${stackUnit(x,y,color,exponent,camera,1,base)}</g>`;
     }
   }
+  // Balanced ternary writes the digit −1 as a one with a bar over it.
+  const bar=label==='T';if(bar)label='1';
   svg+=`<text x="75" y="75" dominant-baseline="central" text-anchor="middle" class="numeral" font-size="124" fill="#050504" pointer-events="none">${esc(label)}</text>`;
+  if(bar)svg+=`<path class="numeral-bar" d="M50 22h50" stroke="#050504" stroke-width="9" stroke-linecap="round" pointer-events="none"/>`;
   return `<g class="digit-tray" data-cards="${meta.cardCount}" data-stack-depth="${meta.depth}" data-exponent="${exponent}">${svg}</g>`;
 }
 export function commaTriangle(x,decimal=false){return `<g class="${decimal?'decimal-comma':'group-comma'}" transform="translate(${x+5} 0)"><path d="M0 75 L25 50 L25 100 Z" fill="url(#paper)" fill-opacity="${decimal?.16:.75}" stroke="#37362e" stroke-width="1.5"/>${decimal?'<path d="M12 102v32 M12 120l-7 13" fill="none" stroke="#37362e" stroke-dasharray="1 4"/><circle cx="12" cy="120" r="2" fill="#37362e"/>':''}</g>`;}
-export function specArt(spec,color,camera,label=true){return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');}
+// The digits run on (base e): an ellipsis after the last tray.
+export const ellipsis=x=>`<g class="digit-ellipsis" pointer-events="none">${[0,1,2].map(i=>`<circle cx="${x+14+i*20}" cy="118" r="6" fill="#37362e"/>`).join('')}</g>`;
+export function specArt(spec,color,camera,label=true){
+  if(!spec.base)return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');
+  // Other bases: balanced ternary colours each place by its digit's sign.
+  const tint=p=>spec.balanced?(p.negative?'red':'blue'):color;
+  return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,tint(p),p.exponent,camera,label?digitGlyph(p.signed,spec.base):'',false,spec.base)}</g>`).join('')+spec.markers.map(m=>m.ellipsis?ellipsis(m.x):commaTriangle(m.x,m.decimal)).join('');
+}
+// The trays a term is drawn with: decimal as numbers.js lays it out, other bases by bases.js.
+export function placeSpec(term,base=numeral.id){
+  if(base==='decimal')return numberSpec(term);
+  if((term.notation==='fraction'||term.notation==='mixed')&&term.value.d!==1)return null;
+  return baseSpec(term.value,base);
+}
+// How many trays a whole number takes in a base (for fractions drawn as numerator over denominator).
+const wholeWidth=(n,base)=>base==='decimal'?String(Math.abs(n)).length:baseSpec({n:Math.abs(n),d:1},base).places.length;
 export const OPERATOR_GAP=110,DOT_GAP=46,PAREN=58,EXPONENT=64;
 // Operands of a product render as constants coloured by their own sign.
 export const operandTerm=o=>({kind:'constant',value:math.abs(o.value),notation:o.notation,decimalPlaces:o.decimalPlaces,negative:o.value.n<0});
@@ -77,8 +96,8 @@ const structuredBase=(b,flip)=>b.group?{...b,negated:flip!==!!b.negated}:flip?{.
 export function mixedParts(value){const n=Math.abs(value.n),d=value.d;return {whole:Math.floor(n/d),remainder:n%d,denominator:d};}
 export function termWidth(term){
   if(term.expr)return term.expr.operands.reduce((w,o)=>w+operandWidth(o),0)+OPERATOR_GAP*term.expr.ops.length;
-  if(term.notation==='mixed'&&term.value.d!==1){const {whole}=mixedParts(term.value);return (whole?String(whole).length*160:0)+160;}
-  if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=numberSpec(term);return (spec?spec.width:Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160)+(term.kind==='variable'?DOT_GAP+160:0);}
+  if(term.notation==='mixed'&&term.value.d!==1){const {whole}=mixedParts(term.value);return (whole?(numeral.id==='decimal'?String(whole).length*160:placeSpec({kind:'constant',value:math.frac(whole),notation:'auto'}).width):0)+160;}
+  if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=placeSpec(term);return (spec?spec.width:Math.max(wholeWidth(term.value.n,numeral.id),wholeWidth(term.value.d,numeral.id))*160)+(term.kind==='variable'?DOT_GAP+160:0);}
 // A card cut into equal vertical slices; `count` of them remain.
 export function sliceTray(count,denominator,color,camera,label=`${count}/${denominator}`){
   let art=tray(count/denominator,color,0,camera,'');
@@ -103,18 +122,18 @@ export function operationArt(term,camera,from=0){
 export function termArt(term,camera,solvedValue=null) {
   if(term.expr)return operationArt(term,camera);
   const color=term.value.n<0||term.negative?'red':'blue';
-  if(term.notation==='mixed'&&term.value.d!==1){const {whole,remainder,denominator}=mixedParts(term.value),spec=whole?numberSpec({kind:'constant',value:math.frac(whole),notation:'auto'}):null;return (spec?specArt(spec,color,camera):'')+`<g transform="translate(${spec?spec.width:0} 0)">${sliceTray(remainder,denominator,color,camera)}</g>`;}
-  const digits=(number,y=0,scale=1)=>[...String(number)].map((d,i,all)=>`<g transform="translate(${i*160*scale} ${y}) scale(${scale})">${tray(Number(d),color,all.length-i-1,camera)}</g>`).join('');
+  if(term.notation==='mixed'&&term.value.d!==1){const {whole,remainder,denominator}=mixedParts(term.value),spec=whole?placeSpec({kind:'constant',value:math.frac(whole),notation:'auto'}):null;return (spec?specArt(spec,color,camera):'')+`<g transform="translate(${spec?spec.width:0} 0)">${sliceTray(remainder,denominator,color,camera)}</g>`;}
+  const digits=(number,y=0,scale=1)=>numeral.id==='decimal'?[...String(number)].map((d,i,all)=>`<g transform="translate(${i*160*scale} ${y}) scale(${scale})">${tray(Number(d),color,all.length-i-1,camera)}</g>`).join(''):`<g transform="translate(0 ${y}) scale(${scale})">${specArt(baseSpec({n:number,d:1}),color,camera)}</g>`;
   let result;
-  const spec=numberSpec(term);
+  const spec=placeSpec(term);
   if(!spec) {
-    const width=Math.max(String(Math.abs(term.value.n)).length,String(term.value.d).length)*160;
+    const width=Math.max(wholeWidth(term.value.n,numeral.id),wholeWidth(term.value.d,numeral.id))*160;
     result=`${digits(Math.abs(term.value.n),-47,.64)}<line x1="-3" y1="56" x2="${width*.64}" y2="56" stroke="#171713" stroke-width="3"/>${digits(term.value.d,67,.64)}`;
   } else result=specArt(spec,color,camera);
   if(term.kind==='variable') {
-    if(Math.abs(term.value.n)===term.value.d)result=tray(solvedValue!==null?Math.min(9,Math.abs(solvedValue)):9,'green',0,camera,'X',solvedValue===null);
+    if(Math.abs(term.value.n)===term.value.d)result=tray(solvedValue!==null?Math.min(9,Math.abs(solvedValue)):9,'green',0,camera,'X',solvedValue===null,'decimal');
     // A coefficient multiplies x: a dot sits between the number cards and the x tray.
-    else result+=`<circle class="multiplier-dot" cx="${termWidth(term)-160-DOT_GAP/2}" cy="75" r="7" fill="#25241e"/><g transform="translate(${termWidth(term)-160} 0)">${tray(9,'green',0,camera,'X',true)}</g>`;
+    else result+=`<circle class="multiplier-dot" cx="${termWidth(term)-160-DOT_GAP/2}" cy="75" r="7" fill="#25241e"/><g transform="translate(${termWidth(term)-160} 0)">${tray(9,'green',0,camera,'X',true,'decimal')}</g>`;
   }
   return result;
 }
@@ -140,10 +159,12 @@ export function layout(equation,{orientation='horizontal',camera='front',express
   if(expression){rows.right=[];width=rows.left.at(-1).x+rows.left.at(-1).w+margin;equal=null;height=220+margin*2;}
   return {terms:[...rows.left,...rows.right],width,height,equal,orientation};
 }
-export function stackUnit(x,y,color,exponent,camera='front',opacity=1){return `<use class="unit-stack" href="#stack-${color}-${String(exponent).replace('-','m')}-${camera}" data-place="${exponent}" data-cards="${placeMetadata(exponent).cardCount}" x="${round(x)}" y="${round(y)}" opacity="${opacity}"/>`;}
+// Stacks are shared definitions, one per colour, place and camera (and base, outside decimal).
+export const stackId=(color,exponent,camera,base=numeral.id)=>`stack-${color}-${base==='decimal'?'':base}${String(exponent).replace('-','m')}-${camera}`;
+export function stackUnit(x,y,color,exponent,camera='front',opacity=1,base=numeral.id){return `<use class="unit-stack" href="#${stackId(color,exponent,camera,base)}" data-place="${exponent}" data-cards="${placeMeta(exponent,base).cardCount}" x="${round(x)}" y="${round(y)}" opacity="${opacity}"/>`;}
 const stackCache=new Map();onStyle(()=>stackCache.clear());
-export const stackIds=body=>[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
-export function parseStackId(id){const [,color,exp,camera]=id.split('-');return {color,camera,meta:stackGeometry(Number(exp.replace('m','-')),camera)};}
+export const stackIds=body=>[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-((?:binary|ternary|e)?m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
+export function parseStackId(id){const [,color,place,camera]=id.split('-'),[,base='decimal',minus,digits]=place.match(/^(binary|ternary|e)?(m?)(\d+)$/);return {color,camera,base,meta:stackGeometry(Number((minus?'-':'')+digits),camera,base)};}
 // Vector card faces for one cached stack; the browser may swap in a raster of the same drawing.
 export function stackContent(id){if(stackCache.has(id))return stackCache.get(id);const {color,meta}=parseStackId(id);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`,cardRole(layer,meta.cardCount));stackCache.set(id,content);return content;}
 function stackDefinitions(body){return '<defs>'+stackIds(body).map(id=>`<g id="${id}">${stackContent(id)}</g>`).join('')+'</defs>';}
@@ -157,7 +178,9 @@ export function renderLayout(scene,options,overrides={}) {
     const actual=override.term||term;
     body+=`<g class="term ${term.placeholder?'placeholder':''}${actual.expr?' operation':''}" data-term="${esc(term.id)}" data-side="${side}" data-index="${index}" data-x="${round(x)}" data-y="${round(y)}" transform="translate(${round(x)} ${round(y)})" opacity="${opacity}" role="button" tabindex="${term.placeholder?-1:0}" aria-label="${esc(math.termText(actual))}, ${side} side">`;
     body+=`<rect class="hit" x="-6" y="-15" width="${w+12}" height="${h+15}" fill="transparent"/>`;
-    if(index>0||math.negative(actual))body+=`<text x="-47" y="97" text-anchor="middle" font-size="72" pointer-events="none">${math.negative(actual)?'−':'+'}</text>`;
+    // Balanced ternary needs no minus sign: a constant's trits carry its sign (x + T11 = 111).
+    const signed=bases[numeral.id].balanced&&!actual.expr&&actual.kind==='constant'&&!!placeSpec(actual);
+    if(signed?index>0:index>0||math.negative(actual))body+=`<text x="-47" y="97" text-anchor="middle" font-size="72" pointer-events="none">${math.negative(actual)&&!signed?'−':'+'}</text>`;
     body+=(override.art??termArt(actual,options.camera,options.solvedValue)).replaceAll('class="numeral"',`class="numeral" opacity="${override.labelOpacity??1}"`)+'</g>';
     body+=`<rect class="reorder-gap" data-side="${side}" data-insert="${index}" x="${slot.x-65}" y="${slot.y-25}" width="34" height="210" rx="10" fill="transparent"/>`;
   }
@@ -250,12 +273,17 @@ export function renderScene(equation,options={},plan=null,progress=1) {
   return {viewBox:`${round(scene.minX||0)} ${round(scene.minY||0)} ${round(scene.width-(scene.minX||0))} ${round(scene.height-(scene.minY||0))}`,orientation:options.orientation,camera:options.camera,label:math.equationText(equation),body,scene};
 }
 // Particles for active ledger phases; shared by addition and the operation scenes.
-export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
+export function phaseParticles(active,{pos,draw,color,camera,shift=0,base='decimal'}){
  let particles='';const lerp=(a,b,q)=>a+(b-a)*q;
  for(const {phase,progress:q} of active){
   if(phase.type==='settle')for(const token of phase.before){const next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next||token);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});}
   if(phase.type==='transfer'){
    const token=phase.before.find(a=>a.id===phase.removed[0]),next=phase.after.find(a=>a.id===token.id),a=pos(token),b=pos(next);particles+=draw(token,{x:lerp(a.x,b.x,ease(q)),y:lerp(a.y,b.y,ease(q))});
+  } else if(phase.type==='pair'){
+   // Balanced ternary: a zero pair (+1 and −1) opens out of nothing beside two like cards.
+   const k=ease(q),pair=phase.after.filter(a=>phase.created.includes(a.id));
+   for(const token of pair){const at=pos(token),c={x:at.x+21.5,y:at.y+21.5},scale=round(.25+.75*k);particles+=`<g transform="translate(${round(c.x*(1-scale))} ${round(c.y*(1-scale))}) scale(${scale})">${draw(token,at,round(k))}</g>`;}
+   if(q<.6){const at=pos(pair[0]);particles+=`<circle class="pair-burst" cx="${round(at.x+21.5)}" cy="${round(at.y+21.5)}" r="${round(36-24*q/.6)}" fill="none" stroke="#fffbe6" stroke-width="${round(1+4*q)}" opacity="${round(.9*(1-q/.6))}"/>`;}
   } else if(phase.type==='neutralize'){
    // Both cards already coincide on the receiver; they collapse together into a small burst.
    const pair=phase.before.filter(a=>phase.removed.includes(a.id)),at=pos(phase.receiver),k=ease((q-.4)/.6),c={x:at.x+21.5,y:at.y+21.5},scale=round(1-.75*k);
@@ -265,18 +293,18 @@ export function phaseParticles(active,{pos,draw,color,camera,shift=0}){
   } else if(phase.type==='carry'||phase.type==='borrow'){
    const carry=phase.type==='carry',many=(carry?phase.before:phase.after).filter(a=>(carry?phase.removed:phase.created).includes(a.id));
    const single=(carry?phase.after:phase.before).find(a=>a.id===(carry?phase.created[0]:phase.removed[0]));
-   const end=pos(single),pitch=cameras[camera].pitch,depth=placeMetadata(many[0].place+shift).cardCount*pitch;
+   const end=pos(single),pitch=cameras[camera].pitch,depth=placeMeta(many[0].place+shift,base).cardCount*pitch;
    // Two stages, so the regrouping can be followed: ten cards gather into one stack in
    // their own tray (g), then the stack slides one tray over (f). A borrow plays it backwards.
-   const c=carry?q:1-q,g=ease(c/.5),f=ease((c-.5)/.5),comma=(single.place+shift)%3===0||many[0].place+shift<0;
+   const c=carry?q:1-q,g=ease(c/.5),f=ease((c-.5)/.5),comma=(single.place+shift)%bases[base].group===0||many[0].place+shift<0;
    const home=pos({...single,place:many[0].place}),slide={x:(end.x-home.x)*f,y:(end.y-home.y)*f};
    // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
    // At a comma, compress the old depth group into the next inscribed face.
-   for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(9-i)*depth*compression,point={x:lerp(start.x,home.x+offset,g)+slide.x,y:lerp(start.y,home.y+offset,g)+slide.y};
+   for(let i=0;i<many.length;i++){const token=many[i],start=pos(token),compression=comma?1/(1+999*f):1,offset=(many.length-1-i)*depth*compression,point={x:lerp(start.x,home.x+offset,g)+slide.x,y:lerp(start.y,home.y+offset,g)+slide.y};
     if(comma&&compression>.98)particles+=`<g opacity="${round(1-ease((f-.75)/.25))}">${draw(token,point)}</g>`;
     else if(comma){
      // Faces closer than ~1.2px read as one edge band, so draw only that many layers.
-     const meta=stackGeometry(token.place+shift,camera),layers=Math.min(meta.cardCount,Math.max(1,Math.ceil(meta.cardCount*pitch*compression/1.2)));let drawing='';
+     const meta=stackGeometry(token.place+shift,camera,base),layers=Math.min(meta.cardCount,Math.max(1,Math.ceil(meta.cardCount*pitch*compression/1.2)));let drawing='';
      for(let k=layers;k>=1;k--){const d=(k/layers)*meta.cardCount*pitch*compression;drawing+=face(point.x+d,point.y+d,43,color(token),meta,'',cardRole(k,layers));}
      particles+=`<g data-unit="${token.id}" opacity="${round(1-ease((f-.75)/.25))}">${drawing}</g>`;
     }
@@ -291,8 +319,9 @@ function renderUnits(plan,t,options){
  const before=applyOrigin(layout(plan.before,options),plan.origin),after=layout(plan.after,options),u=plan.units,p=ease(t),overrides={};
  const source=before.terms.find(s=>s.term.id===u.source),target=before.terms.find(s=>s.term.id===u.target);
  // A target that cancels to zero has no slot afterwards; its cards vanish where they were.
- const result=after.terms.find(s=>s.term.id===u.target)||after.terms.find(s=>s.side===target.side&&numberSpec(s.term))||{...target,term:{kind:'constant',value:math.frac(0),notation:'auto'}};
- const spec=term=>numberSpec(term),digits=term=>spec(term).places.length;
+ const base=u.base||'decimal',placeOffset=place=>placeOffsetIn(place,base);
+ const result=after.terms.find(s=>s.term.id===u.target)||after.terms.find(s=>s.side===target.side&&placeSpec(s.term,base))||{...target,term:{kind:'constant',value:math.frac(0),notation:'auto'}};
+ const spec=term=>placeSpec(term,base),digits=term=>spec(term).places.length;
  const boundary=term=>-placeOffset(spec(term).maxPlace),shift=u.placeShift||0;
  const lerp=(a,b,q=p)=>a+(b-a)*q;
  const anchor={x:lerp(target.x+boundary(target.term),result.x+boundary(result.term)),y:lerp(target.y,result.y)};
@@ -302,25 +331,25 @@ function renderUnits(plan,t,options){
  const scene={...before,width:lerp(before.width,after.width),height:Math.max(before.height,after.height),terms:[...before.terms],equal:before.equal&&after.equal?{x:lerp(before.equal.x,after.equal.x),y:lerp(before.equal.y,after.equal.y)}:null};
  const maxPlace=Math.max(spec(target.term).maxPlace,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift)),minPlace=Math.min(spec(target.term).minPlace,spec(source.term).minPlace,0,...u.initial.map(a=>a.place+shift),...u.final.map(a=>a.place+shift));
  function pos(token){if(token.owner===u.target&&u.cancelTargets?.[token.id])token=u.cancelTargets[token.id];const owner=token.owner===u.target?anchor:{x:sourceAt.x+boundary(source.term),y:sourceAt.y};const cell=token.cell;
-  // A full tray has no tenth cell: extra cards wait on its rim until ten of them regroup.
-  return {x:owner.x+placeOffset(token.place+shift)+7+(cell<9?cell%3*47:47+(cell-9)*6),y:owner.y+7+(cell<9?Math.floor(cell/3)*47:-50-(cell-9)*6)};
+  // A full tray has no more cells: extra cards wait on its rim until a whole stack regroups.
+  const slot=slotAt(cell,base);return {x:owner.x+placeOffset(token.place+shift)+slot.x,y:owner.y+slot.y};
  }
  for(const slot of before.terms){const to=after.terms.find(s=>s.term.id===slot.term.id);if(to)overrides[slot.term.id]={x:lerp(slot.x,to.x),y:lerp(slot.y,to.y)};}
  const empty=term=>specArt(spec(term),'blue',options.camera,false);
  const sourceRemaining=frame.tokens.some(a=>a.owner===u.source)||frame.active.some(a=>a.phase.before.some(t=>a.phase.removed.includes(t.id)&&t.owner===u.source));
  overrides[u.source]={x:sourceAt.x,y:sourceAt.y,term:plan.command.side?math.negateTerm(source.term):source.term,opacity:sourceRemaining?1:0,art:empty(source.term),labelOpacity:0};
- let boxes='';for(let place=minPlace;place<=maxPlace;place++){const old=place>=spec(target.term).minPlace&&place<=spec(target.term).maxPlace,final=place>=spec(result.term).minPlace&&place<=spec(result.term).maxPlace,opacity=(old?1:clamp(t*8))*(final?1:1-ease((t-.9)/.1));const x=anchor.x+placeOffset(place)-target.x;boxes+=`<g opacity="${opacity}" transform="translate(${x} ${anchor.y-target.y})">${tray(0,'blue',place,options.camera,'')}</g>`;if(place<maxPlace&&(place===-1||place>=0&&place%3===2||place<0&&place%3===0))boxes+=`<g transform="translate(0 ${anchor.y-target.y})">${commaTriangle(x-40,place===-1)}</g>`;}
+ let boxes='';for(let place=minPlace;place<=maxPlace;place++){const old=place>=spec(target.term).minPlace&&place<=spec(target.term).maxPlace,final=place>=spec(result.term).minPlace&&place<=spec(result.term).maxPlace,opacity=(old?1:clamp(t*8))*(final?1:1-ease((t-.9)/.1));const x=anchor.x+placeOffset(place)-target.x;boxes+=`<g opacity="${opacity}" transform="translate(${x} ${anchor.y-target.y})">${tray(0,'blue',place,options.camera,'',false,base)}</g>`;if(place<maxPlace&&isGroupEdge(place,base))boxes+=`<g transform="translate(0 ${anchor.y-target.y})">${commaTriangle(x-40,place===-1)}</g>`;}
  overrides[u.target]={x:target.x,y:target.y,term:t>.9?result.term:target.term,art:boxes,labelOpacity:0};
  let body=renderLayout(scene,options,overrides),particles='';
  const color=token=>token.sign<0?'red':'blue';
- const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity)}</g>`;
+ const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity,base)}</g>`;
  for(const token of frame.tokens)particles+=draw(token,pos(token));
- particles+=phaseParticles(frame.active,{pos,draw,color,camera:options.camera,shift});
+ particles+=phaseParticles(frame.active,{pos,draw,color,camera:options.camera,shift,base});
  // Numerals fade out at pickup and return only after the units reach their settled cells.
  let numerals='';const labels=t<.06?1-t/.06:t>.9?(t-.9)/.1:0;
- if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){for(const digit of spec(term).places)numerals+=`<text x="${slot.x+digit.x+75}" y="${slot.y+75}" dominant-baseline="central" text-anchor="middle" font-size="124" opacity="${labels}">${digit.digit}</text>`;}}
+ if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){for(const digit of spec(term).places){const glyph=digit.signed===undefined?digit.digit:digitGlyph(digit.signed,base);numerals+=`<text x="${slot.x+digit.x+75}" y="${slot.y+75}" dominant-baseline="central" text-anchor="middle" font-size="124" opacity="${labels}">${glyph==='T'?'1':glyph}</text>`+(glyph==='T'?`<path class="numeral-bar" d="M${slot.x+digit.x+50} ${slot.y+22}h50" stroke="#050504" stroke-width="9" stroke-linecap="round" opacity="${labels}"/>`:'');}}}
 
  body+=`<g class="unit-animation" data-phase="${phase?.type||'settled'}" pointer-events="none">${particles}</g>`+numerals;
- const expand=ease(t/.15)*(1-ease((t-.9)/.1));scene.minX=Math.min(0,anchor.x+placeOffset(maxPlace)-8)*expand;scene.minY=Math.min(0,sourceAt.y-20)*expand;scene.width=lerp(scene.width,Math.max(scene.width,sourceAt.x+source.w+stackGeometry(2,options.camera).depth+20),expand);scene.height=lerp(before.height,after.height,p)+Math.max(0,sourceAt.y+200+stackGeometry(2,options.camera).depth-before.height)*expand;
+ const expand=ease(t/.15)*(1-ease((t-.9)/.1));scene.minX=Math.min(0,anchor.x+placeOffset(maxPlace)-8)*expand;scene.minY=Math.min(0,sourceAt.y-20)*expand;scene.width=lerp(scene.width,Math.max(scene.width,sourceAt.x+source.w+stackGeometry(2,options.camera,base).depth+20),expand);scene.height=lerp(before.height,after.height,p)+Math.max(0,sourceAt.y+200+stackGeometry(2,options.camera,base).depth-before.height)*expand;
  return {scene,body};
 }

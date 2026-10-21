@@ -1,5 +1,6 @@
 import { EquationModel,math } from './model.js';
 import { AnimationClock,planTransition } from './animation.js';
+import { expandBaseLiterals } from './bases.js';
 export class Controller extends EventTarget {
   constructor(view,input='x+3=7') {super();this.model=new EquationModel(input);this.view=view;this.clock=new AnimationClock();this.options={orientation:'horizontal',camera:'front',zoom:1};this.render();}
   get busy(){return this.clock.playing || this.clock.progress<1;}
@@ -10,7 +11,7 @@ export class Controller extends EventTarget {
   as(source,fn){const previous=this.source;this.source=source;try{return fn();}finally{this.source=previous;}}
   previewDrag(id,x,y,side){this.options.drag={id,x,y,side};this.render();}
   frame(now){if(!this.clock.playing)return;this.clock.sample(now);this.render();}
-  load(input){delete this.options.drag;this.clock.finish();this.clock.plan=null;this.model.load(input);this.render();}
+  load(input){delete this.options.drag;this.clock.finish();this.clock.plan=null;this.model.load(expandBaseLiterals(input));this.render();}
   camera(camera){if(!['front','depth','spread'].includes(camera))throw Error('Unknown camera.');this.options.camera=camera;this.render();}
   orientation(orientation){if(!['horizontal','vertical'].includes(orientation))throw Error('Unknown layout.');this.options.orientation=orientation;this.render();}
   seek(progress){this.clock.seek(progress);this.render();}

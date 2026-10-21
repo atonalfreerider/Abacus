@@ -130,3 +130,5 @@ body{padding:max(5px,env(safe-area-inset-top),var(--safe-area-inset-top,0px)) ma
  #graph-stage{min-height:50vh;border-radius:16px}#graph-panel{max-height:32vh;padding:8px 10px}#graph-readout .point{font-size:17px}
 }
 .about{margin:14px 0 0;font-size:13px}.about a{color:#2f5d6b}
+/* Number base button beside the status: the base the cards are drawn in. */
+#base-cycle{min-width:34px;font-variant-numeric:lining-nums}
