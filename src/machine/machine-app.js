@@ -301,12 +301,12 @@ export class MachineView extends EventTarget {
     return this.enter();
   }
   cards() {
-    const v = this.answer?.values?.[0], root = Object.values(this.tree).find(n => n.parent === 'io'), b = $('machine-to-cards');
+    const first = this.answer?.values?.[0], v = first == null ? null : String(first), root = Object.values(this.tree).find(n => n.parent === 'io'), b = $('machine-to-cards');
     let reason = '';
     if (v == null) reason = 'Run a machine first: its Output goes to the cards';
     else if (root?.op === 'ln' || /[a-z]/i.test(v)) reason = 'this value is not a card';
     else if (v.replace('-', '').split('/').some(part => { try { return BigInt(part) > SAFE; } catch { return true; } })) reason = 'Too large for the cards: they hold whole numbers up to 9 007 199 254 740 991';
-    b.disabled = !!reason; b.title = reason || `Put ${this.answer.values[0].replace('-', '−')} on the cards in ${BASE_NAME[this.base]}`;
+    b.disabled = !!reason; b.title = reason || `Put ${v.replace('-', '−')} on the cards in ${BASE_NAME[this.base]}`;
   }
 
   // ---------- time and drawing ----------
@@ -314,7 +314,7 @@ export class MachineView extends EventTarget {
     const c = this.clock, t = c.t(now);
     if (c.run && c.run.i !== this.lastStarted) { this.lastStarted = c.run.i; this.began(c.run.i); }
     const done = Math.floor(t + 1e-9);
-    if (done > this.lastDone) for (let k = this.lastDone; k < done; k++) this.ended(k);
+    if (done > this.lastDone) for (let k = Math.max(0, this.lastDone); k < done; k++) this.ended(k);
     this.lastDone = done;
     if (t !== this.lastT || this.dirty) this.draw(t);
     this.sync(t);
@@ -441,7 +441,7 @@ export class MachineView extends EventTarget {
     const ops = palette(this.base), greyed = this.base === 'e' ? Object.keys(E_MISSING) : [];
     $('machine-palette').innerHTML = [...ops, ...greyed].map(op => {
       const off = !ops.includes(op);
-      return `<button type="button" data-op="${op}"${off ? ` disabled title="${esc(E_MISSING[op])}"` : ` title="${esc(OPS[op]?.[1] ?? op)} block: tap to hang it on the selected socket, or drag it onto one"`}>${blockGlyphSVG(op, ink)}<span>${esc(OPS[op]?.[0] ?? op)}</span></button>`;
+      return `<button type="button" data-op="${op}"${off ? ` disabled title="${esc(E_MISSING[op])}"` : ` title="${esc(OPS[op]?.[1] ?? op)} block: tap to hang it on the selected socket, or drag it onto one"`}>${blockGlyphSVG(op, ink, this.base)}<span>${esc(OPS[op]?.[0] ?? op)}</span></button>`;
     }).join('');
   }
   steps() {
@@ -509,7 +509,7 @@ export class MachineView extends EventTarget {
     $('machine-centre').onclick = () => this.centre();
     $('machine-overview').onclick = () => this.overview();
     $('machine-rebuild').onclick = () => this.rebuild();
-    $('machine-to-cards').onclick = () => { const v = this.answer?.values?.[0]; if (v != null && !$('machine-to-cards').disabled) this.dispatchEvent(new CustomEvent('cards', { detail: { value: v, base: this.base } })); };
+    $('machine-to-cards').onclick = () => { const v = this.answer?.values?.[0]; if (v != null && !$('machine-to-cards').disabled) this.dispatchEvent(new CustomEvent('cards', { detail: { value: String(v), base: this.base } })); };
     $('machine-steps-toggle').onclick = () => this.sheet(!$('machine-side').classList.contains('open'));
     $('machine-sheet-close').onclick = () => { this.sheet(false); $('machine-steps-toggle').focus(); };
     for (const t of this.mode.querySelectorAll('#machine-side [role=tab]')) t.onclick = () => this.tab(t.dataset.tab);

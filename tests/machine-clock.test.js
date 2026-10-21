@@ -87,3 +87,10 @@ test('level pace: carry beats take half a beat', () => {
   const c = new BeatClock(level, { sp: 1 }); c.start(0);
   assert.equal(c.t(1250), 1.5); assert.equal(c.t(2000), 3); assert.equal(c.t(3000), 4); assert.equal(c.done, true);
 });
+
+test('a frame stamped before the beat began never runs the clock backwards', () => {
+  const c = new BeatClock(plan); c.start(1000);
+  assert.equal(c.t(990), 0, 'requestAnimationFrame can pass a time before the click that started the run');
+  assert.equal(c.beat, 0); assert.equal(c.t(1500), .5);
+  c.step(1500); assert.equal(c.t(1490), 1, 'a beat begun at 1500 holds at its start');
+});

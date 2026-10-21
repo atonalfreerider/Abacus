@@ -35,7 +35,9 @@ export class BeatClock {
   advance(now) {
     for (let guard = 0; guard <= this.n + 1 && !this.paused; guard++) {
       if (this.run) {
-        const { i, from, at, secs, once } = this.run, length = secs * 1000, u = length > 0 ? from + (now - at) / length : 1;
+        // A frame stamped before the beat began (requestAnimationFrame passes the frame's start
+        // time, which can precede the click that started it) holds the beat at its start.
+        const { i, from, at, secs, once } = this.run, length = secs * 1000, u = length > 0 ? from + Math.max(0, now - at) / length : 1;
         if (u < 1) { this.pos = i + u; return; }
         const end = at + (1 - from) * length;
         this.run = null; this.pos = i + 1;
