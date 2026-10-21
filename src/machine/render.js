@@ -125,6 +125,19 @@ function alongPath(pts, f) {
   }
   return pts[0];
 }
+// The first f of a polyline, by length: a wire reeling into its socket along its own elbows.
+function cutPath(pts, f) {
+  let left = polyLength(pts) * f;
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (left >= d) { out.push(pts[i]); left -= d; continue; }
+    const k = d ? left / d : 0;
+    out.push([lerp(pts[i - 1][0], pts[i][0], k), lerp(pts[i - 1][1], pts[i][1], k)]);
+    break;
+  }
+  return out;
+}
 const polyline = (pts, stroke, width, extra = '') => pts.length > 1 && polyLength(pts) > 1e-6 ? `<polyline points="${pts.map(([x, y]) => `${r(x)},${r(y)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${extra}/>` : '';
 const symbolOf = (s, k) => k === 'light' ? (s < 0 ? 'bulb-red' : 'bulb-amber') : s > 0 ? 'bulb-blue' : s < 0 ? 'bulb-red' : 'socket';
 
@@ -384,7 +397,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     if (na && !nz) {
       // spent: its wire reels into the parent socket while the block fades
       if (reduced) { opacity = wireOpacity = 1 - v; }
-      else { pts = wire.map(p => [lerp(p[0], wire[0][0], e), lerp(p[1], wire[0][1], e)]); opacity = 1 - E(u, [.3, 1]); }
+      else { pts = cutPath(wire, 1 - e); opacity = 1 - E(u, [.3, 1]); }
     } else if (!na && nz) {
       // born: it slides out of its parent's centre as its wire grows
       if (reduced) { opacity = wireOpacity = v; }
@@ -455,9 +468,10 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       else if (k === 'deliver' && layout.wire(beat.node)) path = layout.wire(beat.node);
       else if (k === 'return' && layout.wire(beat.node)) path = [...layout.wire(beat.node)].reverse();
       if (path) {
-        const [bx, by] = alongPath(path, E(u, [0, 1]));
-        const shown = k === 'return' ? path.map(p => [lerp(p[0], path.at(-1)[0], E(u, [0, 1])), lerp(p[1], path.at(-1)[1], E(u, [0, 1]))]) : path;
-        parts.beads.push(polyline(shown, m.wireActive, UNITS.wire + 1, attr('opacity', markOpacity)) + `<circle class="bead" cx="${r(bx)}" cy="${r(by)}" r="${UNITS.bead}" fill="${m.wireActive}"${attr('opacity', markOpacity)}/>`);
+        // the bead rides its wire, lit for the beat; a returning wire reels in behind it
+        const f = E(u, [0, 1]), [bx, by] = alongPath(path, f), shown = k === 'return' ? cutPath(layout.wire(beat.node), 1 - f) : path;
+        parts.wires.push(polyline(shown, m.wireActive, UNITS.wire + 1, attr('opacity', markOpacity)));
+        parts.beads.push(`<circle class="bead" cx="${r(bx)}" cy="${r(by)}" r="${UNITS.bead}" fill="${m.wireActive}"${attr('opacity', markOpacity)}/>`);
       }
     }
   }
