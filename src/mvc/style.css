@@ -164,3 +164,5 @@ body.numbers-active #workspace,body.numbers-active .original-dock,body.numbers-a
 @media(max-width:480px){.brand small{flex-direction:column;gap:0;line-height:1.15;padding:2px 0 0}nav{gap:3px}nav button{padding:5px 6px}
  #numbers-examples{max-width:118px}.numbers-bar #numbers-to-cards{font-size:12px;padding:3px 6px}#numbers-n{width:6.5em}.numbers-bar .primary{padding:3px 8px}}
 @media(max-width:480px){#numbers-phase{flex:1 1 50px;min-width:50px;width:auto}.numbers-digits{font-size:12px}}
+/* LED bulbs: the place value in a tray's corner. */
+.place-value{font-family:Georgia,serif}

@@ -66,9 +66,9 @@ function basePeek(t){
  const base=numeral.id,b=bases[base],spec=baseSpec(t.value,base),title=`${escapeHtml(math.termText(t,true))} = ${escapeHtml(baseText(t.value))}`;
  if(!spec)return `<h2>${title}</h2><p>This fraction does not end in ${b.name.toLowerCase()}: its denominator is not a power of ${b.radix}. Tap it to divide it out.</p>`;
  const symbol=base==='e'?'e':String(b.radix),rows=spec.places.filter(p=>p.digit).map(p=>{
-  const meta=placeMeta(p.exponent,base),worth=b.radix**p.exponent,cards=p.exponent<0?`a card ${short(worth)} of a whole`:meta.cardCount===1?'one card':base==='e'?`a stack of ${short(worth)} cards (${Math.floor(worth)} and a slice)`:`a stack of ${short(worth)} cards`;
-  return `<li>${p.signed<0?'−':''}${p.digit} × ${symbol}${sup(p.exponent)}${base==='e'||p.exponent<0?'':` = ${p.signed<0?'−':''}${p.digit*worth}`}: ${p.digit>1?`${p.digit} × `:''}${cards}${p.negative&&b.balanced?' (red: the digit T)':''}</li>`;});
- const note=base==='binary'?'Two cards in a place stack into one card of the next place.':base==='ternary'?'Red cards are the digit −1 (T), so the number needs no minus sign. Two like cards become a zero pair and a stack of three.':`e is transcendental: only 0, 1 and 2 end in base e${spec.exact?'':', so these digits run on (…)'}.`;
+  const meta=placeMeta(p.exponent,base),worth=b.radix**p.exponent,cards=b.bulbs?`its bulb lit ${p.negative?'red':'blue'}, worth ${p.negative?'−':''}${short(worth)}`:p.exponent<0?`a card ${short(worth)} of a whole`:meta.cardCount===1?'one card':base==='e'?`a stack of ${short(worth)} cards (${Math.floor(worth)} and a slice)`:`a stack of ${short(worth)} cards`;
+  return b.bulbs?`<li>${p.signed<0?'T':'1'} × ${symbol}${sup(p.exponent)}: ${cards}</li>`:`<li>${p.signed<0?'−':''}${p.digit} × ${symbol}${sup(p.exponent)}${base==='e'||p.exponent<0?'':` = ${p.signed<0?'−':''}${p.digit*worth}`}: ${p.digit>1?`${p.digit} × `:''}${cards}</li>`;});
+ const note=base==='binary'?'Each tray holds one bit, a bulb lit or dark. Two lit bulbs in a place light the bulb of the next place.':base==='ternary'?'Each tray holds one trit: a bulb lit blue (1), dark (0) or lit red (−1, written T), so the number needs no minus sign. Two like bulbs make a zero pair appear, and three like bulbs light the next place.':`e is transcendental: only 0, 1 and 2 end in base e${spec.exact?'':', so these digits run on (…)'}.`;
  return `<h2>${title}</h2><ol>${rows.join('')}</ol><p>${note}</p>`;
 }
 function peekText(t){

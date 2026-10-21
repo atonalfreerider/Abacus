@@ -181,3 +181,9 @@
 [data-style=cyber] .fingerprint .fp-labels text{font-family:var(--mono)}
 [data-style=cyber] .peek-fingerprint p{color:var(--text);font-family:var(--mono);font-size:13px}
 @media(max-width:480px){[data-style=cyber] .brand small{padding:2px 0 0 1.9em;letter-spacing:.04em}[data-style=cyber] nav button{padding:5px 4px;letter-spacing:0}}
+/* LED bulbs (base 2 and balanced ternary): a neon glow when lit; the place value in the corner. */
+[data-style=cyber] .bulb{filter:drop-shadow(0 0 6px currentColor)}
+[data-style=cyber] .bulb-blue{color:#36e6ff}[data-style=cyber] .bulb-red{color:#ff3d8b}
+[data-style=cyber] .place-value{fill:var(--dim);font-family:var(--mono);font-size:14px}
+[data-style=cyber] .bulb-tray .numeral{stroke-width:3px}
+[data-style=cyber] #equation-svg .bulb-tray .numeral-bar,[data-style=cyber] .card-row .bulb-tray .numeral-bar{stroke:#f1fdff;filter:none}
