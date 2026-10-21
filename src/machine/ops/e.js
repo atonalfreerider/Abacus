@@ -113,63 +113,72 @@ export function display(value, { form = 'tower' } = {}) {
 
 // I2 and I3 for one base-e tower (6.9). Lights are checked against the very height()
 // the planner used; digits are checked against the certified greedy expansion.
-export function validateTower(scene, id) {
-  const t = scene.towers[id], errors = [], say = m => errors.push(`tower ${id}: ${m}`);
-  if (!t) return [`tower ${id} does not exist`];
-  if (!t.text) say('has no text');
-  const list = Object.entries(scene.bulbs).filter(([, q]) => q.t === id);
+export function validateTower(scene, id, given) {
+  const t = scene.towers[id], errors = [], say2 = m => errors.push(`I2: tower ${id} ${m}`), say3 = m => errors.push(`I3: tower ${id} ${m}`);
+  if (!t) return [`I2: tower ${id} is missing`];
+  if (!t.text) say2('has no text');
+  const list = given ?? Object.entries(scene.bulbs).filter(([, q]) => q.t === id);
   const lights = list.filter(([, q]) => isLight(q)), digits = list.filter(([, q]) => !isLight(q));
   const reading = readingOf(t.value);
   if (reading) {
-    if (lights.length !== 1 || digits.length) say('a reading is one light and nothing else');
-    else if (lights[0][1].l !== height(reading)) say(`its light stands at ${lights[0][1].l}, not at ${height(reading)}`);
+    if (lights.length !== 1 || digits.length) say2('is a reading, which is one light and nothing else');
+    else if (lights[0][1].l !== height(reading)) say2(`has its light at ${lights[0][1].l}, not at ${height(reading)}`);
     return errors;
   }
   const x = E.parse(t.value), s = sign(x);
   for (const [bid, q] of digits) {
-    if (!Number.isInteger(q.l) || q.l < FLOOR || q.l > CEILING) say(`bulb ${bid} is at level ${q.l}, off the tower`);
-    if (!Number.isInteger(q.slot) || q.slot < 0) say(`bulb ${bid} has no socket`);
-    if (![-1, 0, 1].includes(q.s)) say(`bulb ${bid} has state ${q.s}`);
+    if (!Number.isInteger(q.l) || q.l < FLOOR || q.l > CEILING) say3(`has bulb ${bid} at level ${q.l}, off the tower`);
+    if (!Number.isInteger(q.slot) || q.slot < 0) say3(`has bulb ${bid} in no socket`);
+    if (![-1, 0, 1].includes(q.s)) say3(`has bulb ${bid} in state ${q.s}`);
   }
   const placed = sumOf(digits), rest = x.sub(placed);
   if (lights.length) {
-    if (t.dust) say('a light carries its own dust');
+    if (t.dust) say2('shows dust beside a light, which carries its own');
     if (lights.length === 1) {
       const [lid, q] = lights[0];
-      if (digits.length && !t.pending) say('digits beside a light outside a level-pace unfold');
-      if (rest.isZero()) say('a light worth nothing');
-      else { if (q.l !== height(rest)) say(`light ${lid} stands at ${q.l}, not at ${height(rest)}`); if (q.s !== sign(rest)) say(`light ${lid} has the wrong colour`); }
+      if (digits.length && !t.pending) say3('has digits beside a light outside a level-pace unfold');
+      if (rest.isZero()) say2('has a light worth nothing');
+      else { if (q.l !== height(rest)) say2(`has light ${lid} at ${q.l}, not at ${height(rest)}`); if (q.s !== sign(rest)) say2(`has light ${lid} in the wrong colour`); }
     } else if (lights.length === 2 && !digits.length && t.pending && lights[0][1].s === -lights[1][1].s) {
       // Two colours folded, not yet met: some P > 0 and N > 0 with P − N = x must stand
       // at those heights. Heights are rounded, so this is a float check with slack.
       const [hb, hr] = [1, -1].map(c => lights.find(([, q]) => q.s === c)[1].l), v = approx(x);
-      if (v < Math.exp(hb - 2e-4) - Math.exp(hr + 2e-4) || v > Math.exp(hb + 2e-4) - Math.exp(hr - 2e-4)) say('its two lights cannot add up to its value');
-    } else say(`holds ${lights.length} lights`);
+      if (v < Math.exp(hb - 2e-4) - Math.exp(hr + 2e-4) || v > Math.exp(hb + 2e-4) - Math.exp(hr - 2e-4)) say2('has two lights that cannot add up to its value');
+    } else say3(`holds ${lights.length} lights`);
     return errors;
   }
   // Digit towers: Σ s·e^l over the bulbs plus the exact dust is the value.
-  if (!!t.dust !== !rest.isZero()) say(t.dust ? 'shows dust but has none' : `has dust ${rest.text()} but does not show it`);
+  if (!!t.dust !== !rest.isZero()) say2(t.dust ? 'shows dust but has none' : `has dust ${rest.text()} but does not show it`);
   const darks = digits.filter(([, q]) => !q.s);
-  if (darks.length && (!x.isZero() || darks.length > 1 || digits.length > 1 || darks[0][1].l !== 0)) say('a dark bulb is only zero, alone at level 0');
-  if (x.isZero() && !t.pile && digits.length !== 1) say('zero is one dark bulb');
+  if (darks.length && (!x.isZero() || darks.length > 1 || digits.length > 1 || darks[0][1].l !== 0)) say3('has a dark bulb, which is only zero, alone at level 0');
+  if (x.isZero() && !t.pile && digits.length !== 1) say3('is zero, which is one dark bulb');
   const levels = new Map();
-  for (const [, q] of digits) if (q.s) { const at = levels.get(q.l) ?? { s: q.s, slots: [] }; if (at.s !== q.s) say(`level ${q.l} holds both colours`); at.slots.push(q.slot); levels.set(q.l, at); }
-  for (const [l, { slots }] of levels) if (slots.sort((a, b) => a - b).some((v, i) => v !== i)) say(`level ${l} has a gap in its sockets`);
+  for (const [, q] of digits) if (q.s) { const at = levels.get(q.l) ?? { s: q.s, slots: [] }; if (at.s !== q.s) say3(`holds both colours at level ${q.l}`); at.slots.push(q.slot); levels.set(q.l, at); }
+  for (const [l, { slots }] of levels) if (slots.sort((a, b) => a - b).some((v, i) => v !== i)) say3(`has a gap in its sockets at level ${l}`);
   if (!t.pile && !t.pending && s) {
     // I3: a normal tower is the greedy expansion, in the value's colour.
     const g = greedy(x);
-    for (const [l, d] of g.digits) { const at = levels.get(l); if ((at?.slots.length ?? 0) !== d || (d && at.s !== g.sign)) say(`level ${l} should hold ${d} bulb${d === 1 ? '' : 's'}`); }
-    for (const l of levels.keys()) if (!g.digits.has(l)) say(`level ${l} lies outside the expansion`);
+    for (const [l, d] of g.digits) { const at = levels.get(l); if ((at?.slots.length ?? 0) !== d || (d && at.s !== g.sign)) say3(`should hold ${d} bulb${d === 1 ? '' : 's'} at level ${l}, the greedy digit`); }
+    for (const l of levels.keys()) if (!g.digits.has(l)) say3(`has a bulb at level ${l}, outside the greedy expansion`);
   }
   return errors;
 }
 
-// FANOUT and the start scene: a value's bulbs, or one light when the socket wants one.
+// FANOUT and the start scene: a value's bulbs, or one light when the socket wants one (0 is
+// never a light). Like the other bases' place, it may be called again on a tower: bulbs
+// that already show the value stay, anything else is replaced.
 export function place(b, t, value, { asLight = false } = {}) {
-  const x = E.parse(value);
-  if (asLight && !x.isZero()) { b.tower(t, { form: 'light' }); b.bulb(b.id('b'), { t, l: height(x), s: sign(x), k: 'light' }); return; }
-  for (const q of digitBulbs(x)) b.bulb(b.id('b'), { t, ...q });
-  if (!greedy(x).exact) b.tower(t, { dust: true });
+  const x = E.parse(value), tower = b.scene.towers[t], light = asLight && !x.isZero();
+  const want = light ? [{ l: height(x), s: sign(x), k: 'light' }] : digitBulbs(x), have = b.bulbsOf(t);
+  const same = have.length === want.length && have.every(([, q], i) => q.l === want[i].l && q.s === want[i].s && q.k === want[i].k && q.slot === want[i].slot);
+  if (!same) { for (const [id] of have) b.drop(id); for (const q of want) b.bulb(b.id('b'), { t, ...q }); }
+  const props = {};
+  if (tower.value !== x.key() && tower.value !== value) props.value = x.key();
+  if (light && tower.form !== 'light') props.form = 'light';
+  if (!light && tower.form === 'light') props.form = 'tower';
+  const dust = !light && !greedy(x).exact;
+  if (!!tower.dust !== dust) props.dust = dust || null;
+  if (Object.keys(props).length) b.tower(t, props);
 }
 
 // ---- beats ----

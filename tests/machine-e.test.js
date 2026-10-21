@@ -563,6 +563,26 @@ test('the base entry: typed limits, refusals with reasons, display strings', () 
   assert.deepEqual(display('1/30'), { text: '1/30', approx: '≈ 0.0333', digits: '0.000…ₑ' });
 });
 
+test('place writes a value once, as a light or a tower, and replaces only what differs', () => {
+  const b = new Builder({ base: 'e', tree: one('measure'), inputs: ['3'] }), ids = () => b.bulbsOf('t1').map(([id]) => id);
+  assert.equal(b.scene.towers.t1.form, 'light', 'an input in the Input pill is a light');
+  b.begin('fanout', 'n1', { caption: 'Placing.', ledger: { law: 'move' } });
+  const light = ids(); eSpec.place(b, 't1', '3', { asLight: true });
+  assert.deepEqual(ids(), light, 'already that light: left alone');
+  eSpec.place(b, 't1', '3');
+  assert.equal(b.scene.towers.t1.form, 'tower'); assert.equal(b.scene.towers.t1.dust, true);
+  assert.deepEqual(b.bulbsOf('t1').map(([, q]) => [q.l, q.slot, q.s]), [[-2, 0, 1], [-2, 1, 1], [1, 0, 1]]);
+  const tower = ids(); eSpec.place(b, 't1', '3');
+  assert.deepEqual(ids(), tower, 'already that tower: left alone');
+  eSpec.place(b, 't1', '2', { asLight: true });
+  assert.equal(b.scene.towers.t1.value, '2'); assert.equal(b.scene.towers.t1.dust, undefined);
+  eSpec.place(b, 't1', 'e^2');
+  assert.deepEqual(b.bulbsOf('t1').map(([, q]) => [q.l, q.slot, q.s]), [[2, 0, 1]]);
+  eSpec.place(b, 't1', '0', { asLight: true });
+  assert.deepEqual(b.bulbsOf('t1').map(([, q]) => [q.l, q.s, q.k]), [[0, 0, undefined]], '0 is never a light');
+  b.end();
+});
+
 test('validateTower catches a tower that does not encode its value', () => {
   const scene = (tower, bulbs) => ({ nodes: {}, towers: { t1: { at: 'n1.C', form: 'tower', text: 'x', ...tower } }, bulbs: Object.fromEntries(bulbs.map((q, i) => [`b${i + 1}`, { t: 't1', ...q }])) });
   assert.deepEqual(validateTower(scene({ value: 'e+1' }, [{ l: 0, s: 1, slot: 0 }, { l: 1, s: 1, slot: 0 }]), 't1'), []);

@@ -115,9 +115,15 @@ export function parseTerms(text) {
   }
   return terms;
 }
+// Planners and the validator read every tower's value string again and again; values are
+// immutable, so the parsed forms are kept (a bounded memo, cleared when full).
+const parsed = new Map();
 function parseE(text) {
-  let x = ZERO;
+  let x = parsed.get(text); if (x) return x;
+  x = ZERO;
   for (const { k, n, d } of parseTerms(text)) x = x.add(new E([[k, n]], d));
+  if (parsed.size >= 4096) parsed.clear();
+  parsed.set(text, x);
   return x;
 }
 
