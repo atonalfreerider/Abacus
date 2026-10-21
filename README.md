@@ -56,6 +56,8 @@ Drag the point along a curve. Its coordinates are laid out in square cards, one 
 - A **long press** on a whole number shows its fingerprint and prime components above its places.
 - View ▸ **Prime fingerprints under whole numbers** draws every whole number's fingerprint beneath its cards.
 
+**Legibility.** The fingerprints, the base trays and the cyber style were read back by TypeSafe's Jev model from pictures the app drew, choosing the true reading among near misses (fingerprints 94–97%, trays 100% after a contrast fix it prompted); see [docs/legibility.md](docs/legibility.md) and `tools/jev-legibility.mjs`. The app itself makes no network requests.
+
 **Number bases.** View ▸ Numerals (or the base button beside the status line, which steps through them) draws the cards in another base. Values stay exact; only the place values change.
 - *Base 2*: a place holds at most one card stack, of 2^k cards (1, 2, 4, 8, then a stack restarts with a 2⁴, 2⁸, … mark, as decimal restarts at k, M and B). Places are grouped in fours. Combining plays the carries card by card: two cards in a place stack and slide one tray left (`13 + 9 = 10110₂`).
 - *Balanced ternary*: digits −1, 0 and 1. A red card is the digit −1, written T in text and as a barred 1 on the tray, so a number needs no minus sign (`−5 = T11`, drawn as `+ T11`). Two like cards open a zero pair beside them, and the three like cards stack into the next place: 2 = 3 − 1 = 1T.

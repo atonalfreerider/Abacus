@@ -36,9 +36,9 @@
 [data-style=cyber] #equation-svg,[data-style=cyber] #graph-svg{font-family:var(--mono)}
 [data-style=cyber] #equation-svg text{fill:var(--text);font-family:var(--mono)}
 [data-style=cyber] #equation-svg .numeral{fill:#f1fdff;font-weight:200;stroke:#05070b;stroke-width:5px;paint-order:stroke;stroke-linejoin:round}
-[data-style=cyber] .digit-tray>rect:first-child{stroke:var(--line-bright);stroke-width:1.2;fill-opacity:.035}
+[data-style=cyber] .digit-tray>rect:first-child{stroke:#2f6475;stroke-width:1.6;fill-opacity:.05}
 [data-style=cyber] .digit-tray rect[stroke="#858274"]{stroke:var(--cyan);stroke-opacity:.12}
-[data-style=cyber] .group-comma path,[data-style=cyber] .decimal-comma path{stroke:var(--cyan);fill-opacity:.12}
+[data-style=cyber] .group-comma path,[data-style=cyber] .decimal-comma path{stroke:var(--cyan);stroke-width:2;fill-opacity:.3}
 [data-style=cyber] .decimal-comma circle{fill:var(--cyan)}
 [data-style=cyber] .equals-mirror path{stroke:var(--cyan);stroke-opacity:.7}
 [data-style=cyber] .equals-mirror text{fill:var(--cyan)!important;filter:drop-shadow(0 0 6px #36e6ff88)}
@@ -173,9 +173,9 @@
 [data-style=cyber] .base-head{font-family:var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:10px}
 [data-style=cyber] .base-head output{font-family:var(--mono);color:var(--cyan);text-transform:none;letter-spacing:0;font-size:14px}
 [data-style=cyber] .card-row .numeral{fill:#f1fdff;font-family:var(--mono);font-weight:200;stroke:#05070b;stroke-width:5px;paint-order:stroke}
-[data-style=cyber] .card-row .digit-tray>rect:first-child{stroke:var(--line-bright);fill-opacity:.035}
+[data-style=cyber] .card-row .digit-tray>rect:first-child{stroke:#2f6475;stroke-width:1.6;fill-opacity:.05}
 [data-style=cyber] .card-row .digit-tray rect[stroke="#858274"]{stroke:var(--cyan);stroke-opacity:.12}
-[data-style=cyber] .card-row path,[data-style=cyber] .card-row .group-comma path{stroke:var(--cyan)}
+[data-style=cyber] .card-row path{stroke:var(--cyan)}[data-style=cyber] .card-row .group-comma path,[data-style=cyber] .card-row .decimal-comma path{stroke-width:2;fill-opacity:.3}
 [data-style=cyber] .card-row .numeral-bar{stroke:var(--magenta)}[data-style=cyber] .card-row .digit-ellipsis circle{fill:var(--cyan)}
 [data-style=cyber] .fingerprint .fp-rings,[data-style=cyber] .fingerprint .fp-cup{filter:drop-shadow(0 0 1.5px #ffd23d)}
 [data-style=cyber] .fingerprint .fp-labels text{font-family:var(--mono)}
