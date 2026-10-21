@@ -18,6 +18,8 @@ if (app) {
   fs.cpSync('src/mvc', path.join(out, 'src/mvc'), { recursive: true });
   fs.cpSync('src/graph', path.join(out, 'src/graph'), { recursive: true });
   fs.cpSync('src/numbers', path.join(out, 'src/numbers'), { recursive: true });
+  // The Machine mode loads on first use; base e (e-base.js) on first use of base e.
+  fs.cpSync('src/machine', path.join(out, 'src/machine'), { recursive: true });
   fs.mkdirSync(path.join(out, 'textures'), { recursive: true });
   for (const id of [2, 18, 23, 24, 25]) fs.copyFileSync(`public/textures/swf-${id}.jpg`, path.join(out, `textures/swf-${id}.jpg`));
   fs.copyFileSync('public/textures/swf-12.png', path.join(out, 'textures/swf-12.png'));
@@ -36,6 +38,7 @@ for (const file of ['engine.js','place-value.js','haptics.js','native.js']) fs.c
 fs.cpSync('src/mvc',path.join(out,'src/mvc'),{recursive:true});
 fs.cpSync('src/graph',path.join(out,'src/graph'),{recursive:true});
 fs.cpSync('src/numbers',path.join(out,'src/numbers'),{recursive:true});
+fs.cpSync('src/machine',path.join(out,'src/machine'),{recursive:true});
 fs.mkdirSync(path.join(out,'textures'),{recursive:true});
 for(const id of [2,18,23,24,25])fs.copyFileSync(`public/textures/swf-${id}.jpg`,path.join(out,`textures/swf-${id}.jpg`));
 fs.copyFileSync('public/textures/swf-12.png',path.join(out,'textures/swf-12.png'));
