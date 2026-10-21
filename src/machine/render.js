@@ -18,7 +18,6 @@ const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹', sup = k => String(k).replace(/\d/g, d
 const natural = (a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
 const RADIX = {binary: '2', ternary: '3', e: 'e'};
 const attr = (name, v) => { const x = r(v); return x === 1 ? '' : ` ${name}="${x}"`; };
-const BULB_SYMBOLS = ['bulb-blue', 'bulb-red', 'bulb-amber', 'socket', 'lamp', 'sliver', 'overhang', 'halo', 'owed', 'burst'];
 
 // ---- symbols ----
 // Bulbs are view.js's bulb() and socket() centred on the origin; red carries a bar across
@@ -82,7 +81,7 @@ function glyphBody(op, palette, base, tilt = 0) {
   }
 }
 // The block itself: a face between its sockets, the sockets' rings, the glyph and the hub.
-function blockSVG(op, palette, base, {glyph = 1, tilt = 0, oldOp = null, oldGlyph = 0, sx = 88, w = 176, P = 'm-', q = null, id = null} = {}) {
+function blockSVG(op, palette, base, {glyph = 1, tilt = 0, oldOp = null, oldGlyph = 0, sx = 88, w = 176, q = null, id = null} = {}) {
   const m = palette.machine, h = UNITS.block[1];
   // the socket rings carry data-socket ("n1.L"), so a tap on the stage can name its socket
   const ring = (x, socket) => `<circle cx="${x}" cy="0" r="44" fill="${m.block}" stroke="${m.blockEdge}" stroke-width="2.5"${id ? ` data-socket="${id}.${socket}"` : ''}/><circle cx="${x}" cy="0" r="${R + 2}" fill="${palette.bulb.off.fill}" fill-opacity=".6" stroke="${m.blockEdge}" stroke-width="1.5" stroke-opacity=".5" pointer-events="none"/>`;
@@ -401,7 +400,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     // the quotient register's ring, while a register stands there
     const qa = Object.values(a.towers).some(t => t.at === `${nid}.Q`), qz = Object.values(z.towers).some(t => t.at === `${nid}.Q`);
     const q = qa || qz ? {x: layout.placeOf(`${nid}.Q`).x - at.x, o: qz ? (qa ? 1 : reduced ? v : E(u, [0, .3])) : reduced ? 1 - v : 1 - E(u, [.3, 1])} : null;
-    let body = blockSVG(opChange ? nz.op : n.op, palette, base, {glyph: alive * fadeGlyph * (opChange ? swap : 1), oldOp: opChange ? na.op : null, oldGlyph: alive * (1 - swap), tilt, sx: layout.socketX, w: layout.blockW, P, q, id: nid});
+    let body = blockSVG(opChange ? nz.op : n.op, palette, base, {glyph: alive * fadeGlyph * (opChange ? swap : 1), oldOp: opChange ? na.op : null, oldGlyph: alive * (1 - swap), tilt, sx: layout.socketX, w: layout.blockW, q, id: nid});
     // outlines round the whole block, its socket rings included
     const span = UNARY.has(n.op) ? layout.blockW / 2 : Math.max(layout.blockW / 2, layout.socketX + 44), ring = (g, extra) => `<rect x="${-span - g}" y="${-44 - g}" width="${2 * (span + g)}" height="${88 + 2 * g}" rx="${44 + g}" fill="none" ${extra}/>`;
     if (view.highlight === nid) body += ring(8, `stroke="${m.error}" stroke-width="5" class="error"`);
@@ -502,4 +501,3 @@ export function renderMachine(plan, t, layout, palette = ink, view = {}) {
   const svg = tt <= 0 ? frame(layout, plan.start, plan.start, null, 1, palette, view, far) : frame(layout, scenes[i], scenes[i + 1], plan.beats[i], u, palette, view, far);
   return {svg, viewBox: `${r(cam.x)} ${r(cam.y)} ${r(cam.w)} ${r(cam.h)}`, beat: i, u};
 }
-export const SYMBOLS = BULB_SYMBOLS;

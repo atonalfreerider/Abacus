@@ -318,15 +318,6 @@ export function layoutPlan(plan) {
     return [boxOf(o.x + shape.left, o.y + shape.top, o.x + shape.right, o.y + shape.bottom), pillBox(scene, id), noteBox(scene, id)].filter(Boolean);
   }
   const towerBox = (scene, id, options) => towerParts(scene, id, options).reduce(union, null);
-  // The place-value column stands left of a node's leftmost tower.
-  const placeColumnX = (scene, id) => {
-    let left = Infinity;
-    for (const [tid, t] of Object.entries(scene.towers)) {
-      const p = parsePlace(t.at);
-      if ((id === 'io' ? p.io === 'io' : p.node === id) && !isCollapsed(t)) left = Math.min(left, placeOf(t.at).x + towerShape(base, t, bulbsOf(scene, tid)).left);
-    }
-    return left === Infinity ? null : left - UNITS.placeCol / 2;
-  };
   // Furniture boxes: the triangle and the IO pills.
   const ioBoxes = [boxOf(-IO.half, IO.top, IO.half, IO.tip), ...Object.values(ioPills).map(p => boxOf(p.x - p.w / 2, p.top, p.x + p.w / 2, p.bottom))];
   let bounds = null;
@@ -349,7 +340,7 @@ export function layoutPlan(plan) {
     nodes: [...nodes.values()].sort(byId).map(n => n.id),
     parentOf: id => nodes.get(id)?.parent, socketOf: id => nodes.get(id)?.socket,
     socketPoint: id => socketPoint(nodes.get(id)),
-    place: placeSlot, placeOf, pillCentre, nodeAt, nodeBox, towerBox, towerParts, pillBox, noteBox, pillLift, placeColumnX,
+    place: placeSlot, placeOf, pillCentre, nodeAt, nodeBox, towerBox, towerParts, pillBox, noteBox, pillLift,
     wire: id => wires.get(id), ioBoxes, bounds,
   };
 }
