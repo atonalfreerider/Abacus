@@ -75,9 +75,9 @@ const FINGERPRINT = [
   'Which product of prime powers does `picture` show?',
 ];
 const TRAYS = {
-  binary: ['`picture` shows a whole number written in base 2 as a row of square trays, one tray per binary digit, read left to right. Each tray shows its digit (0 or 1) as a large numeral, with card stacks in the tray.',
+  binary: ['`picture` shows a whole number written in base 2 as a row of square trays, one tray per binary digit, read left to right. Each tray holds one round LED bulb, lit (1) or dark (0), with the digit written beneath it and its place value small in the corner.',
     'Small triangles between trays only separate groups of four digits; they are not digits. Which base-2 numeral does `picture` show?'],
-  ternary: ['`picture` shows a number written in balanced ternary as a row of square trays, one tray per digit, read left to right. The digits are 1, 0 and minus one. Minus one is drawn as a large 1 with a short bar over it (and a red card); in the options it is written T.',
+  ternary: ['`picture` shows a number written in balanced ternary as a row of square trays, one tray per digit, read left to right. Each tray holds one round LED bulb: lit blue for 1, dark for 0, lit red for minus one. The digit is written beneath the bulb; minus one is written as a 1 with a short bar over it, and in the options as T.',
     'Small triangles between trays only separate groups of three digits, and a triangle with a dotted stem below it is the point between the whole part and the fraction. Which balanced-ternary numeral does `picture` show?'],
   e: ['`picture` shows a number written in base e as a row of square trays, one tray per digit, read left to right. Each tray shows its digit (0, 1 or 2) as a large numeral.',
     'A plain triangle between trays separates groups of three digits; a triangle with a dotted stem below it is the point between the whole part and the fraction. Three dots after the last tray mean the digits run on (written … in the options). Which base-e numeral does `picture` show?'],

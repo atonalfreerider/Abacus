@@ -1,9 +1,10 @@
 // Number bases for the card trays. Decimal is the original abacus; the others write the
 // same exact value with other place values:
-// * base 2: digits 0 and 1, places 2^k. A stack holds 1, 2, 4 or 8 cards, then restarts
-//   with a mark (2⁴, 2⁸, …), as decimal restarts at k, M and B.
-// * balanced ternary: digits −1, 0 and 1 (written T, 0, 1), places 3^k. A digit −1 is a
-//   red card in a place, +1 a blue one, so a number needs no sign: −5 = T11 = −9 + 3 + 1.
+// * base 2: digits 0 and 1, places 2^k. Each tray holds one bit: an LED bulb, lit or dark,
+//   with its place value (2⁰, 2¹, …) written in the corner.
+// * balanced ternary: digits −1, 0 and 1 (written T, 0, 1), places 3^k. Each tray holds one
+//   trit: a bulb lit blue (+1), dark (0) or lit red (−1), so a number needs no sign:
+//   −5 = T11 = −9 + 3 + 1.
 // * base e: digits 0, 1 and 2, places e^k, by the greedy expansion. e is transcendental,
 //   so only 0, 1 and 2 end; every other number runs on and is cut off with an ellipsis.
 //   A stack of e^k cards is ⌊e^k⌋ whole cards and one sliced card.
@@ -11,8 +12,8 @@
 import { placeMetadata as decimalMeta } from '../place-value.js';
 export const bases={
  decimal:{id:'decimal',name:'Decimal',short:'10',radix:10,group:3,slots:9,sub:'₁₀'},
- binary:{id:'binary',name:'Base 2',short:'2',radix:2,group:4,slots:1,sub:'₂'},
- ternary:{id:'ternary',name:'Balanced ternary',short:'±3',radix:3,group:3,slots:1,balanced:true,sub:' bal₃'},
+ binary:{id:'binary',name:'Base 2',short:'2',radix:2,group:4,slots:1,sub:'₂',bulbs:true},
+ ternary:{id:'ternary',name:'Balanced ternary',short:'±3',radix:3,group:3,slots:1,balanced:true,sub:' bal₃',bulbs:true},
  e:{id:'e',name:'Base e',short:'e',radix:Math.E,group:3,slots:2,sub:'ₑ',fraction:3,irrational:true},
 };
 export const baseOrder=['decimal','binary','ternary','e'];
@@ -27,6 +28,9 @@ const SUP='⁰¹²³⁴⁵⁶⁷⁸⁹',sup=k=>String(k).replace(/\d/g,d=>SUP[d]
 // the top row's first two; a base just has fewer cells. Further cards wait on the rim.
 export function slotAt(cell,base=numeral.id){
  const slots=bases[base].slots;
+ // A bulb tray's one socket sits high in the middle (its 43-wide box; the bulb is drawn round it).
+ // Bulbs that arrive while it is lit wait above the tray, side by side.
+ if(bases[base].bulbs)return cell<1?{x:53.5,y:40.5}:{x:53.5+(cell-1)*34,y:-62};
  return cell<slots?{x:7+cell%3*47,y:7+Math.floor(cell/3)*47}:{x:54+(cell-slots)*6,y:-43-(cell-slots)*6};
 }
 // What one card stack of place k holds, and how it is drawn.
@@ -34,6 +38,8 @@ export function placeMeta(exponent,base=numeral.id){
  const b=bases[base];
  if(base==='decimal')return decimalMeta(exponent);
  const magnitudeOf=k=>b.radix**k;
+ // A bulb is one bit (or trit) whatever its place: the place value is written, not stacked.
+ if(b.bulbs)return {exponent,base,group:0,local:0,magnitude:magnitudeOf(exponent),cardCount:1,supportCards:0,partial:1,mark:'',name:`${b.radix}${sup(exponent)}`,innerScale:1,bulb:true};
  if(exponent<0)return {exponent,base,group:0,local:0,magnitude:magnitudeOf(exponent),cardCount:1,supportCards:0,partial:1,mark:'',name:'fraction',innerScale:Math.sqrt(magnitudeOf(exponent))};
  const group=Math.floor(exponent/b.group),local=exponent%b.group,size=b.radix**local,cardCount=Math.ceil(size-1e-9);
  const symbol=base==='e'?'e':String(b.radix);

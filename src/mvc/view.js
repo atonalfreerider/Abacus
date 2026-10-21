@@ -31,7 +31,32 @@ export function face(x,y,size,color,meta,attributes='',role='top') {
   if(meta.mark)svg+=`<text x="${round(x+size-7)}" y="${round(y+size-6)}" text-anchor="end" font-size="12" font-weight="bold" fill="${ink.mark[color]}">${meta.mark}</text>`;
   return svg+'</g>';
 }
+// An LED bulb round a 43-wide box at (x, y), the size of a card: base 2 and balanced
+// ternary hold one bit or trit per tray. Lit, it glows in its sign's colour; dark, it is
+// a socket with a filament.
+export const BULB=37;
+export function bulb(x,y,color,opacity=1){
+  const b=ink.bulb[color]||ink.bulb.blue,cx=round(x+21.5),cy=round(y+21.5),R=BULB;
+  return `<g class="bulb bulb-${color}" opacity="${round(opacity)}"><circle cx="${cx}" cy="${cy}" r="${round(R*1.42)}" fill="${b.glow}" opacity=".14"/><circle cx="${cx}" cy="${cy}" r="${round(R*1.22)}" fill="${b.glow}" opacity=".26"/><circle cx="${cx}" cy="${cy}" r="${R}" fill="${b.body}" stroke="${b.glow}" stroke-width="2"/><circle cx="${cx}" cy="${cy}" r="${round(R*.58)}" fill="${b.core}" opacity=".85"/><ellipse cx="${round(cx-R*.36)}" cy="${round(cy-R*.42)}" rx="${round(R*.26)}" ry="${round(R*.15)}" transform="rotate(-35 ${round(cx-R*.36)} ${round(cy-R*.42)})" fill="#fff" opacity=".75"/></g>`;
+}
+export function socket(x,y){
+  const o=ink.bulb.off,cx=round(x+21.5),cy=round(y+21.5),R=BULB;
+  return `<g class="bulb-socket"><circle cx="${cx}" cy="${cy}" r="${R}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="2"/><path d="M${cx-13} ${cy+11}v-9l4.6 -8l4.2 8l4.2 -8l4.2 8l4.2 -8l4.6 8v9" fill="none" stroke="${o.filament}" stroke-width="2" stroke-linejoin="round"/><ellipse cx="${round(cx-R*.36)}" cy="${round(cy-R*.42)}" rx="${round(R*.24)}" ry="${round(R*.13)}" transform="rotate(-35 ${round(cx-R*.36)} ${round(cy-R*.42)})" fill="#fff" opacity=".35"/></g>`;
+}
+// The numeral under a bulb (a barred 1 for the trit T).
+export function bulbNumeral(label,x=75,opacity=1){
+  const bar=label==='T';if(bar)label='1';
+  return `<text x="${x}" y="127" dominant-baseline="central" text-anchor="middle" class="numeral" font-size="44" fill="#050504" opacity="${opacity}" pointer-events="none">${esc(label)}</text>`+(bar?`<path class="numeral-bar" d="M${x-11} 106h22" stroke="#050504" stroke-width="5" stroke-linecap="round" opacity="${opacity}" pointer-events="none"/>`:'');
+}
 export function tray(digit,color,exponent=0,camera='front',label=String(digit),unknown=false,base=numeral.id) {
+  if(bases[base].bulbs){
+    const {x,y}=slotAt(0,base),meta=placeMeta(exponent,base);
+    let svg='<rect width="150" height="150" rx="12" fill="url(#paper)" fill-opacity=".16" stroke="#171713" stroke-width="2"/>'+socket(x,y);
+    if(digit>0)svg+=unknown?`<g opacity=".25">${bulb(x,y,color)}</g>`:bulb(x,y,color);
+    svg+=`<text class="place-value" x="11" y="21" font-size="17" fill="#6d6655" pointer-events="none">${meta.name}</text>`;
+    if(label!=='')svg+=bulbNumeral(label);
+    return `<g class="digit-tray bulb-tray" data-cards="1" data-stack-depth="0" data-exponent="${exponent}" data-lit="${digit>0?color:'off'}">${svg}</g>`;
+  }
   const meta=stackGeometry(exponent,camera,base),size=43;
   let svg='<rect width="150" height="150" rx="12" fill="url(#paper)" fill-opacity=".16" stroke="#171713" stroke-width="2"/>';
   for(let cell=0;cell<bases[base].slots;cell++) {
@@ -101,7 +126,7 @@ export function termWidth(term){
   if(term.kind==='variable'&&Math.abs(term.value.n)===term.value.d)return 160;const spec=placeSpec(term);return (spec?spec.width:Math.max(wholeWidth(term.value.n,numeral.id),wholeWidth(term.value.d,numeral.id))*160)+(term.kind==='variable'?DOT_GAP+160:0);}
 // A card cut into equal vertical slices; `count` of them remain.
 export function sliceTray(count,denominator,color,camera,label=`${count}/${denominator}`){
-  let art=tray(count/denominator,color,0,camera,'');
+  let art=tray(count/denominator,color,0,camera,'',false,'decimal');
   const slice=43/denominator;art+=`<rect x="7" y="7" width="43" height="43" rx="5" fill="none" stroke="#25241e" stroke-opacity=".55" stroke-dasharray="3 3"/>`;
   if(denominator<=24)for(let k=1;k<denominator;k++)art+=`<line x1="${round(7+k*slice)}" y1="9" x2="${round(7+k*slice)}" y2="48" stroke="#25241e" stroke-opacity=".5" stroke-width="${k<count?1:.6}"/>`;
   return art+`<text x="75" y="104" dominant-baseline="central" text-anchor="middle" class="numeral slice-label" font-size="58" fill="#050504" pointer-events="none">${esc(label)}</text>`;
@@ -320,7 +345,7 @@ export function phaseParticles(active,{pos,draw,color,camera,shift=0,base='decim
    const end=pos(single),pitch=cameras[camera].pitch,depth=placeMeta(many[0].place+shift,base).cardCount*pitch;
    // Two stages, so the regrouping can be followed: ten cards gather into one stack in
    // their own tray (g), then the stack slides one tray over (f). A borrow plays it backwards.
-   const c=carry?q:1-q,g=ease(c/.5),f=ease((c-.5)/.5),comma=(single.place+shift)%bases[base].group===0||many[0].place+shift<0;
+   const c=carry?q:1-q,g=ease(c/.5),f=ease((c-.5)/.5),comma=!bases[base].bulbs&&((single.place+shift)%bases[base].group===0||many[0].place+shift<0);
    const home=pos({...single,place:many[0].place}),slide={x:(end.x-home.x)*f,y:(end.y-home.y)*f};
    // Adjacent depth ranges form exactly the same cached 10/100 stack as the settled unit.
    // At a comma, compress the old depth group into the next inscribed face.
@@ -366,12 +391,13 @@ function renderUnits(plan,t,options){
  overrides[u.target]={x:target.x,y:target.y,term:t>.9?result.term:target.term,art:boxes,labelOpacity:0};
  let body=renderLayout(scene,options,overrides),particles='';
  const color=token=>token.sign<0?'red':'blue';
- const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity,base)}</g>`;
+ const lights=!!bases[base].bulbs;
+ const draw=(token,point,opacity=1)=>`<g data-unit="${token.id}" data-sign="${token.sign}" data-place="${token.place}">${lights?bulb(point.x,point.y,color(token),opacity):stackUnit(point.x,point.y,color(token),token.place+shift,options.camera,opacity,base)}</g>`;
  for(const token of frame.tokens)particles+=draw(token,pos(token));
  particles+=phaseParticles(frame.active,{pos,draw,color,camera:options.camera,shift,base});
  // Numerals fade out at pickup and return only after the units reach their settled cells.
  let numerals='';const labels=t<.06?1-t/.06:t>.9?(t-.9)/.1:0;
- if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){for(const digit of spec(term).places){const glyph=digit.signed===undefined?digit.digit:digitGlyph(digit.signed,base);numerals+=`<text x="${slot.x+digit.x+75}" y="${slot.y+75}" dominant-baseline="central" text-anchor="middle" font-size="124" opacity="${labels}">${glyph==='T'?'1':glyph}</text>`+(glyph==='T'?`<path class="numeral-bar" d="M${slot.x+digit.x+50} ${slot.y+22}h50" stroke="#050504" stroke-width="9" stroke-linecap="round" opacity="${labels}"/>`:'');}}}
+ if(labels){for(const [slot,term] of (t<.06?[[target,target.term],[{...source,...sourceAt},source.term]]:[[result,result.term]])){for(const digit of spec(term).places){const glyph=digit.signed===undefined?digit.digit:digitGlyph(digit.signed,base);if(lights){numerals+=`<g transform="translate(${slot.x+digit.x} ${slot.y})">${bulbNumeral(glyph,75,labels)}</g>`;continue;}numerals+=`<text x="${slot.x+digit.x+75}" y="${slot.y+75}" dominant-baseline="central" text-anchor="middle" font-size="124" opacity="${labels}">${glyph==='T'?'1':glyph}</text>`+(glyph==='T'?`<path class="numeral-bar" d="M${slot.x+digit.x+50} ${slot.y+22}h50" stroke="#050504" stroke-width="9" stroke-linecap="round" opacity="${labels}"/>`:'');}}}
 
  body+=`<g class="unit-animation" data-phase="${phase?.type||'settled'}" pointer-events="none">${particles}</g>`+numerals;
  const expand=ease(t/.15)*(1-ease((t-.9)/.1));scene.minX=Math.min(0,anchor.x+placeOffset(maxPlace)-8)*expand;scene.minY=Math.min(0,sourceAt.y-20)*expand;scene.width=lerp(scene.width,Math.max(scene.width,sourceAt.x+source.w+stackGeometry(2,options.camera,base).depth+20),expand);scene.height=lerp(before.height,after.height,p)+Math.max(0,sourceAt.y+200+stackGeometry(2,options.camera,base).depth-before.height)*expand;

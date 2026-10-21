@@ -4,7 +4,7 @@ import { digitsOf, baseText, baseSpec, wholeDigits, expandBaseLiterals, placeMet
 import { unitPlan, unitValue } from '../src/mvc/units.js';
 import { planTransition } from '../src/mvc/animation.js';
 import { EquationModel } from '../src/mvc/model.js';
-import { renderEquation, parseStackId, stackId, stackContent } from '../src/mvc/view.js';
+import { renderEquation, parseStackId, stackId, stackContent, tray } from '../src/mvc/view.js';
 
 const gcd = (a, b) => { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) [a, b] = [b, a % b]; return a; };
 // The exact value of a digit list: Σ digit · radix^exponent as a reduced fraction.
@@ -62,11 +62,15 @@ test('typed 0b and 0t literals become decimal', () => {
   assert.equal(new EquationModel(expandBaseLiterals('x+0b101=0t1T0')).nextStep().type, 'move');
 });
 
-test('stacks: 2^k and 3^k cards, restarting with a mark, and e^k with its last card sliced', () => {
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map(k => placeMeta(k, 'binary').cardCount), [1, 2, 4, 8, 1, 2]);
-  assert.equal(placeMeta(4, 'binary').mark, '2⁴');
-  assert.deepEqual([0, 1, 2, 3].map(k => placeMeta(k, 'ternary').cardCount), [1, 3, 9, 1]);
-  assert.equal(placeMeta(3, 'ternary').mark, '3³');
+test('trays: one LED bulb per bit or trit, and e^k cards with the last one sliced', () => {
+  assert.deepEqual([0, 1, 4, -2].map(k => placeMeta(k, 'binary').cardCount), [1, 1, 1, 1], 'a bulb, whatever its place');
+  assert.deepEqual([0, 4, -2].map(k => placeMeta(k, 'binary').name), ['2⁰', '2⁴', '2⁻²']);
+  assert.equal(placeMeta(3, 'ternary').name, '3³');
+  const lit = tray(1, 'blue', 3, 'front', '1', false, 'binary'), dark = tray(0, 'blue', 3, 'front', '0', false, 'binary'), trit = tray(1, 'red', 2, 'front', 'T', false, 'ternary');
+  assert.match(lit, /data-lit="blue"/); assert.match(lit, /class="bulb bulb-blue"/); assert.match(lit, /2³/);
+  assert.match(dark, /data-lit="off"/); assert.doesNotMatch(dark, /class="bulb /); assert.match(dark, /bulb-socket/);
+  assert.match(trit, /class="bulb bulb-red"/); assert.match(trit, /numeral-bar/);
+  assert.doesNotMatch(lit + dark + trit, /unit-stack/, 'no card stacks in a bulb tray');
   const e2 = placeMeta(2, 'e');
   assert.equal(e2.cardCount, 8); assert.ok(Math.abs(e2.partial - (Math.E ** 2 - 7)) < 1e-12);
   for (const id of [stackId('red', -2, 'depth', 'binary'), stackId('blue', 4, 'front', 'e'), stackId('green', 0, 'spread', 'decimal')]) {

@@ -56,6 +56,24 @@ for the trays: this is a re-check, not a strict A/B.)
 The fingerprints were left as they are: the ring count is the language's own design (from the riemann project), and
 its misses come with low confidence.
 
+## LED bulbs (2026-10-21, later)
+
+Base 2 and balanced ternary then changed from card stacks to one LED bulb per tray (lit blue, dark, or lit red for
+the trit T, with the digit beneath and the place value in the corner). Re-read with the prompts describing bulbs
+(`--only trays`):
+
+| pictures | style | read right | confident (≥ 0.6) reads that were right | mean p(truth) |
+|---|---|---|---|---|
+| trays, base 2 (8) | sketchpad | 8 (100%) | 8 of 8 | 0.97 |
+| trays, balanced ternary (8) | sketchpad | 8 (100%) | 7 of 7 | 0.92 |
+| trays, base e (8) | sketchpad | 8 (100%) | 7 of 7 | 0.94 |
+| trays, base 2 (8) | cyber | 8 (100%) | 8 of 8 | 0.94 |
+| trays, balanced ternary (8) | cyber | 8 (100%) | 8 of 8 | 0.92 |
+| trays, base e (8) | cyber | 8 (100%) | 8 of 8 | 0.99 |
+
+In cyber the bar over a red bulb's 1 was first drawn magenta inside the bulb's magenta glow, where it vanished; it is
+drawn in the numeral's colour.
+
 ## Running it
 
 ```sh

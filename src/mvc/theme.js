@@ -18,6 +18,8 @@ const sketchpad={
  tenOutline:'#10170f',
  curves:['#2f5d6b','#9a5b10','#6b3f8a'],
  background:'#f7f0df',
+ // LED bulbs (base 2 and balanced ternary): lit blue (1), lit red (−1), or a dark socket.
+ bulb:{blue:{body:'#2f7fc4',core:'#e2f3ff',glow:'#4aa3ff'},red:{body:'#c8402f',core:'#ffe4dc',glow:'#ff6a4d'},green:{body:'#5d8a39',core:'#efffe0',glow:'#8fd14f'},off:{fill:'#ebe5d2',stroke:'#7b7564',filament:'#a79f88'}},
  // Marble fingerprints (the prime-component language).
  marble:{gold:'#f2c230',goldEdge:'#7a5a06',ring:'#a87a06',string:'#6d6655',prime:'#f2c230',square:'#b8323f',pronic:'#6f8fe8',composite:'#9a9ca8',unit:'#fdfbf4',arm:'#5c5446'},
 };
@@ -34,6 +36,7 @@ const cyber={
  tenOutline:'#e8fbff',
  curves:['#36e6ff','#ffb21e','#c77dff'],
  background:'#05070b',
+ bulb:{blue:{body:'#12b5d4',core:'#ecfeff',glow:'#36e6ff'},red:{body:'#e0206e',core:'#ffe6f0',glow:'#ff3d8b'},green:{body:'#7fc61e',core:'#f6ffe6',glow:'#b8ff3c'},off:{fill:'#081016',stroke:'#2f6475',filament:'#1f4655'}},
  marble:{gold:'#ffd23d',goldEdge:'#ffb000',ring:'#ffd23d',string:'#3c5866',prime:'#ffd23d',square:'#ff3d6e',pronic:'#5f8bff',composite:'#8b93a7',unit:'#f2fbff',arm:'#0d1a22'},
 };
 export const styles={sketchpad,cyber};
