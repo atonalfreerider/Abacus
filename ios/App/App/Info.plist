@@ -98,6 +98,16 @@
 		</dict>
 		<dict>
 			<key>UIApplicationShortcutItemType</key>
+			<string>com.metavirtuoso.abacus.numbers</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Numbers</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Take a number apart</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>circle.hexagongrid</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
 			<string>com.metavirtuoso.abacus.equation</string>
 			<key>UIApplicationShortcutItemTitle</key>
 			<string>Equation</string>
