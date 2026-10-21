@@ -51,9 +51,10 @@ export function bulbNumeral(label,x=75,opacity=1){
 export function tray(digit,color,exponent=0,camera='front',label=String(digit),unknown=false,base=numeral.id) {
   if(bases[base].bulbs){
     const {x,y}=slotAt(0,base),meta=placeMeta(exponent,base);
-    let svg='<rect width="150" height="150" rx="12" fill="url(#paper)" fill-opacity=".16" stroke="#171713" stroke-width="2"/>'+socket(x,y);
+    // Just the bulb: no tray round it. Its place value sits above it, its digit beneath.
+    let svg=socket(x,y);
     if(digit>0)svg+=unknown?`<g opacity=".25">${bulb(x,y,color)}</g>`:bulb(x,y,color);
-    svg+=`<text class="place-value" x="11" y="21" font-size="17" fill="#6d6655" pointer-events="none">${meta.name}</text>`;
+    svg+=`<text class="place-value" x="75" y="10" font-size="17" text-anchor="middle" fill="#6d6655" pointer-events="none">${meta.name}</text>`;
     if(label!=='')svg+=bulbNumeral(label);
     return `<g class="digit-tray bulb-tray" data-cards="1" data-stack-depth="0" data-exponent="${exponent}" data-lit="${digit>0?color:'off'}">${svg}</g>`;
   }
