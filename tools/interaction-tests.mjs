@@ -160,7 +160,7 @@ try{
   await base('ternary');await load('x - 5 = 13');
   expect(await page.eval(`(()=>{const five=document.querySelector('#equation-svg .term[data-index="1"]');return [...five.querySelectorAll(':scope > text')].map(t=>t.textContent).join('')+'|'+five.querySelectorAll('.numeral-bar').length;})()`),'+|1','−5 is + T11, its 9s digit barred');
   for(let i=0;i<3&&!/Solved/.test(await status());i++){await page.eval(`document.getElementById('solve').click()`);await idle();}
-  expect(await status(),'Solved: x = 18 = 1T00₃̄','solved in balanced ternary');
+  expect(await status(),'Solved: x = 18 = 1T00 bal₃','solved in balanced ternary');
   await base('e');await load('30');const [thirty]=await terms();
   await page.mouse('mouseMoved',thirty.x,thirty.y,{buttons:0});await page.mouse('mousePressed',thirty.x,thirty.y);await wait(750);const peek=await page.eval(`document.getElementById('peek').innerText`);await page.mouse('mouseReleased',thirty.x,thirty.y);
   if(!/30 = 1102\.11…ₑ/.test(peek)||!/e³/.test(peek)||!/run on/.test(peek))throw Error('base e peek: '+peek);
@@ -169,6 +169,24 @@ try{
   expect(await page.eval(`document.getElementById('numerals').value`),'decimal','a lesson counts in tens');
   await page.eval(`document.getElementById('tutor-close').click()`);await wait(200);
   expect(await page.eval(`document.getElementById('numerals').value`),'e','leaving the lesson gives the base back');
+ });
+ await check('prime components: a long press shows the marble fingerprint, and Numbers pulls it apart into the whole volume',async()=>{
+  await load('360 + 1');const [three60]=await terms();
+  await page.mouse('mouseMoved',three60.x,three60.y,{buttons:0});await page.mouse('mousePressed',three60.x,three60.y);await wait(750);
+  const peek=await page.eval(`(()=>({svg:!!document.querySelector('#peek .peek-fingerprint svg'),text:document.querySelector('#peek .peek-fingerprint p')?.textContent}))()`);await page.mouse('mouseReleased',three60.x,three60.y);
+  expect(peek.text,'360 = 2³ · 3² · 5: composite','peek names the prime components');expect(peek.svg,true,'peek draws the fingerprint');
+  await page.eval(`document.getElementById('open-numbers').click()`);await wait(900);
+  expect(await page.eval(`document.getElementById('numbers-n').value`),'360','opens on the biggest whole number in the equation');
+  expect(await page.eval(`document.querySelectorAll('#numbers-panel .base-row .card-row').length`),4,'the number as cards in every base');
+  const count=()=>page.eval(`document.querySelectorAll('#numbers-stage .fp-marbles circle').length`);
+  expect(await count(),1+2+3+5,'packed: the badge and a container per prime');
+  const box=await page.eval(`(()=>{const r=document.getElementById('numbers-stage').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};})()`);
+  await page.drag({x:box.x+box.w*.2,y:box.y+box.h/2},{x:box.x+box.w*.95,y:box.y+box.h/2},{steps:25});await wait(200);
+  if(!(await page.eval(`Number(document.getElementById('numbers-phase').value)`)>.5))throw Error('a drag to the right pulls the fingerprint apart');
+  await page.eval(`(()=>{const r=document.getElementById('numbers-phase');r.value=1;r.dispatchEvent(new Event('input'));})()`);await wait(100);
+  expect(await count(),1+360,'pulled apart: all 360 marbles');
+  await page.eval(`document.getElementById('numbers-to-cards').click()`);await wait(400);
+  expect(await page.eval(`document.getElementById('numbers-mode').hidden`),true,'back to the cards');expect(await status(),'360','the number is on the cards');
  });
  await check('graph: dragging the point stays at frame rate',async()=>{
   await openGraph();const from=await graphRect('#graph-svg .tracer circle');

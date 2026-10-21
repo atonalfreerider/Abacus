@@ -17,6 +17,7 @@ if (app) {
   for (const file of ['engine.js', 'place-value.js', 'haptics.js', 'native.js']) fs.copyFileSync('src/' + file, path.join(out, 'src', file));
   fs.cpSync('src/mvc', path.join(out, 'src/mvc'), { recursive: true });
   fs.cpSync('src/graph', path.join(out, 'src/graph'), { recursive: true });
+  fs.cpSync('src/numbers', path.join(out, 'src/numbers'), { recursive: true });
   fs.mkdirSync(path.join(out, 'textures'), { recursive: true });
   for (const id of [2, 18, 23, 24, 25]) fs.copyFileSync(`public/textures/swf-${id}.jpg`, path.join(out, `textures/swf-${id}.jpg`));
   fs.copyFileSync('public/textures/swf-12.png', path.join(out, 'textures/swf-12.png'));
@@ -34,6 +35,7 @@ for (const file of ['styles.css', 'ruffle-config.js', 'reference.js']) fs.copyFi
 for (const file of ['engine.js','place-value.js','haptics.js','native.js']) fs.copyFileSync('src/'+file,path.join(out,'src',file));
 fs.cpSync('src/mvc',path.join(out,'src/mvc'),{recursive:true});
 fs.cpSync('src/graph',path.join(out,'src/graph'),{recursive:true});
+fs.cpSync('src/numbers',path.join(out,'src/numbers'),{recursive:true});
 fs.mkdirSync(path.join(out,'textures'),{recursive:true});
 for(const id of [2,18,23,24,25])fs.copyFileSync(`public/textures/swf-${id}.jpg`,path.join(out,`textures/swf-${id}.jpg`));
 fs.copyFileSync('public/textures/swf-12.png',path.join(out,'textures/swf-12.png'));

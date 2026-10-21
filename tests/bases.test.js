@@ -36,10 +36,10 @@ test('digits and text in each base', () => {
   assert.equal(baseText({ n: 1, d: 4 }, 'binary'), '0.01₂');
   assert.equal(digitsOf({ n: 1, d: 3 }, 'binary'), null, 'a third never ends in base 2');
   assert.equal(baseText({ n: 1, d: 3 }, 'binary'), '1/11₂');
-  assert.equal(baseText({ n: -5, d: 1 }, 'ternary'), 'T11₃̄', 'balanced ternary needs no minus sign');
-  assert.equal(baseText({ n: 8, d: 1 }, 'ternary'), '10T₃̄');
-  assert.equal(baseText({ n: 1, d: 3 }, 'ternary'), '0.1₃̄');
-  assert.equal(baseText({ n: 0, d: 1 }, 'ternary'), '0₃̄');
+  assert.equal(baseText({ n: -5, d: 1 }, 'ternary'), 'T11 bal₃', 'balanced ternary needs no minus sign');
+  assert.equal(baseText({ n: 8, d: 1 }, 'ternary'), '10T bal₃');
+  assert.equal(baseText({ n: 1, d: 3 }, 'ternary'), '0.1 bal₃');
+  assert.equal(baseText({ n: 0, d: 1 }, 'ternary'), '0 bal₃');
   assert.deepEqual(wholeDigits(-27, 'ternary').map(x => x.digit), [0, 0, 0, -1]);
   assert.equal(baseText({ n: 30, d: 1 }, 'e'), '1102.11…ₑ');
   assert.equal(baseText({ n: 2, d: 1 }, 'e'), '2ₑ', 'only 0, 1 and 2 end in base e');

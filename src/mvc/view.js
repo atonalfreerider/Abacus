@@ -6,6 +6,7 @@ import { ease,clamp,operationGroups } from './animation.js';
 import { renderOperation } from './operation-view.js';
 import { ink,patternDefs,onStyle } from './theme.js';
 import { numeral,bases,placeMeta,baseSpec,slotAt,digitGlyph,placeOffsetIn,isGroupEdge } from './bases.js';
+import { Fingerprint } from '../numbers/fingerprint.js';
 export const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export const round=n=>Math.round(n*1000)/1000;
 // Exact place-value text such as 0.001; 10**-3 prints differently across engines.
@@ -52,7 +53,7 @@ export function commaTriangle(x,decimal=false){return `<g class="${decimal?'deci
 // The digits run on (base e): an ellipsis after the last tray.
 export const ellipsis=x=>`<g class="digit-ellipsis" pointer-events="none">${[0,1,2].map(i=>`<circle cx="${x+14+i*20}" cy="118" r="6" fill="#37362e"/>`).join('')}</g>`;
 export function specArt(spec,color,camera,label=true){
-  if(!spec.base)return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');
+  if(!spec.base)return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,color,p.exponent,camera,label?String(p.digit):'',false,'decimal')}</g>`).join('')+spec.markers.map(m=>commaTriangle(m.x,m.decimal)).join('');
   // Other bases: balanced ternary colours each place by its digit's sign.
   const tint=p=>spec.balanced?(p.negative?'red':'blue'):color;
   return spec.places.map(p=>`<g transform="translate(${p.x} 0)">${tray(label?p.digit:0,tint(p),p.exponent,camera,label?digitGlyph(p.signed,spec.base):'',false,spec.base)}</g>`).join('')+spec.markers.map(m=>m.ellipsis?ellipsis(m.x):commaTriangle(m.x,m.decimal)).join('');
@@ -137,8 +138,20 @@ export function termArt(term,camera,solvedValue=null) {
   }
   return result;
 }
-export function layout(equation,{orientation='horizontal',camera='front',expression=false}={}) {
-  const depth=stackGeometry(2,camera).depth, gap=95, margin=depth+32;
+// View ▸ Prime fingerprints: each whole number's prime components drawn under its cards
+// in the marble language (src/numbers/fingerprint.js), in a band FINGERPRINT tall.
+export const FINGERPRINT=86;
+const fingerprints=new Map();onStyle(()=>fingerprints.clear());
+export function termFingerprint(term,w){
+  if(term.expr||term.kind!=='constant'||term.value.d!==1||term.placeholder)return '';
+  const n=Math.abs(term.value.n);if(n<2)return '';
+  let art=fingerprints.get(n);
+  if(!art){const {body,bounds}=new Fingerprint(n).render(0,{palette:ink.marble});art={body,bounds};if(fingerprints.size>200)fingerprints.clear();fingerprints.set(n,art);}
+  const b=art.bounds,pad=.5,vw=b.width+2*pad,vh=b.height+2*pad,scale=Math.min((FINGERPRINT-10)/vh,(w-8)/vw),width=vw*scale,height=vh*scale;
+  return `<svg class="term-fingerprint" x="${round((w-width)/2)}" y="${round(178+(FINGERPRINT-10-height)/2)}" width="${round(width)}" height="${round(height)}" viewBox="${round(b.x-pad)} ${round(b.y-pad)} ${round(vw)} ${round(vh)}" pointer-events="none">${art.body}</svg>`;
+}
+export function layout(equation,{orientation='horizontal',camera='front',expression=false,fingerprints=false}={}) {
+  const depth=stackGeometry(2,camera).depth, gap=95, margin=depth+32, extra=fingerprints?FINGERPRINT:0;
   const rows={};let width=0,height=0;
   for(const side of ['left','right']) {
     let cursor=margin;
@@ -148,15 +161,15 @@ export function layout(equation,{orientation='horizontal',camera='front',express
   }
   let equal;
   if(orientation==='vertical') {
-    height=(190+2*margin)*2+100;equal={x:width/2,y:height/2};
+    height=(190+2*margin)*2+100+2*extra;equal={x:width/2,y:height/2};
     for(const side of ['left','right']){const rowWidth=rows[side].at(-1).x+rows[side].at(-1).w+margin;rows[side].forEach(t=>t.x+=(width-rowWidth)/2);}
-    rows.left.forEach(t=>t.y=margin);rows.right.forEach(t=>t.y=height/2+85);
+    rows.left.forEach(t=>t.y=margin);rows.right.forEach(t=>t.y=height/2+85+extra);
   } else {
     const leftWidth=rows.left.at(-1).x+rows.left.at(-1).w+margin;
     equal={x:leftWidth+55,y:margin+75};rows.right.forEach(t=>t.x+=leftWidth+120);
-    width=rows.right.at(-1).x+rows.right.at(-1).w+margin;height=220+margin*2;
+    width=rows.right.at(-1).x+rows.right.at(-1).w+margin;height=220+margin*2+extra;
   }
-  if(expression){rows.right=[];width=rows.left.at(-1).x+rows.left.at(-1).w+margin;equal=null;height=220+margin*2;}
+  if(expression){rows.right=[];width=rows.left.at(-1).x+rows.left.at(-1).w+margin;equal=null;height=220+margin*2+extra;}
   return {terms:[...rows.left,...rows.right],width,height,equal,orientation};
 }
 // Stacks are shared definitions, one per colour, place and camera (and base, outside decimal).
@@ -167,6 +180,17 @@ export const stackIds=body=>[...new Set([...body.matchAll(/href="#(stack-(blue|r
 export function parseStackId(id){const [,color,place,camera]=id.split('-'),[,base='decimal',minus,digits]=place.match(/^(binary|ternary|e)?(m?)(\d+)$/);return {color,camera,base,meta:stackGeometry(Number((minus?'-':'')+digits),camera,base)};}
 // Vector card faces for one cached stack; the browser may swap in a raster of the same drawing.
 export function stackContent(id){if(stackCache.has(id))return stackCache.get(id);const {color,meta}=parseStackId(id);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`,cardRole(layer,meta.cardCount));stackCache.set(id,content);return content;}
+// A value's trays in a base as a standalone <svg> (the Numbers view writes a number in
+// every base). Its pattern and stack ids are prefixed, so it never borrows another
+// drawing's definitions.
+export function cardsSVG(value,base,{camera='front',prefix='c-',label=true}={}){
+  const spec=placeSpec({kind:'constant',value,notation:'auto'},base);if(!spec)return '';
+  let art=specArt(spec,value.n<0?'red':'blue',camera,label);
+  const defs=stackIds(art).map(id=>`<g id="${prefix}${id}">${stackContent(id)}</g>`).join('');
+  const own=text=>text.replace(/url\(#(blue|red|green|paper)\)/g,`url(#${prefix}$1)`).replace(/href="#stack-/g,`href="#${prefix}stack-`);
+  const depth=stackGeometry(2,camera,base).depth;
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="card-row" viewBox="-6 -50 ${round(spec.width+12)} ${round(206+depth)}" font-family="Georgia,serif" role="img"><defs>${patternDefs(prefix)}${own(defs)}</defs>${own(art)}</svg>`;
+}
 function stackDefinitions(body){return '<defs>'+stackIds(body).map(id=>`<g id="${id}">${stackContent(id)}</g>`).join('')+'</defs>';}
 export {textureSources} from './theme.js';
 export const textureDefs=()=>patternDefs();
@@ -181,7 +205,7 @@ export function renderLayout(scene,options,overrides={}) {
     // Balanced ternary needs no minus sign: a constant's trits carry its sign (x + T11 = 111).
     const signed=bases[numeral.id].balanced&&!actual.expr&&actual.kind==='constant'&&!!placeSpec(actual);
     if(signed?index>0:index>0||math.negative(actual))body+=`<text x="-47" y="97" text-anchor="middle" font-size="72" pointer-events="none">${math.negative(actual)&&!signed?'−':'+'}</text>`;
-    body+=(override.art??termArt(actual,options.camera,options.solvedValue)).replaceAll('class="numeral"',`class="numeral" opacity="${override.labelOpacity??1}"`)+'</g>';
+    body+=(override.art??termArt(actual,options.camera,options.solvedValue)).replaceAll('class="numeral"',`class="numeral" opacity="${override.labelOpacity??1}"`)+(options.fingerprints&&!override.art?termFingerprint(actual,w):'')+'</g>';
     body+=`<rect class="reorder-gap" data-side="${side}" data-insert="${index}" x="${slot.x-65}" y="${slot.y-25}" width="34" height="210" rx="10" fill="transparent"/>`;
   }
   if(scene.equal) {
