@@ -5,12 +5,21 @@
 // must agree with it everywhere (tests/machine-e.test.js).
 //   node tools/make-e-fixture.mjs           write the fixture
 //   node tools/make-e-fixture.mjs --check   compare with the committed file
+//   node tools/make-e-fixture.mjs --plans   rewrite the base-e plan fixtures
+//                                           (tests/fixtures/machine/e-*.json) with the planner
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const DIGITS = 80, GUARD = 12, ONE = 10n ** BigInt(DIGITS + GUARD), PLACES = 8;
-const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'tests', 'fixtures', 'base-e.json');
+const root = join(dirname(fileURLToPath(import.meta.url)), '..'), out = join(root, 'tests', 'fixtures', 'base-e.json');
+// The plan fixtures are written by their own test, so they always come from the planner
+// that is present (plan.js once it has merged), with the same checks every plan passes.
+if (process.argv.includes('--plans')) {
+  const run = spawnSync(process.execPath, ['--test', '--test-name-pattern=plan fixtures', join(root, 'tests', 'machine-e.test.js')], { stdio: 'inherit', env: { ...process.env, MACHINE_E_UPDATE: '1' } });
+  process.exit(run.status ?? 1);
+}
 
 // e = Σ 1/n!, summed until the terms vanish below the guard digits.
 let e = 0n; for (let term = ONE, n = 1n; term; n++) { e += term; term /= n; }

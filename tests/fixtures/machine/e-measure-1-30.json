@@ -1,0 +1,13 @@
+{"v":1,"base":"e","pace":"together","tree":{"n1":{"op":"measure","parent":"io","socket":"C"}},"inputs":["1/30"],
+ "start":{"nodes":{"n1":{"op":"measure","parent":"io","socket":"C"}},
+  "towers":{"t1":{"at":"in:0","form":"light","value":"1/30","text":"1/30","approx":"≈ 0.0333","reading":"ln(1/30) ≈ −3.4012"}},
+  "bulbs":{"b1":{"t":"t1","l":-3.4012,"s":1,"k":"light"}}},
+ "beats":[
+ {"i":0,"kind":"input","node":"io","caption":"[1/30] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"}}}},
+ {"i":1,"kind":"deliver","node":"n1","caption":"1/30 rides down the wire to the ruler.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"}}}},
+ {"i":2,"kind":"fanout","node":"n1","caption":"1/30 arrives as one light at height ln(1/30) ≈ −3.4012.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C"}}}},
+ {"i":3,"kind":"unfold","node":"n1","caption":"1/30 has no bulb above the floor: the light falls and fades into dust. 0.000…ₑ","ledger":{"law":"unfold","value":"1/30"},"set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":{"form":"tower","reading":null,"dust":true,"digits":"0.000…ₑ"}},"bulbs":{"b1":null}},"motion":{"b1":{"fade":[0.9,1]}}},
+ {"i":4,"kind":"return","node":"n1","caption":"1/30 rides up into the triangle.","ledger":{"law":"move","value":"1/30"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
+ {"i":5,"kind":"output","node":"io","caption":"Output [1/30].","ledger":{"law":"move","value":"1/30"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
+ "result":{"values":["1/30"],"text":"[1/30]"},
+ "stats":{"beats":6,"nodes":1,"maxLevels":4,"maxBulbs":1}}
