@@ -283,6 +283,12 @@ export function height(x) {
 }
 // The natural logarithm as a float (display and the fold function only).
 export const ln = x => Math.log(Math.abs(approx(x)));
+// Merging a light at h₂ into one at h₁ ≥ h₂ lifts it by ln(1 + e^−(h₁−h₂)), Gauss's
+// addition logarithm; a light subtracted from a higher one drops it by ln(1 − e^−Δ). The
+// planner never adds rounded heights: it takes height() of exact sums. These are the
+// unrounded laws the fold and the meet draw (and the tests hold them to ln within 1e−12).
+export const foldHeight = (h1, h2) => { const [hi, lo] = h1 >= h2 ? [h1, h2] : [h2, h1]; return hi + Math.log1p(Math.exp(lo - hi)); };
+export const meetHeight = (h1, h2) => { const [hi, lo] = h1 >= h2 ? [h1, h2] : [h2, h1]; return hi + Math.log1p(-Math.exp(lo - hi)); };
 const operand = a => a.isInteger() ? ' ' + a.text() : `(${a.text()})`;
 // 'ln 3 ≈ 1.0986'; 'ln e² = 2'; more decimals when four would round to a whole number.
 export function lnText(x) {
