@@ -43,13 +43,14 @@ function chunk(words, limit) {
 }
 const stamp = s => { const ms = Math.round(s * 1000), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
 
-export async function record({origin, format: formatName, script, out, fps = 30, scale, quality = 90, log = () => {}}) {
+// path: where the page opens (default the equation space with the written examples).
+export async function record({origin, format: formatName, script, out, fps = 30, scale, quality = 90, log = () => {}, path: start = '/?examples=written'}) {
   const format = formats[formatName], dt = 1 / fps;
   scale ??= format.scale;
   const page = await launch('about:blank', {width: format.width, height: format.height, scale});
   await page.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 5});
   await page.send('Page.addScriptToEvaluateOnNewDocument', {source: virtualTime});
-  await page.goto(origin + '/?examples=written');
+  await page.goto(origin + start);
   // Let textures decode (real time) while advancing the app a little.
   for (let i = 0; i < 20; i++) { await page.eval('__vt.advance(16)'); await wait(40); }
   await page.eval(overlay);
@@ -100,6 +101,14 @@ export async function record({origin, format: formatName, script, out, fps = 30,
       captions.sort((a, b) => a.start - b.start).forEach((c, i, all) => { if (all[i + 1] && all[i + 1].start - c.end < .6) c.end = all[i + 1].start; });
       const at = word => { const w = clip.words.find(w => w.text.toLowerCase().replace(/\W/g, '') === word.toLowerCase()); if (!w) throw Error(`"${word}" is not in: ${text}`); return start + w.start; };
       return {start, end: start + clip.duration, at, done: (pad = .35) => ctx.until(start + clip.duration + pad), word: word => ctx.until(at(word))};
+    },
+    // A silent caption (no narration): shown now for `seconds` (by default long enough to
+    // read: about 15 characters a second, at least 1.6 s). await caption.done() waits it out.
+    caption(text, seconds) {
+      const start = time, length = seconds ?? Math.max(1.6, .8 + text.length / 15), end = start + length;
+      captions.push({text, start, end});
+      captions.sort((a, b) => a.start - b.start);
+      return {start, end, done: (pad = .2) => ctx.until(end + pad)};
     },
     // Frames advance until an in-page condition holds (or the timeout passes).
     async whenever(condition, {timeout = 20} = {}) { const end = time + timeout; while (time < end && !(await page.eval(condition))) await frame(); },
@@ -183,11 +192,14 @@ export async function record({origin, format: formatName, script, out, fps = 30,
     if (page.errors.length) log(`${formatName}: page errors: ${page.errors.join(' | ')}`);
     await page.close();
   }
-  const wav = out.replace(/\.mp4$/, '.wav');
-  mixWav(clips, frames / fps, wav);
-  // Speech normalized to −16 LUFS, the usual loudness for online video.
-  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', silent, '-i', wav, '-c:v', 'copy', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
-  fs.rmSync(silent); fs.rmSync(wav);
+  if (clips.length) {
+    const wav = out.replace(/\.mp4$/, '.wav');
+    mixWav(clips, frames / fps, wav);
+    // Speech normalized to −16 LUFS, the usual loudness for online video.
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', silent, '-i', wav, '-c:v', 'copy', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
+    fs.rmSync(wav);
+  } else execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', silent, '-c:v', 'copy', '-movflags', '+faststart', out]);  // silent explainers: captions only, no audio track
+  fs.rmSync(silent);
   fs.writeFileSync(out.replace(/\.mp4$/, '.srt'), captions.map((c, i) => `${i + 1}\n${stamp(c.start)} --> ${stamp(c.end)}\n${c.text}\n`).join('\n'));
   return {seconds: frames / fps, frames};
 }
