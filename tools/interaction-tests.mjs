@@ -136,6 +136,19 @@ try{
   const from=await graphRect('#graph-svg .tracer circle'),to=await graphRect('#graph-svg .special.solution circle');await drag(from,to,40);await wait(500);
   const text=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Found it/.test(text))throw Error(text);
  });
+ await check('style: the cyber look restyles cards, stacks and the graph live, and switches back',async()=>{
+  await load('345 - 1208 = 2x');
+  const pick=style=>page.eval(`(()=>{const s=document.getElementById('style');s.value='${style}';s.dispatchEvent(new Event('change'));})()`);
+  await pick('cyber');await wait(1200);
+  expect(await page.eval(`document.documentElement.dataset.style`),'cyber','root style');
+  expect(await page.eval(`getComputedStyle(document.documentElement).getPropertyValue('--cyan').trim()`),'#36e6ff','cyber tokens apply');
+  expect(await page.eval(`!document.querySelector('#equation-svg .texture-defs image')&&!!document.querySelector('#equation-svg .texture-defs linearGradient#blue')`),true,'flat glass faces replace the paper textures');
+  expect(await page.eval(`[...document.querySelectorAll('#equation-svg .stack-defs > g')].length>0&&[...document.querySelectorAll('#equation-svg .stack-defs > g')].every(g=>g.querySelector('image')||!g.innerHTML.includes('#191a16'))`),true,'stacks redrawn in neon');
+  expect(await page.eval(`localStorage.getItem('abacus-style')`),'cyber','the choice is remembered');
+  await openGraph();expect(await page.eval(`!!document.querySelector('#graph-svg defs linearGradient#g-blue')&&document.querySelector('#graph-svg .graph-curve').getAttribute('stroke')`),'#36e6ff','graph faces and curves');
+  await pick('sketchpad');await wait(600);
+  expect(await page.eval(`!!document.querySelector('#graph-svg defs pattern#g-blue image')&&document.querySelector('#graph-svg .graph-curve').getAttribute('stroke')`),'#2f5d6b','graph back to paper');
+ });
  await check('graph: dragging the point stays at frame rate',async()=>{
   await openGraph();const from=await graphRect('#graph-svg .tracer circle');
   await page.eval(`window.__frames=[];(function f(t){window.__frames.push(t);if(window.__frames.length<300)requestAnimationFrame(f);})(performance.now())`);

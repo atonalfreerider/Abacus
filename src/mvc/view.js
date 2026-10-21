@@ -4,6 +4,7 @@ import {unitFrame} from './units.js';
 import { placeMetadata } from '../place-value.js';
 import { ease,clamp,operationGroups } from './animation.js';
 import { renderOperation } from './operation-view.js';
+import { ink,patternDefs,onStyle } from './theme.js';
 export const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export const round=n=>Math.round(n*1000)/1000;
 // Exact place-value text such as 0.001; 10**-3 prints differently across engines.
@@ -16,16 +17,16 @@ export function stackGeometry(exponent,camera='front') {
 // Behind the top card a stack shows card stock: cream edges with fine separators, and
 // every tenth card edged in the stack's colour, so a hundred reads as ten tens. The
 // back card outlines the stack. (Near-black edges on every layer fused into a slab.)
-export const cardEdge={paper:'#f6f0de',line:'#b2aa92',base:'#55513f',group:{blue:'#2b6e8e',red:'#b0432b',green:'#5d8a39'}};
+export const cardEdge=ink.edge;
 export const cardRole=(layer,count)=>layer===1?'top':layer===count?'base':layer%10===1?'group':'support';
 export function face(x,y,size,color,meta,attributes='',role='top') {
-  if(role!=='top'){const stroke=role==='base'?cardEdge.base:role==='group'?cardEdge.group[color]:cardEdge.line;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="${cardEdge.paper}" stroke="${stroke}" stroke-width="${role==='support'?.45:1.1}"/></g>`;}
+  if(role!=='top'){const stroke=role==='base'?cardEdge.base:role==='group'?cardEdge.group[color]:ink.edgeLine[color];return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="${cardEdge.paper}" stroke="${stroke}" stroke-width="${role==='support'?.45:1.1}"/></g>`;}
   const border=1+meta.group*.55;
-  if(meta.exponent<0){const inner=round(size*meta.innerScale),inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="#191a16" stroke-width="1"/><rect data-inner-area="${decimalUnit(meta.exponent)}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
+  if(meta.exponent<0){const inner=round(size*meta.innerScale),inset=(size-inner)/2;return `<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#paper)" fill-opacity=".12" stroke="${ink.stroke[color]}" stroke-width="1"/><rect data-inner-area="${decimalUnit(meta.exponent)}" x="${round(x+inset)}" y="${round(y+inset)}" width="${inner}" height="${inner}" fill="url(#${color})"/></g>`;}
 
-  let svg=`<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#${color})" stroke="#191a16" stroke-width="${border}"/>`;
-  for(let level=0;level<meta.group;level++) {const inset=3+level*3;svg+=`<rect x="${round(x+inset)}" y="${round(y+inset)}" width="${size-2*inset}" height="${size-2*inset}" rx="3" fill="none" stroke="#17271c" stroke-width="${1.2+meta.group*.55}"/>`;}
-  if(meta.mark)svg+=`<text x="${round(x+size-7)}" y="${round(y+size-6)}" text-anchor="end" font-size="12" font-weight="bold" fill="#14251d">${meta.mark}</text>`;
+  let svg=`<g ${attributes}><rect x="${round(x)}" y="${round(y)}" width="${size}" height="${size}" rx="5" fill="url(#${color})" stroke="${ink.stroke[color]}" stroke-width="${border}"/>`;
+  for(let level=0;level<meta.group;level++) {const inset=3+level*3;svg+=`<rect x="${round(x+inset)}" y="${round(y+inset)}" width="${size-2*inset}" height="${size-2*inset}" rx="3" fill="none" stroke="${ink.groupStroke[color]}" stroke-width="${1.2+meta.group*.55}"/>`;}
+  if(meta.mark)svg+=`<text x="${round(x+size-7)}" y="${round(y+size-6)}" text-anchor="end" font-size="12" font-weight="bold" fill="${ink.mark[color]}">${meta.mark}</text>`;
   return svg+'</g>';
 }
 export function tray(digit,color,exponent=0,camera='front',label=String(digit),unknown=false) {
@@ -140,14 +141,14 @@ export function layout(equation,{orientation='horizontal',camera='front',express
   return {terms:[...rows.left,...rows.right],width,height,equal,orientation};
 }
 export function stackUnit(x,y,color,exponent,camera='front',opacity=1){return `<use class="unit-stack" href="#stack-${color}-${String(exponent).replace('-','m')}-${camera}" data-place="${exponent}" data-cards="${placeMetadata(exponent).cardCount}" x="${round(x)}" y="${round(y)}" opacity="${opacity}"/>`;}
-const stackCache=new Map();
+const stackCache=new Map();onStyle(()=>stackCache.clear());
 export const stackIds=body=>[...new Set([...body.matchAll(/href="#(stack-(blue|red|green)-(m?\d+)-(front|depth|spread))"/g)].map(m=>m[1]))];
 export function parseStackId(id){const [,color,exp,camera]=id.split('-');return {color,camera,meta:stackGeometry(Number(exp.replace('m','-')),camera)};}
 // Vector card faces for one cached stack; the browser may swap in a raster of the same drawing.
 export function stackContent(id){if(stackCache.has(id))return stackCache.get(id);const {color,meta}=parseStackId(id);let content='';for(let layer=meta.cardCount;layer>=1;layer--)content+=face(layer*meta.pitch,layer*meta.pitch,43,color,meta,`class="card-face" data-layer="${layer}" data-group="${meta.mark}"`,cardRole(layer,meta.cardCount));stackCache.set(id,content);return content;}
 function stackDefinitions(body){return '<defs>'+stackIds(body).map(id=>`<g id="${id}">${stackContent(id)}</g>`).join('')+'</defs>';}
-export const textureSources=[['blue',25],['red',23],['green',2],['paper',24]];
-export function textureDefs(){return textureSources.map(([name,id])=>`<pattern id="${name}" width="150" height="150" patternUnits="userSpaceOnUse"><image href="./textures/swf-${id}.jpg" width="150" height="150"/></pattern>`).join('');}
+export {textureSources} from './theme.js';
+export const textureDefs=()=>patternDefs();
 function textures(){return `<defs>${textureDefs()}</defs>`;}
 export function renderLayout(scene,options,overrides={}) {
   let body='';
