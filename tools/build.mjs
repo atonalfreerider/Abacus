@@ -41,7 +41,7 @@ for(const id of [2,18,23,24,25])fs.copyFileSync(`public/textures/swf-${id}.jpg`,
 fs.copyFileSync('public/textures/swf-12.png',path.join(out,'textures/swf-12.png'));
 fs.copyFileSync('public/tests.html',path.join(out,'tests.html'));
 if(fs.existsSync('public/pixel-baselines'))fs.cpSync('public/pixel-baselines',path.join(out,'pixel-baselines'),{recursive:true});
-for (const file of ['ABACUS.swf', 'abacus-director.swf', 'swf-provenance.json', 'reference.html', 'favicon.svg', 'privacy.html', '_headers']) fs.copyFileSync('public/' + file, path.join(out, file));
+for (const file of ['ABACUS.swf', 'abacus-director.swf', 'PRIME.swf', 'swf-provenance.json', 'reference.html', 'prime-reference.html', 'favicon.svg', 'privacy.html', '_headers']) fs.copyFileSync('public/' + file, path.join(out, file));
 fs.cpSync('public/vendor', path.join(out, 'vendor'), {recursive:true, filter: file => !file.endsWith('.map')});
 let bytes = 0, compressedBytes = 0;
 function compress(dir) {

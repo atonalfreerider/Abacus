@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PRIME — unmodified reference</title>
+  <link rel="stylesheet" href="./src/styles.css">
+  <script src="./src/ruffle-config.js"></script>
+  <script defer src="./vendor/ruffle/ruffle.js"></script>
+  <script type="module">
+  while (!window.RufflePlayer?.newest) await new Promise(resolve => setTimeout(resolve, 50));
+  const player = window.RufflePlayer.newest().createPlayer();
+  document.getElementById('equation-space').append(player);
+  await player.ruffle().load({url: new URL('./PRIME.swf', import.meta.url).href, allowScriptAccess:false, allowNetworking:'none'});
+  </script>
+</head><body><main id="equation-space" aria-label="Unmodified PRIME"></main></body></html>
