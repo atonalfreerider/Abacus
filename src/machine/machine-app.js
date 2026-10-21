@@ -1,0 +1,670 @@
+// Machine: PRIME's function machine rebuilt in LED bulbs (docs/machine-design.md). Input
+// pill → IO triangle → blocks hung on wires → Output pill; a number is a tower of bulbs.
+// This module is the mode around the pure parts: it builds trees (palette, sockets, the
+// expression field), plans them (plan.js), keeps time (clock.js), draws each frame
+// (render.js over layout.js) into one persistent SVG, and owns the keys, the camera
+// override, the outline and Steps list, the live region, haptics, the automation hook and
+// recording mode. app.js loads it on first use; base e (e-base.js) loads on first use too.
+import { ink } from '../mvc/theme.js';
+import { haptic } from '../haptics.js';
+import { BeatClock, SPEEDS, schedule, enterAction } from './clock.js';
+import { planMachine } from './plan.js';
+import { ARITY, palette, defaultMachine, attach, detach, openSockets, parseInput, parseExpression, sentence } from './tree.js';
+import { snapshotAt } from './scene.js';
+import { layoutPlan } from './layout.js';
+import { renderMachine, machineDefs, blockGlyphSVG } from './render.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const media = q => typeof matchMedia === 'function' && matchMedia(q).matches;
+const touchFirst = () => media('(pointer: coarse)');
+export const BASES = ['binary', 'ternary', 'e'];
+const BASE_SHORT = { binary: '2', ternary: '±3', e: 'e' }, BASE_NAME = { binary: 'binary', ternary: 'balanced ternary', e: 'base e' };
+// Palette names (PRIME's FunctBar spelled them out) and what the outline calls each block.
+export const OPS = {
+  add: ['ADD', '+'], sub: ['SUB', '−'], mul: ['MULT', '×'], div: ['DIV', '÷'], mod: ['MOD', 'mod'], cmp: ['COMP', 'compare'],
+  shl: ['SHL', 'shift left'], shr: ['SHR', 'shift right'], and: ['AND', 'AND'], or: ['OR', 'OR'], xor: ['XOR', 'XOR'], not: ['NOT', 'NOT'],
+  min: ['MIN', 'MIN'], max: ['MAX', 'MAX'], sum: ['SUM', 'SUM'], cons: ['CONS', 'CONS'], neg: ['NEG', 'NEG'],
+  mule: ['×eᵏ', '× eᵏ'], measure: ['MEASURE', 'measure'], ln: ['LN', 'ln'],
+};
+// Base e greys out what it cannot do, with the reason (design 3.10).
+const E_MISSING = { div: 'A quotient of e-numerals is usually not an e-numeral.', mod: 'A quotient of e-numerals is usually not an e-numeral.',
+  shl: 'Shift by a count needs whole-number levels: use ×eᵏ.', shr: 'Shift by a count needs whole-number levels: use ×eᵏ.',
+  and: 'Logic needs whole-number levels; base e has none.', or: 'Logic needs whole-number levels; base e has none.',
+  xor: 'Logic needs whole-number levels; base e has none.', not: 'Logic needs whole-number levels; base e has none.' };
+const EMPTY = 'Hang a block under the triangle first: drag one from the palette, or tap the triangle\'s socket and then a block';
+const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
+const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
+const AUTO_KEY = 'abacus-machine-auto';
+const arity = op => ARITY?.[op] ?? 2;
+const socketsOf = op => arity(op) === 1 ? ['C'] : ['L', 'R'];
+const SIDE = { L: 'left', R: 'right', C: 'centre' };
+const plural = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+const sameList = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+// Layout boxes and cameras are {x, y, w, h} in machine units; accept width/height too.
+const box = b => b && { x: b.x, y: b.y, w: b.w ?? b.width, h: b.h ?? b.height };
+const boxText = b => `${+b.x.toFixed(3)} ${+b.y.toFixed(3)} ${+b.w.toFixed(3)} ${+b.h.toFixed(3)}`;
+const parseBox = v => typeof v === 'string' ? (([x, y, w, h]) => ({ x, y, w, h }))(v.trim().split(/[\s,]+/).map(Number)) : box(v);
+// render.js returns the body of a frame; tolerate a full <svg> element as well.
+const inner = svg => /^\s*<svg[\s>]/.test(svg) ? svg.replace(/^\s*<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '') : svg;
+// Frames within a beat keep almost every element and change attributes, so a new frame
+// is patched into the old one: replacing 1500 <use> bulbs costs about five times as much
+// as parsing the frame and setting the attributes that changed.
+const parser = typeof document !== 'undefined' ? document.createElement('template') : null;
+export function patch(old, next) {
+  const a = old.childNodes, b = [...next.childNodes];
+  for (let i = 0; i < b.length; i++) {
+    const o = a[i], n = b[i];
+    if (!o) { old.append(...b.slice(i)); break; }
+    if (o.nodeName !== n.nodeName) { old.replaceChild(n, o); continue; }
+    if (n.nodeType === 3) { if (o.data !== n.data) o.data = n.data; continue; }
+    if (n.nodeType !== 1) continue;
+    for (const { name, value } of n.attributes) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+    if (o.attributes.length !== n.attributes.length) for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+    if (n.firstChild || o.firstChild) patch(o, n);
+  }
+  while (a.length > b.length) old.lastChild.remove();
+}
+// A plan with no beats draws a machine that cannot run yet: the tree hangs under IO with
+// its sockets open, so it can still be built on.
+export const displayPlan = (tree, base, pace) => ({ v: 1, base, pace, tree, inputs: [], start: { nodes: { ...tree }, towers: {}, bulbs: {} }, beats: [],
+  result: { values: [], text: '' }, stats: { beats: 0, nodes: Object.keys(tree).length, maxLevels: 0, maxBulbs: 0 }, display: true });
+// The node hanging in a socket ('io' or `${id}.L|R|C`), if any.
+export function occupant(tree, socket) {
+  const [parent, side] = socket === 'io' ? ['io', 'C'] : socket.split('.');
+  return Object.keys(tree).find(id => tree[id].parent === parent && (parent === 'io' || tree[id].socket === side)) ?? null;
+}
+// Dropping a block on an occupied socket pushes the block already there into the new
+// block's left (or only) socket. Ids are never reused within a tree.
+export function insertAbove(tree, id, op) {
+  const fresh = `n${Math.max(0, ...Object.keys(tree).map(k => Number(k.slice(1)) || 0)) + 1}`, old = tree[id];
+  return { tree: ordered({ ...tree, [fresh]: { op, parent: old.parent, socket: old.socket }, [id]: { ...old, parent: fresh, socket: socketsOf(op)[0] } }), node: fresh };
+}
+// Depth-first, left first: parents before children, whatever order edits left them in.
+export function ordered(tree) {
+  const out = {}, visit = parent => { for (const side of ['L', 'R', 'C']) for (const id of Object.keys(tree)) if (tree[id].parent === parent && (parent === 'io' || tree[id].socket === side) && !(id in out)) { out[id] = tree[id]; visit(id); } };
+  visit('io'); return out;
+}
+// ?machine… → a load() preset (design 4.1): an op id or an expression, plus base, input, speed, pace, AUTO.
+export function presetFromQuery(query) {
+  const q = query instanceof URLSearchParams ? query : new URLSearchParams(query), m = q.get('machine'), p = {};
+  if (m === 'empty') p.tree = {}; else if (m && OPS[m]) p.op = m; else if (m) p.expression = m;
+  for (const [key, name] of [['mbase', 'base'], ['input', 'input'], ['sp', 'sp'], ['pace', 'pace'], ['auto', 'auto']]) if (q.has(key)) p[name] = q.get(key);
+  return p;
+}
+
+export class MachineView extends EventTarget {
+  constructor() {
+    super();
+    this.mode = $('machine-mode'); this.stage = $('machine-stage'); this.$input = $('machine-input'); this.$expr = $('machine-expr');
+    const q = new URLSearchParams(location.search);
+    this.recording = q.has('recording'); this.reduced = media('(prefers-reduced-motion: reduce)');
+    this.base = 'binary'; this.pace = 'together'; this.tree = defaultMachine(); this.planText = this.$input.value = '[16,7]'; this.inputs = ['16', '7'];
+    this.sp = this.reduced ? 1.5 : 1; this.readAlong = this.reduced; this.digits = false; this.selected = null; this.manual = null; this.cam = null;
+    this.auto = true; try { this.auto = localStorage.getItem(AUTO_KEY) !== '0'; } catch {}
+    this.stepMode = !this.auto; this.visible = false; this.dirty = true; this.lastT = -1; this.lastDone = 0; this.lastStarted = -1; this.lastBoundary = -1;
+    this.stage.insertAdjacentHTML('afterbegin', `<svg id="machine-svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet" viewBox="-400 -200 800 600"><defs class="m-defs"></defs><g class="m-scene"></g><g class="m-hits"></g></svg>`);
+    this.svg = $('machine-svg'); this.$defs = this.svg.querySelector('.m-defs'); this.$scene = this.svg.querySelector('.m-scene'); this.$hits = this.svg.querySelector('.m-hits');
+    this.wire();
+    this.restyle();
+    this.plan();
+    new ResizeObserver(() => { this.dirty = true; }).observe(this.stage);
+    const loop = now => { requestAnimationFrame(loop); if (this.visible) { try { this.frame(now); } catch (error) { console.error(error); this.status(error.message); this.clock.stop(); } } };
+    requestAnimationFrame(loop);
+    if (q.has('automation')) this.hook();
+    if (this.recording) { document.body.classList.add('machine-recording'); this.chrome('run'); }
+  }
+
+  // ---------- public API (design 6.6) ----------
+  async show(preset) {
+    this.visible = true; this.dirty = true;
+    if (preset && Object.keys(preset).length) await this.load(preset);
+    // A fine pointer (or none: a keyboard) types straight away; on touch the stage takes
+    // focus so no soft keyboard rises.
+    if (!this.recording && !touchFirst()) { this.$input.focus({ preventScroll: true }); this.$input.select(); }
+    else this.stage.focus({ preventScroll: true });
+    this.sync(this.clock.t(performance.now()), true);
+  }
+  hide() { this.visible = false; this.hidePeek(); this.endDrag(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
+  // {tree?|op?|expression?, base, input, sp, pace, auto}: resolves once the machine is planned.
+  async load(p = {}) {
+    if (p.base && p.base !== this.base) { const r = await this.setBase(p.base, { force: !!(p.tree || p.op || p.expression), plan: false }); if (!r.ok) return r; }
+    if (p.sp != null && Number.isFinite(Number(p.sp))) this.setSpeed(Number(p.sp));
+    if (p.pace === 'together' || p.pace === 'level') { this.pace = p.pace; $('machine-pace').value = p.pace; }
+    if (p.auto != null) this.setAuto(p.auto === true || p.auto === 1 || p.auto === '1' || p.auto === 'true', { remember: false });
+    let text = p.input != null ? String(p.input) : null, message = null;
+    if (p.tree) this.tree = ordered(p.tree);
+    else if (p.op) this.tree = attach({}, 'io', p.op).tree;
+    else if (p.expression) {
+      const parsed = parseExpression(String(p.expression), this.base);
+      if (parsed.ok) { this.tree = ordered(parsed.tree); this.$expr.value = String(p.expression); text ??= `[${parsed.inputs.join(',')}]`; }
+      else message = parsed.error;
+    }
+    if (text != null) { text = text.trim(); if (!/^\[.*\]$/.test(text)) text = `[${text}]`; this.$input.value = text; }
+    text = this.$input.value;
+    const parsed = parseInput(text, this.base);
+    this.inputs = parsed.ok ? parsed.values : []; this.planText = text; this.selected = null;
+    this.plan();
+    message ??= parsed.ok ? null : parsed.error;
+    if (message) this.status(message, 'refuse');
+    if (this.visible) this.draw(this.clock.t(performance.now()));
+    return { ok: !message && !this.refusal, message: message ?? this.refusal?.message };
+  }
+  // The Enter rule (design 4.2).
+  enter({ step = false } = {}) {
+    this.hidePeek(); this.ask(false);
+    const now = performance.now(), text = this.$input.value.trim();
+    if (enterAction(this.clock, { changed: text !== this.planText.trim() || !!this.refusal }) === 'step') {
+      if (step || !this.auto) this.stepMode = true;
+      this.clock.step(now); this.manual = null; this.sync(this.clock.t(now)); return { ok: true };
+    }
+    return this.start(text, now, { step });
+  }
+  step() { return this.enter({ step: true }); }
+  back() { this.clock.back(); this.rewound(); }
+  // A seek into the plan counts as a run under way: Enter then steps on from there.
+  seek(t) { this.clock.seek(Number(t)); if (this.clock.pos > 0) this.clock.started = true; this.rewound(); }
+  setAuto(on, { remember = true } = {}) {
+    this.auto = !!on; this.clock?.setAuto(this.auto, performance.now()); if (!this.auto) this.stepMode = true;
+    if (remember) try { localStorage.setItem(AUTO_KEY, this.auto ? '1' : '0'); } catch {}
+    this.hud();
+  }
+  setSpeed(sp) {
+    this.sp = SPEEDS.reduce((best, s) => Math.abs(s - sp) < Math.abs(best - sp) ? s : best, SPEEDS[0]);
+    this.clock?.setSpeed(this.sp, performance.now()); this.hud();
+  }
+  async setBase(base, { force = false, plan = true } = {}) {
+    if (!BASES.includes(base)) return { ok: false, message: `Unknown base ${base}` };
+    if (base === this.base) return { ok: true };
+    if (base === 'e') try { await import('./e-base.js'); } catch (error) { console.error(error); return this.refuse('Base e is not available in this build.'); }
+    const missing = force ? [] : Object.values(this.tree).filter(n => !palette(base).includes(n.op));
+    if (missing.length) return this.refuse(`${BASE_NAME[base][0].toUpperCase() + BASE_NAME[base].slice(1)} has no ${OPS[missing[0].op]?.[0] ?? missing[0].op} block: take it off first.`);
+    this.base = base; this.selected = null;
+    const parsed = parseInput(this.planText, base); this.inputs = parsed.ok ? parsed.values : [];
+    if (plan) this.plan();
+    this.buildPalette(); this.hud();
+    return { ok: true };
+  }
+  setPace(pace) { if (pace !== 'together' && pace !== 'level' || pace === this.pace) return; this.pace = pace; $('machine-pace').value = pace; this.plan(); }
+  restyle() {
+    this.$defs.innerHTML = machineDefs(ink, 'm-');
+    this.buildPalette(); this.dirty = true;
+  }
+  get state() {
+    const c = this.clock, t = c.t(performance.now());
+    return { base: this.base, beat: c.beat, beats: c.n, t, playing: c.playing, auto: this.auto, sp: this.sp, pace: this.pace,
+      caption: $('machine-caption').textContent, sentence: $('machine-sentence').textContent, output: this.outputText(t), error: this.refusal?.message ?? null };
+  }
+
+  // ---------- planning ----------
+  // Re-plan the current tree, base, pace and committed inputs, and rewind to beat 0.
+  plan() {
+    this.refusal = null; this.highlight = null; this.answer = null; this.longOK = false;
+    const k = openSockets(this.tree).length;
+    let r;
+    if (!Object.keys(this.tree).length) r = { ok: false, reason: 'empty', message: EMPTY };
+    else if (this.inputs.length !== k) r = { ok: false, reason: 'arity', message: `This machine takes ${plural(k, 'number')}` };
+    else {
+      const ask = pace => { try { return planMachine({ tree: this.tree, inputs: this.inputs, base: this.base, pace }); } catch (error) { console.error(error); return { ok: false, reason: 'input', message: error.message }; } };
+      r = ask(this.pace);
+      // Level pace that would run too long falls back to carries together (design 6.10).
+      if (!r.ok && r.reason === 'tooBig' && this.pace === 'level') { const again = ask('together'); if (again.ok) r = again; }
+      if (r.ok && r.plan.pace !== this.pace) r.note = 'Carries play together: one level at a time would be too long for this run.';
+    }
+    if (r.ok) { this.answer = r.plan.result; this.use(r.plan); }
+    else {
+      this.refusal = r; this.use(displayPlan(this.tree, this.base, this.pace));
+      if (r.reason === 'zeroDivision' || r.reason === 'domain') { this.highlight = r.node ?? null; this.answer = null; }
+      if (r.reason === 'tooBig' && r.result) this.answer = r.result;
+    }
+    this.status(r.ok ? r.note ?? '' : ['zeroDivision', 'domain', 'tooBig'].includes(r.reason) ? (r.reason === 'tooBig' ? TOO_BIG : r.message) : '', r.ok ? '' : 'refuse');
+    if (this.highlight) haptic('thud');
+    this.cards();
+  }
+  use(plan) {
+    this.planned = plan; this.planId = (this.planId ?? 0) + 1; this.layout = layoutPlan(plan);
+    this.clock = new BeatClock(plan, { sp: this.sp, auto: this.auto, readAlong: this.readAlong });
+    this.manual = null; this.steps(); this.rewound();
+  }
+  rewound() { const t = this.clock.t(performance.now()); this.lastDone = Math.floor(t + 1e-9); this.lastStarted = -1; this.lastBoundary = -1; this.dirty = true; this.hidePeek(); this.sync(t, true); }
+  start(text, now, { step = false } = {}) {
+    const parsed = parseInput(text, this.base);
+    if (!parsed.ok) return this.refuse(parsed.error);
+    if (!sameList(parsed.values, this.inputs) || this.refusal) { this.inputs = parsed.values; this.planText = text; this.plan(); }
+    else this.planText = text;
+    if (this.refusal) return this.refuse(this.refusal.reason === 'tooBig' ? TOO_BIG : this.refusal.message, this.refusal);
+    if (this.planned.beats.length > SOFT_BEATS && !this.longOK) { this.ask(true); return { ok: false, message: 'long' }; }
+    this.stepMode = step || !this.auto; this.manual = null;
+    this.clock.start(now); this.rewound(); return { ok: true };
+  }
+  refuse(message, r = {}) {
+    this.status(message, 'refuse'); this.announce(message);
+    const pill = this.$input; pill.classList.remove('shake'); void pill.offsetWidth; pill.classList.add('shake');
+    this.dirty = true; this.hitKey = null; return { ok: false, message, reason: r.reason, node: r.node };
+  }
+  // Soft limit: a long run asks first (design 6.10).
+  ask(on) {
+    const box = $('machine-ask'); box.hidden = !on; if (!on) return;
+    $('machine-ask-text').textContent = `Long run (${this.planned.beats.length} beats): play at 4× or show the answer`;
+  }
+  // The four Enter refusals and the domain-error highlight leave Output as [—].
+  outputText(t) {
+    if (this.refusal) return this.refusal.reason === 'tooBig' && this.answer ? this.answer.text : this.refusal.reason === 'zeroDivision' || this.refusal.reason === 'domain' ? '[—]' : '';
+    return this.clock.n && t >= this.clock.n ? this.answer?.text ?? '' : '';
+  }
+
+  // ---------- building ----------
+  // Tap a socket (or Tab to it in Parts), then tap a block; or drag a block onto a socket.
+  attachAt(target, op) {
+    if (!palette(this.base).includes(op)) return this.refuse(E_MISSING[op] ?? `${BASE_NAME[this.base]} has no ${OPS[op]?.[0] ?? op} block`);
+    if (Object.keys(this.tree).length >= MAX_BLOCKS) return this.refuse(`A machine holds up to ${MAX_BLOCKS} blocks`);
+    const socket = this.tree[target] ? this.socketOf(target) : target, held = occupant(this.tree, socket);
+    let tree, node;
+    try { ({ tree, node } = held ? insertAbove(this.tree, held, op) : attach(this.tree, socket, op)); }
+    catch (error) { return this.refuse(error.message); }
+    this.tree = ordered(tree);
+    const open = openSockets(this.tree).filter(s => s.startsWith(node + '.'));
+    this.selected = open[0] ?? null;
+    this.edited(`${OPS[op][1]} block hung ${socket === 'io' ? 'under the triangle' : `in the ${SIDE[socket.split('.')[1]]} socket`}.`);
+    return { ok: true, node };
+  }
+  // Backspace on a selected block takes it, and everything hanging from it, off.
+  remove(id) {
+    const n = this.tree[id]; if (!n) return;
+    const socket = this.socketOf(id);
+    this.tree = ordered(detach(this.tree, id)); this.selected = socket;
+    this.edited(`${OPS[n.op]?.[1] ?? n.op} block taken off.`);
+  }
+  socketOf(id) { const n = this.tree[id]; return !n ? null : n.parent === 'io' ? 'io' : `${n.parent}.${n.socket}`; }
+  // Any edit re-plans at once and rewinds to beat 0, with every block back in place.
+  edited(message) {
+    this.plan();
+    if (this.refusal?.reason === 'arity' || this.refusal?.reason === 'empty') message = `${message} ${this.refusal.message}.`;
+    if (!this.refusal || this.refusal.reason === 'arity' || this.refusal.reason === 'empty') this.status(message);
+    this.announce(message);
+  }
+  tapBlock(op) {
+    let target = this.selected;
+    if (!target) target = Object.keys(this.tree).length ? openSockets(this.tree)[0] : 'io';
+    if (!target) return this.refuse('Select a socket first: tap one on the stage or in Parts, then a block.');
+    return this.attachAt(target, op);
+  }
+  select(target) {
+    this.selected = this.selected === target ? null : target; this.dirty = true; this.outline();
+    if (this.selected) this.status(this.tree[this.selected] ? `${OPS[this.tree[this.selected].op][1]} block selected: Backspace takes it off; a palette block goes above it.` : 'Socket selected: tap a block in the palette to hang it there.');
+  }
+  // Enter in the expression field builds the tree, fills Input and starts the run.
+  expression() {
+    const parsed = parseExpression(this.$expr.value, this.base);
+    if (!parsed.ok) { this.$expr.classList.remove('shake'); void this.$expr.offsetWidth; this.$expr.classList.add('shake'); return this.refuse(parsed.error); }
+    this.tree = ordered(parsed.tree); this.$input.value = `[${parsed.inputs.join(',')}]`; this.selected = null;
+    this.inputs = parsed.inputs; this.planText = this.$input.value; this.plan();
+    return this.enter();
+  }
+  cards() {
+    const first = this.answer?.values?.[0], v = first == null ? null : String(first), root = Object.values(this.tree).find(n => n.parent === 'io'), b = $('machine-to-cards');
+    let reason = '';
+    if (v == null) reason = 'Run a machine first: its Output goes to the cards';
+    else if (root?.op === 'ln' || /[a-z]/i.test(v)) reason = 'this value is not a card';
+    else if (v.replace('-', '').split('/').some(part => { try { return BigInt(part) > SAFE; } catch { return true; } })) reason = 'Too large for the cards: they hold whole numbers up to 9 007 199 254 740 991';
+    b.disabled = !!reason; b.title = reason || `Put ${v.replace('-', '−')} on the cards in ${BASE_NAME[this.base]}`;
+  }
+
+  // ---------- time and drawing ----------
+  frame(now) {
+    const c = this.clock, t = c.t(now);
+    if (c.run && c.run.i !== this.lastStarted) { this.lastStarted = c.run.i; this.began(c.run.i); }
+    const done = Math.floor(t + 1e-9);
+    if (done > this.lastDone) for (let k = Math.max(0, this.lastDone); k < done; k++) this.ended(k);
+    this.lastDone = done;
+    if (t !== this.lastT || this.dirty) this.draw(t);
+    this.sync(t);
+  }
+  began(i) {
+    const beat = this.planned.beats[i];
+    if (this.stepMode) haptic('tick');
+    if (beat.motion && Object.values(beat.motion).some(m => m.burst)) haptic('pop');
+    this.dispatchEvent(new CustomEvent('beat', { detail: { i } }));
+  }
+  ended(i) {
+    const plan = this.planned, beat = plan.beats[i], n = plan.beats.length, said = this.sentenceAt(i + 1);
+    // The live region keeps pace with a screen reader: every beat when stepping or reading
+    // along, otherwise each completed node and the Output (design 4.9).
+    if (this.stepMode || this.readAlong) this.announce(`${beat.caption} ${said ? said + '.' : ''}`.trim());
+    else if (beat.kind === 'return') this.announce(said);
+    if (beat.kind === 'output' || i === n - 1) {
+      if (!this.stepMode && !this.readAlong) this.announce(`Output ${plan.result.text}${plan.result.label ? `: ${plan.result.label}` : ''}.`);
+      haptic('success'); this.dispatchEvent(new CustomEvent('done', { detail: { result: plan.result } }));
+    } else if (['collide', 'carry', 'addone'].includes(beat.kind) && this.grew(i)) haptic('thud');
+  }
+  // A carry that lands above a tower's top grows the column.
+  grew(i) {
+    const a = snapshotAt(this.planned, i), b = snapshotAt(this.planned, i + 1), top = (s, t) => Math.max(-1, ...Object.values(s.bulbs).filter(x => x.t === t && !x.slot).map(x => x.l));
+    return Object.keys(b.towers).some(t => a.towers[t] && top(b, t) > top(a, t));
+  }
+  sentenceAt(k) { try { return this.planned.display ? '' : sentence(snapshotAt(this.planned, k)); } catch { return ''; } }
+  viewport() { return { width: Math.max(1, this.stage.clientWidth), height: Math.max(1, this.stage.clientHeight) }; }
+  // The camera frames what is left of the stage: above the burned-in caption band in
+  // recording mode, and above the palette where it lies over the stage (desktop, tablets).
+  inset() {
+    const { width, height } = this.viewport(), band = this.recording ? (height > width ? 170 : 120) : 0;
+    const p = $('machine-palette').getBoundingClientRect(), st = this.stage.getBoundingClientRect();
+    const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0;
+    return band || over ? { bottom: Math.max(band, Math.round(over)) } : {};
+  }
+  draw(t) {
+    const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset(), active: this.active(t) };
+    if (this.manual) view.camera = this.fit(this.manual);
+    const out = renderMachine(this.planned, t, this.layout, ink, view);
+    this.cam = parseBox(out.viewBox) ?? view.camera;
+    parser.innerHTML = `<svg>${inner(out.svg)}</svg>`; patch(this.$scene, parser.content.firstChild);
+    if (this.cam) this.svg.setAttribute('viewBox', boxText(this.cam));
+    this.lastT = t; this.dirty = false; this.hits(t);
+  }
+  // The node at work: the beat in motion's, else the one just finished (while it stands),
+  // else the next one's. The renderer draws place values and digits beside it.
+  active(t) {
+    const beats = this.planned.beats, n = beats.length; if (!n || t <= 0) return 'io';
+    const i = Math.min(n - 1, Math.ceil(t - 1e-9) - 1), here = beats[i].node;
+    if (Math.abs(t - Math.round(t)) > 1e-9 || here === 'io' || snapshotAt(this.planned, i + 1).nodes[here]) return here;
+    return beats[i + 1]?.node ?? 'io';
+  }
+  // A manual camera keeps the viewport's shape, so pans and pinches never distort.
+  fit(c) {
+    const { width, height } = this.viewport(), aspect = width / height, cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    let w = c.w, h = c.h; if (w / h > aspect) h = w / aspect; else w = h * aspect;
+    const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, width / w)); w = width / s; h = height / s;
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+  }
+  overview() { const b = box(this.layout.bounds); if (!b) return; const pad = 40; this.manual = this.fit({ x: b.x - pad, y: b.y - pad, w: b.w + 2 * pad, h: b.h + 2 * pad }); this.dirty = true; }
+  centre() { this.manual = null; this.dirty = true; }
+  // Pointer targets over the frame, in machine units: open sockets, blocks, and towers at rest.
+  hits(t) {
+    const plan = this.planned, L = this.layout, rest = !this.clock.playing && Math.abs(t - Math.round(t)) < 1e-9, key = `${this.planId}|${rest ? Math.round(t) : 'm'}|${this.selected}|${this.drag?.socket ?? ''}`;
+    if (key === this.hitKey && !this.drag) return;
+    this.hitKey = key;
+    let svg = '';
+    const safe = fn => { try { return fn(); } catch { return null; } };
+    if (rest) {
+      const scene = snapshotAt(plan, Math.round(t));
+      for (const id of Object.keys(scene.towers)) { const b = safe(() => box(L.towerBox(scene, id))); if (b && Number.isFinite(b.w)) svg += `<rect class="m-hit m-hit-tower" data-tower="${esc(id)}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"/>`; }
+    }
+    for (const id of Object.keys(this.tree)) { const b = safe(() => box(L.nodeBox(id))); if (b && Number.isFinite(b.w)) svg += `<rect class="m-hit m-hit-node${this.selected === id ? ' selected' : ''}" data-node="${id}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="14"/>`; }
+    for (const s of openSockets(this.tree).concat(Object.keys(this.tree).length ? [] : ['io'])) {
+      const p = this.socketPoint(s); if (!p) continue;
+      svg += `<circle class="m-hit m-hit-socket${this.selected === s ? ' selected' : ''}${this.drag?.socket === s ? ' target' : ''}" data-socket="${s}" cx="${p.x}" cy="${p.y}" r="${s === 'io' ? 70 : 46}"/>`;
+    }
+    if (this.drag?.socket && this.drag.at) { const p = this.socketPoint(this.drag.socket) ?? this.drag.at; svg += `<path class="m-preview" d="M${p.x} ${p.y}L${this.drag.at.x} ${this.drag.at.y}"/>`; }
+    const note = this.outputText(t);
+    if (this.refusal && note) svg += `<text class="m-output-note" x="162" y="-86" text-anchor="middle">${esc(note)}</text>`;
+    this.$hits.innerHTML = svg;
+  }
+  socketPoint(s) {
+    if (s === 'io') return { x: 0, y: 24 };
+    const id = s.split('.')[0];
+    if (!this.tree[id]) return null;
+    try { const p = this.layout.place(s); return p && Number.isFinite(p.x) ? p : null; } catch { return null; }
+  }
+  // Text, controls and attributes that follow the clock. Cheap; most of it only on change.
+  sync(t, force = false) {
+    const c = this.clock, n = c.n, boundary = Math.max(0, Math.min(n, Math.floor(t + 1e-9))), running = c.started && !c.done;
+    const s = this.stage.dataset, put = (key, v) => { if (s[key] !== v) s[key] = v; };
+    put('beat', String(c.beat)); put('beats', String(n)); put('playing', String(c.playing)); put('t', String(Math.round(t * 1000) / 1000));
+    if (this.mode.classList.contains('running') !== running) this.mode.classList.toggle('running', running);
+    const pause = $('machine-pause'); if (pause.getAttribute('aria-pressed') !== String(c.paused)) { pause.setAttribute('aria-pressed', String(c.paused)); pause.textContent = c.paused ? 'Resume' : 'Pause'; }
+    const shown = c.run ? c.run.i : c.beat;
+    if (!force && boundary === this.lastBoundary && shown === this.lastShown) return;
+    this.lastBoundary = boundary; this.lastShown = shown;
+    $('machine-caption').textContent = !c.started && t === 0 || shown < 0 ? this.prompt() : this.planned.beats[shown]?.caption ?? '';
+    $('machine-sentence').textContent = this.sentenceAt(boundary);
+    const out = this.outputText(t); $('machine-output').textContent = out;
+    for (const b of this.$steps.querySelectorAll('[aria-current]')) b.removeAttribute('aria-current');
+    const cur = shown >= 0 && this.$steps.children[shown]?.firstElementChild; if (cur) { cur.setAttribute('aria-current', 'step'); if (!this.$steps.closest('[hidden]')) cur.scrollIntoView?.({ block: 'nearest' }); }
+    this.outline();
+  }
+  prompt() {
+    if (this.refusal?.reason === 'empty') return 'Tap the triangle, then a block in the palette (or drag one under it).';
+    return this.refusal ? '' : touchFirst() ? 'Tap Run' : 'Press Enter';
+  }
+  status(text, tone = '') { const el = $('machine-status'); el.textContent = text; el.dataset.tone = tone; }
+  announce(text) { if (!text) return; const el = $('machine-live'); el.textContent = ''; requestAnimationFrame(() => { el.textContent = text; }); }
+  hud() {
+    $('machine-hud-base').textContent = BASE_SHORT[this.base];
+    for (const b of this.mode.querySelectorAll('#machine-base [data-base]')) b.setAttribute('aria-checked', String(b.dataset.base === this.base));
+    $('machine-hud-auto').classList.toggle('lit', this.auto); $('machine-auto').setAttribute('aria-pressed', String(this.auto));
+    const lit = SPEEDS.indexOf(this.sp) + 1, label = `${this.sp} s`;
+    $('machine-hud-speed').innerHTML = SPEEDS.map((_, i) => `<i class="${i < lit ? 'lit' : ''}"></i>`).join(''); $('machine-hud-sp').textContent = label;
+    $('machine-speed').textContent = label; $('machine-slower').disabled = this.sp >= SPEEDS.at(-1); $('machine-faster').disabled = this.sp <= SPEEDS[0];
+  }
+
+  // ---------- panels ----------
+  buildPalette() {
+    const ops = palette(this.base), greyed = this.base === 'e' ? Object.keys(E_MISSING) : [];
+    $('machine-palette').innerHTML = [...ops, ...greyed].map(op => {
+      const off = !ops.includes(op);
+      return `<button type="button" data-op="${op}"${off ? ` disabled title="${esc(E_MISSING[op])}"` : ` title="${esc(OPS[op]?.[1] ?? op)} block: tap to hang it on the selected socket, or drag it onto one"`}>${blockGlyphSVG(op, ink, this.base)}<span>${esc(OPS[op]?.[0] ?? op)}</span></button>`;
+    }).join('');
+  }
+  steps() {
+    this.$steps = $('machine-steps');
+    this.$steps.innerHTML = this.planned.beats.map(b => `<li><button type="button" data-beat="${b.i}"><span>${b.i}</span> ${esc(b.caption)}</button></li>`).join('');
+  }
+  // Parts: the machine as a tree of blocks and sockets, the keyboard path to building.
+  outline() {
+    const el = $('machine-outline'), scene = snapshotAt(this.planned, Math.max(0, Math.min(this.clock.n, Math.floor(this.clock.pos + 1e-9))));
+    const towerIn = at => Object.values(scene.towers).find(t => t.at === at);
+    const nameOf = id => `${OPS[this.tree[id].op]?.[1] ?? this.tree[id].op} block`;
+    const item = (attrs, label, kids = '') => `<li role="treeitem" tabindex="-1" ${attrs} aria-label="${esc(label)}"${kids ? ' aria-expanded="true"' : ''}><span>${esc(label)}</span>${kids ? `<ul role="group">${kids}</ul>` : ''}</li>`;
+    const node = id => item(`data-node="${id}" aria-selected="${this.selected === id}"`, nameOf(id), socketsOf(this.tree[id].op).map(side => socket(`${id}.${side}`, `${nameOf(id)}, ${SIDE[side]} socket`)).join(''));
+    const socket = (s, name) => {
+      const held = occupant(this.tree, s), tower = towerIn(s === 'io' ? 'io:0' : s);
+      const content = held ? nameOf(held) : tower ? `${tower.text}${tower.digits ? `, ${BASE_NAME[this.base]} ${tower.digits.replace(/[₂ₑ]| bal₃/g, '')}` : ''}` : 'open';
+      return item(`data-socket="${s}" aria-selected="${this.selected === s}"`, `${name}: ${content}`, held ? node(held) : '');
+    };
+    const html = `<ul role="none">${socket('io', `Triangle: input ${this.planText}, output ${this.outputText(this.clock.pos) || 'empty'}; its socket`)}</ul>`;
+    if (html === this.outlineHTML) return;
+    const focused = el.contains(document.activeElement) ? document.activeElement.dataset.node ?? document.activeElement.dataset.socket : null;
+    this.outlineHTML = html; el.innerHTML = html;
+    const items = [...el.querySelectorAll('[role=treeitem]')], keep = items.find(i => (i.dataset.node ?? i.dataset.socket) === (focused ?? this.selected)) ?? items[0];
+    if (keep) { keep.tabIndex = 0; if (focused) keep.focus({ preventScroll: true }); }
+  }
+  sheet(open) {
+    const side = $('machine-side'); side.classList.toggle('open', open); $('machine-steps-toggle').setAttribute('aria-expanded', String(open));
+    this.inertOutline();
+    if (open) side.querySelector('[role=tab][aria-selected=true]')?.focus({ preventScroll: true });
+  }
+  tab(name) {
+    for (const t of this.mode.querySelectorAll('#machine-side [role=tab]')) t.setAttribute('aria-selected', String(t.dataset.tab === name));
+    $('machine-steps-panel').hidden = name !== 'steps'; $('machine-parts-panel').hidden = name !== 'parts';
+    this.inertOutline();
+  }
+  // The outline is reachable only while it can be seen (design 4.9).
+  inertOutline() {
+    const sheet = media('(max-width: 699px), (max-height: 520px)'), shown = !$('machine-parts-panel').hidden && (!sheet || $('machine-side').classList.contains('open'));
+    $('machine-outline').inert = !shown;
+  }
+  peek(id, at) {
+    const scene = snapshotAt(this.planned, Math.round(this.clock.pos)), t = scene.towers[id]; if (!t) return;
+    const el = $('machine-peek'), r = this.stage.getBoundingClientRect();
+    el.innerHTML = `<b>${esc(t.text)}</b>${t.approx ? `<span>${esc(t.approx)}</span>` : ''}${t.digits ? `<span>${esc(t.digits)}</span>` : ''}${t.reading ? `<span>${esc(t.reading)}</span>` : ''}${t.note ? `<small>${esc(t.note)}</small>` : ''}`;
+    el.hidden = false; el.style.left = `${Math.max(8, Math.min(r.width - el.offsetWidth - 8, at.x - r.left - el.offsetWidth / 2))}px`; el.style.top = `${Math.max(8, at.y - r.top - el.offsetHeight - 24)}px`;
+    this.announce(`${t.text}${t.digits ? `, ${t.digits}` : ''}`); haptic('peek');
+  }
+  hidePeek() { const el = $('machine-peek'); if (el) el.hidden = true; }
+  // Recording mode: 'build' shows the bar and palette, 'run' hides them (design 5.1).
+  chrome(mode) { document.body.classList.toggle('machine-chrome-build', mode === 'build'); this.dirty = true; }
+
+  // ---------- input ----------
+  wire() {
+    $('machine-run').onclick = () => this.enter();
+    $('machine-step').onclick = () => this.step();
+    $('machine-back').onclick = () => this.back();
+    $('machine-auto').onclick = $('machine-hud-auto').onclick = () => this.setAuto(!this.auto);
+    $('machine-pause').onclick = () => { this.clock.pause(performance.now()); this.sync(this.clock.t(performance.now()), true); };
+    $('machine-slower').onclick = () => this.setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(this.sp) + 1)]);
+    $('machine-faster').onclick = () => this.setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(this.sp) - 1)]);
+    $('machine-pace').onchange = e => this.setPace(e.target.value);
+    $('machine-digits').onchange = e => { this.digits = e.target.checked; this.dirty = true; };
+    $('machine-readalong').checked = this.readAlong;
+    $('machine-readalong').onchange = e => { this.readAlong = e.target.checked; this.clock.setReadAlong(this.readAlong, performance.now()); };
+    $('machine-centre').onclick = () => this.centre();
+    $('machine-overview').onclick = () => this.overview();
+    $('machine-rebuild').onclick = () => this.rebuild();
+    $('machine-to-cards').onclick = () => { const v = this.answer?.values?.[0]; if (v != null && !$('machine-to-cards').disabled) this.dispatchEvent(new CustomEvent('cards', { detail: { value: String(v), base: this.base } })); };
+    $('machine-steps-toggle').onclick = () => this.sheet(!$('machine-side').classList.contains('open'));
+    $('machine-sheet-close').onclick = () => { this.sheet(false); $('machine-steps-toggle').focus(); };
+    for (const t of this.mode.querySelectorAll('#machine-side [role=tab]')) t.onclick = () => this.tab(t.dataset.tab);
+    $('machine-ask-play').onclick = () => { this.longOK = true; this.setSpeed(SPEEDS[0]); this.ask(false); this.start(this.$input.value.trim(), performance.now()); };
+    $('machine-ask-answer').onclick = () => { this.longOK = true; this.ask(false); this.clock.seek(this.clock.n); this.clock.started = true; this.rewound(); };
+    for (const b of this.mode.querySelectorAll('#machine-base [data-base]')) b.onclick = () => this.setBase(b.dataset.base);
+    $('machine-steps').onclick = e => { const b = e.target.closest('[data-beat]'); if (!b) return; this.clock.seek(Number(b.dataset.beat)); this.stepMode = true; this.clock.step(performance.now(), { once: true }); this.rewound(); };
+    this.wireOutline(); this.wireStage(); this.wirePalette();
+    this.mode.addEventListener('keydown', e => this.key(e));
+    this.tab('steps'); this.hud();
+    matchMedia('(max-width: 699px), (max-height: 520px)').addEventListener?.('change', () => this.inertOutline());
+  }
+  rebuild() { this.clock.seek(0); this.clock.started = false; this.manual = null; this.rewound(); }
+  cycleBase() { this.setBase(BASES[(BASES.indexOf(this.base) + 1) % BASES.length]); }
+  key(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+    const field = e.target.closest('input,select,textarea');
+    if (field) {
+      if (e.key === 'Enter' && field === this.$input) { e.preventDefault(); this.enter(); }
+      else if (e.key === 'Enter' && field === this.$expr) { e.preventDefault(); this.expression(); }
+      else if (e.key === 'Escape') { e.preventDefault(); field.blur(); this.stage.focus({ preventScroll: true }); }
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('button,[role=treeitem]')) return;
+    if (e.target.closest('#machine-palette') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return this.paletteKey(e);
+    if (e.target.closest('#machine-outline') && ['ArrowUp', 'ArrowDown', 'Home', 'End', 'Backspace', 'Delete'].includes(e.key)) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, now = performance.now();
+    const act = {
+      Enter: () => this.enter(), ArrowRight: () => this.enter(), ArrowDown: () => this.enter(), ArrowLeft: () => this.back(), ArrowUp: () => this.back(),
+      a: () => this.setAuto(!this.auto), ' ': () => $('machine-pause').click(), '[': () => $('machine-slower').click(), ']': () => $('machine-faster').click(),
+      Home: () => { this.clock.start(now); this.rewound(); }, End: () => { this.clock.seek(this.clock.n); this.clock.started = true; this.rewound(); },
+      r: () => this.rebuild(), t: () => this.centre(), o: () => this.overview(), d: () => $('machine-digits').click(),
+      p: () => this.setPace(this.pace === 'together' ? 'level' : 'together'), b: () => this.cycleBase(),
+      Escape: () => this.dispatchEvent(new Event('leave')),
+      Backspace: () => { if (this.tree[this.selected]) this.remove(this.selected); }, Delete: () => { if (this.tree[this.selected]) this.remove(this.selected); },
+    }[k];
+    if (!act) return;
+    e.preventDefault(); act();
+  }
+  paletteKey(e) {
+    const items = [...$('machine-palette').querySelectorAll('button:not(:disabled)')], i = items.indexOf(e.target.closest('button'));
+    const next = { ArrowLeft: i - 1, ArrowUp: i - 1, ArrowRight: i + 1, ArrowDown: i + 1, Home: 0, End: items.length - 1 }[e.key];
+    e.preventDefault(); items[(next + items.length) % items.length]?.focus();
+  }
+  wireOutline() {
+    const el = $('machine-outline');
+    const pick = li => { if (!li) return; if (li.dataset.node) this.select(li.dataset.node); else this.select(li.dataset.socket); };
+    el.addEventListener('click', e => { const li = e.target.closest('[role=treeitem]'); if (li) { e.stopPropagation(); pick(li); } });
+    el.addEventListener('keydown', e => {
+      const li = e.target.closest('[role=treeitem]'); if (!li) return;
+      const items = [...el.querySelectorAll('[role=treeitem]')], i = items.indexOf(li);
+      const move = to => { e.preventDefault(); const t = items[Math.max(0, Math.min(items.length - 1, to))]; for (const x of items) x.tabIndex = -1; t.tabIndex = 0; t.focus(); };
+      if (e.key === 'ArrowDown') move(i + 1); else if (e.key === 'ArrowUp') move(i - 1); else if (e.key === 'Home') move(0); else if (e.key === 'End') move(items.length - 1);
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(li); }
+      else if ((e.key === 'Backspace' || e.key === 'Delete') && li.dataset.node) { e.preventDefault(); this.remove(li.dataset.node); }
+    });
+  }
+  // The stage: tap a socket, block or tower; drag the background to pan; pinch or wheel to zoom.
+  wireStage() {
+    const st = this.stage, pts = new Map();
+    const toMachine = (x, y) => { const m = this.svg.getScreenCTM(); if (!m) return null; const p = new DOMPoint(x, y).matrixTransform(m.inverse()); return { x: p.x, y: p.y }; };
+    this.toMachine = toMachine;
+    st.addEventListener('pointerdown', e => {
+      if (e.target.closest('#machine-hud,#machine-peek') || e.button > 0) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, target: e.target });
+      try { st.setPointerCapture(e.pointerId); } catch {}
+      if (pts.size === 2) this.pinch = { d: dist(), cam: { ...(this.manual ?? this.cam) } };
+    });
+    const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+    st.addEventListener('pointermove', e => {
+      const p = pts.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) p.moved = true;
+      if (!this.cam) return;
+      const scale = this.viewport().width / this.cam.w;
+      if (pts.size === 2 && this.pinch) { const k = this.pinch.d / dist(), c = this.pinch.cam; this.manual = this.fit({ x: c.x + c.w * (1 - k) / 2, y: c.y + c.h * (1 - k) / 2, w: c.w * k, h: c.h * k }); this.dirty = true; return; }
+      if (p.moved && pts.size === 1) { const c = this.manual ?? this.cam; this.manual = { ...c, x: c.x - dx / scale, y: c.y - dy / scale }; this.dirty = true; this.hidePeek(); }
+    });
+    const up = e => {
+      const p = pts.get(e.pointerId); if (!p) return; pts.delete(e.pointerId); if (pts.size < 2) this.pinch = null;
+      if (p.moved || e.type === 'pointercancel') return;
+      const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-socket],[data-node],[data-tower]') ?? p.target.closest?.('[data-socket],[data-node],[data-tower]');
+      if (hit?.dataset.socket) this.select(hit.dataset.socket);
+      else if (hit?.dataset.node) this.select(hit.dataset.node);
+      else if (hit?.dataset.tower) this.peek(hit.dataset.tower, { x: e.clientX, y: e.clientY });
+      else { this.hidePeek(); if (this.selected) { this.selected = null; this.dirty = true; this.outline(); this.status(''); } }
+    };
+    st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+    st.addEventListener('wheel', e => {
+      if (!this.cam) return; e.preventDefault();
+      const c = this.manual ?? this.cam, k = Math.exp(Math.max(-.5, Math.min(.5, e.deltaY * .0015))), at = toMachine(e.clientX, e.clientY) ?? { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+      this.manual = this.fit({ x: at.x - (at.x - c.x) * k, y: at.y - (at.y - c.y) * k, w: c.w * k, h: c.h * k }); this.dirty = true;
+    }, { passive: false });
+  }
+  // Palette: tap (or Enter) hangs a block on the selected socket; drag previews the nearest
+  // socket within reach (PRIME's Ping) and drops it there. On touch a sideways swipe
+  // scrolls the strip; a drag needs a vertical pull of 10 px or a 350 ms press.
+  wirePalette() {
+    const pal = $('machine-palette');
+    pal.addEventListener('click', e => {
+      const b = e.target.closest('button[data-op]'); if (!b || b.disabled) return;
+      if (this.suppressClick) { this.suppressClick = false; return; }
+      this.tapBlock(b.dataset.op);
+    });
+    pal.addEventListener('pointerdown', e => {
+      const b = e.target.closest('button[data-op]'); if (!b || b.disabled || e.button > 0) return;
+      const touch = e.pointerType !== 'mouse';
+      this.press = { id: e.pointerId, op: b.dataset.op, button: b, x0: e.clientX, y0: e.clientY, touch };
+      if (touch) this.press.timer = setTimeout(() => { if (this.press?.id === e.pointerId) this.beginDrag(e.clientX, e.clientY); }, 350);
+    });
+    pal.addEventListener('pointermove', e => {
+      const p = this.press; if (!p || p.id !== e.pointerId) return;
+      if (this.drag) return this.moveDrag(e.clientX, e.clientY);
+      const dx = e.clientX - p.x0, dy = e.clientY - p.y0;
+      if (p.touch ? Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) : Math.hypot(dx, dy) > 5) this.beginDrag(e.clientX, e.clientY);
+      else if (p.touch && Math.abs(dx) > 10) this.endDrag();
+    });
+    pal.addEventListener('pointerup', e => { if (this.press?.id !== e.pointerId) return; if (this.drag) { this.dropDrag(); this.suppressClick = true; setTimeout(() => { this.suppressClick = false; }, 0); } else this.endDrag(); });
+    pal.addEventListener('pointercancel', () => this.endDrag());
+    // Once a block is being dragged, the strip must not scroll under the finger.
+    pal.addEventListener('touchmove', e => { if (this.drag) e.preventDefault(); }, { passive: false });
+  }
+  beginDrag(x, y) {
+    const p = this.press; if (!p || this.drag) return;
+    clearTimeout(p.timer);
+    try { p.button.setPointerCapture(p.id); } catch {}
+    const ghost = document.createElement('div'); ghost.className = 'machine-ghost'; ghost.setAttribute('aria-hidden', 'true'); ghost.innerHTML = p.button.innerHTML;
+    document.body.append(ghost); document.body.classList.add('machine-dragging');
+    this.drag = { op: p.op, ghost, socket: null, at: null }; this.moveDrag(x, y);
+  }
+  moveDrag(x, y) {
+    const d = this.drag; if (!d) return;
+    d.ghost.style.transform = `translate(${x - 28}px,${y - 28}px)`;
+    const at = this.toMachine?.(x, y); d.at = at;
+    let best = null, bestD = DRAG_RADIUS;
+    if (at) for (const s of [...openSockets(this.tree), ...(Object.keys(this.tree).length ? Object.keys(this.tree) : ['io'])]) {
+      const p = this.tree[s] ? this.nodeCentre(s) : this.socketPoint(s); if (!p) continue;
+      const dd = Math.hypot(p.x - at.x, p.y - at.y); if (dd < bestD) { bestD = dd; best = s; }
+    }
+    d.socket = best; this.hits(this.lastT);
+  }
+  nodeCentre(id) { try { const b = box(this.layout.nodeBox(id)); return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null; } catch { return null; } }
+  dropDrag() { const d = this.drag; const target = d?.socket; const op = d?.op; this.endDrag(); if (target) this.attachAt(target, op); else this.status('Drop a block near an open socket to hang it there.'); }
+  endDrag() { if (this.press) clearTimeout(this.press.timer); this.press = null; if (this.drag) { this.drag.ghost.remove(); this.drag = null; this.hitKey = null; this.dirty = true; document.body.classList.remove('machine-dragging'); } }
+
+  // ---------- automation (tests and videos only: &automation) ----------
+  hook() {
+    window.__machine = {
+      state: () => this.state,
+      beats: () => { const s = schedule(this.planned, this.sp, { readAlong: this.readAlong }); return this.planned.beats.map((b, i) => ({ i, kind: b.kind, node: b.node, caption: b.caption, start: s.starts[i], end: s.ends[i] })); },
+      plan: () => JSON.parse(JSON.stringify(this.planned)),
+      load: async params => { await this.load(params); },
+      seek: t => this.seek(t),
+      chrome: mode => this.chrome(mode),
+    };
+  }
+}
