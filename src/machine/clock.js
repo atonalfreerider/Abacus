@@ -29,17 +29,17 @@ export class BeatClock {
   }
   // run: the beat in motion {i, from (u when it was last anchored), at (ms), secs}. Its
   // length is fixed when it starts, so a speed change applies from the next beat.
-  begin(i, at) { this.run = { i, from: 0, at, secs: beatSeconds(this.plan.beats[i], this.sp) }; this.wait = null; this.pos = i; }
+  begin(i, at, once = false) { this.run = { i, from: 0, at, secs: beatSeconds(this.plan.beats[i], this.sp), once }; this.wait = null; this.pos = i; }
   // Plays the clock forward to `now`. A beat that ended between two frames hands over at
   // its exact end time, so the timeline never depends on the frame rate.
   advance(now) {
     for (let guard = 0; guard <= this.n + 1 && !this.paused; guard++) {
       if (this.run) {
-        const { i, from, at, secs } = this.run, length = secs * 1000, u = length > 0 ? from + (now - at) / length : 1;
+        const { i, from, at, secs, once } = this.run, length = secs * 1000, u = length > 0 ? from + (now - at) / length : 1;
         if (u < 1) { this.pos = i + u; return; }
         const end = at + (1 - from) * length;
         this.run = null; this.pos = i + 1;
-        if (!this.auto || i + 1 >= this.n) return;
+        if (!this.auto || once || i + 1 >= this.n) return;
         const gap = this.readAlong ? readGap(this.plan.beats[i], secs) : 0;
         if (gap > 0) this.wait = { next: i + 1, until: end + gap * 1000 }; else this.begin(i + 1, end);
       } else if (this.wait) {
@@ -52,8 +52,9 @@ export class BeatClock {
   // Rewind to beat 0 and play it; AUTO carries the run on to OUTPUT.
   start(now) { this.paused = false; this.started = true; this.run = this.wait = null; this.pos = 0; if (this.n) this.begin(0, now); }
   // Mid-beat (playing or paused): finish this beat now. Between beats: play the next
-  // one, after which AUTO, if on, continues. It never skips more than one beat.
-  step(now) {
+  // one, after which AUTO, if on, continues (`once` plays just that beat: the Steps list).
+  // It never skips more than one beat.
+  step(now, { once = false } = {}) {
     this.advance(now); this.started = true;
     if (this.run) {
       const { i } = this.run, wasPaused = this.paused;
@@ -64,7 +65,7 @@ export class BeatClock {
     this.paused = false;
     const next = this.wait ? this.wait.next : Math.round(this.pos);
     if (next >= this.n) { this.wait = null; return 'done'; }
-    this.begin(next, now); return 'play';
+    this.begin(next, now, once); return 'play';
   }
   // Freeze or resume mid-beat (or mid read-along gap); at rest there is nothing to pause.
   pause(now) {
