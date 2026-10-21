@@ -47,6 +47,24 @@ const boxText = b => `${+b.x.toFixed(3)} ${+b.y.toFixed(3)} ${+b.w.toFixed(3)} $
 const parseBox = v => typeof v === 'string' ? (([x, y, w, h]) => ({ x, y, w, h }))(v.trim().split(/[\s,]+/).map(Number)) : box(v);
 // render.js returns the body of a frame; tolerate a full <svg> element as well.
 const inner = svg => /^\s*<svg[\s>]/.test(svg) ? svg.replace(/^\s*<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '') : svg;
+// Frames within a beat keep almost every element and change attributes, so a new frame
+// is patched into the old one: replacing 1500 <use> bulbs costs about five times as much
+// as parsing the frame and setting the attributes that changed.
+const parser = typeof document !== 'undefined' ? document.createElement('template') : null;
+export function patch(old, next) {
+  const a = old.childNodes, b = [...next.childNodes];
+  for (let i = 0; i < b.length; i++) {
+    const o = a[i], n = b[i];
+    if (!o) { old.append(...b.slice(i)); break; }
+    if (o.nodeName !== n.nodeName) { old.replaceChild(n, o); continue; }
+    if (n.nodeType === 3) { if (o.data !== n.data) o.data = n.data; continue; }
+    if (n.nodeType !== 1) continue;
+    for (const { name, value } of n.attributes) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+    if (o.attributes.length !== n.attributes.length) for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+    if (n.firstChild || o.firstChild) patch(o, n);
+  }
+  while (a.length > b.length) old.lastChild.remove();
+}
 // A plan with no beats draws a machine that cannot run yet: the tree hangs under IO with
 // its sockets open, so it can still be built on.
 export const displayPlan = (tree, base, pace) => ({ v: 1, base, pace, tree, inputs: [], start: { nodes: { ...tree }, towers: {}, bulbs: {} }, beats: [],
@@ -144,7 +162,8 @@ export class MachineView extends EventTarget {
   }
   step() { return this.enter({ step: true }); }
   back() { this.clock.back(); this.rewound(); }
-  seek(t) { this.clock.seek(Number(t)); this.rewound(); }
+  // A seek into the plan counts as a run under way: Enter then steps on from there.
+  seek(t) { this.clock.seek(Number(t)); if (this.clock.pos > 0) this.clock.started = true; this.rewound(); }
   setAuto(on, { remember = true } = {}) {
     this.auto = !!on; this.clock?.setAuto(this.auto, performance.now()); if (!this.auto) this.stepMode = true;
     if (remember) try { localStorage.setItem(AUTO_KEY, this.auto ? '1' : '0'); } catch {}
@@ -329,7 +348,8 @@ export class MachineView extends EventTarget {
     const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset() };
     if (this.manual) view.camera = this.fit(this.manual);
     const out = renderMachine(this.planned, t, this.layout, ink, view);
-    this.cam = parseBox(out.viewBox) ?? view.camera; this.$scene.innerHTML = inner(out.svg);
+    this.cam = parseBox(out.viewBox) ?? view.camera;
+    parser.innerHTML = `<svg>${inner(out.svg)}</svg>`; patch(this.$scene, parser.content.firstChild);
     if (this.cam) this.svg.setAttribute('viewBox', boxText(this.cam));
     this.lastT = t; this.dirty = false; this.hits(t);
   }
