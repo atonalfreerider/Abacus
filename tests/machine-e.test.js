@@ -169,7 +169,8 @@ function sceneValue(scene) {
   if (!root) return towers.find(t => /^(io|out):0$/.test(t.at))?.value;
   const value = id => {
     const node = scene.nodes[id], arg = s => childAt(scene.nodes, id, s) ? value(childAt(scene.nodes, id, s)) : at(`${id}.${s}`)?.value;
-    if (ARITY[node.op] === 1) { const v = at(`${id}.C`).value; return readingOf(v) || node.op === 'measure' ? v : evaluate(node.op, [v]).values[0]; }
+    // a unary node's tower at .C is its operand until the glyph fades, then its result
+    if (ARITY[node.op] === 1) { const v = at(`${id}.C`).value; return node.glyph === 0 ? v : evaluate(node.op, [v]).values[0]; }
     const [l, r] = [arg('L'), arg('R')];
     if (l === undefined && r === undefined) return at(`${id}.C`).value;
     if (node.op === 'mule' && at(`${id}.R`)?.note) return E.parse(l).mul(E.parse(r)).key();

@@ -277,12 +277,14 @@ function foldInto(b, t) {
 // Towers that are already lights (a base-e number can arrive as one) are not folded again.
 const lit = (b, t) => bulbsOf(b, t).some(([, q]) => isLight(q));
 const lightGroups = (b, t) => bulbsOf(b, t).filter(([, q]) => isLight(q)).map(([id, q]) => ({ s: q.s, id, value: val(b, t).abs(), h: q.l }));
-function fold(b, node, towers, caption) {
+// A unary node's tower at .C counts as its result once the glyph has faded, so LN keeps
+// its glyph through the FOLD (the light is still its operand) and fades it in READ.
+function fold(b, node, towers, caption, { glyph = true } = {}) {
   const todo = towers.filter(t => !lit(b, t));
   if (todo.length) {
     const x = val(b, todo[0]);
     b.begin('fold', node, { caption, ledger: { law: 'fold', value: x.key(), h: height(x) } });
-    working(b, node);
+    if (glyph) working(b, node);
     for (const t of todo) foldInto(b, t);
     b.end();
   }
@@ -588,7 +590,7 @@ function measure(b, node, [t]) {
 function lnOp(b, node, [t]) {
   const x = val(b, t);
   if (sign(x) <= 0) throw RangeError(`ln of ${x.text()}: the pre-check should have refused it`);
-  fold(b, node, [t], foldCaption(x, foldPreview(b, t)));
+  fold(b, node, [t], foldCaption(x, foldPreview(b, t)), { glyph: false });
   b.begin('read', node, { caption: `${lnText(x)}: the height of the folded light.`, ledger: { law: 'read', value: x.key(), h: height(x) } });
   working(b, node);
   b.tower(t, { value: `ln(${x.key()})` });
