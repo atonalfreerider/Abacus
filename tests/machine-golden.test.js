@@ -160,6 +160,7 @@ test('[16,7] with MULT in balanced ternary: 7 = 9 − 3 + 1, the same 12 beats, 
     if (digits) assert.equal(towerDigits(p, Number(i)), digits, `beat ${i}`);
   }
   for (const i of [5, 8, 10, 12, 14]) assert.equal(p.beats[i].kind, 'return');
+  assert.deepEqual(p.beats.slice(3, 15).map(b => b.node), ['n1', 'n2', 'n2', 'n3', 'n4', 'n4', 'n5', 'n5', 'n3', 'n3', 'n1', 'n1']);
   assert.deepEqual(p.result, {values: ['112'], text: '[112]'});
 });
 test('[7,16] is one SHIFT; 9 × 0 and 0 × 0 are two beats', () => {
@@ -232,6 +233,57 @@ test('COMPLEMENT ends in lamp normal form for −1, −2, −4 and −2^62; NOT 
   assert.deepEqual(plan('not', ['5']).result, {values: ['-6'], text: '[−6]'});
   const notFive = plan('not', ['5']), out = snapshotAt(notFive, notFive.beats.length);
   assert.equal(Object.values(out.towers)[0].digits, '…1010₂');
+});
+// The registry seam (6.6): a base registered from outside plays through plan.js's flow beats
+// and the builder exactly as 6.5's MEASURE 3 fixture. This stub stands in for base e (B's
+// e-base.js); it knows only the one value it is asked about.
+const PLAN_E_MEASURE_3 = {"v":1,"base":"e","pace":"together","tree":{"n1":{"op":"measure","parent":"io","socket":"C"}},"inputs":["3"],
+ "start":{"nodes":{"n1":{"op":"measure","parent":"io","socket":"C"}},
+  "towers":{"t1":{"at":"in:0","form":"light","value":"3","text":"3","reading":"ln 3 ≈ 1.0986"}},
+  "bulbs":{"b1":{"t":"t1","l":1.0986,"s":1,"k":"light"}}},
+ "beats":[
+ {"i":0,"kind":"input","node":"io","caption":"[3] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"}}}},
+ {"i":1,"kind":"deliver","node":"n1","caption":"3 rides down the wire to the ruler.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"}}}},
+ {"i":2,"kind":"fanout","node":"n1","caption":"3 arrives as one light at height ln 3 ≈ 1.0986.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C"}}}},
+ {"i":3,"kind":"unfold","node":"n1","caption":"The light falls and leaves the bulbs that fit: 3 = 10.020…ₑ.","ledger":{"law":"unfold","value":"3"},
+  "set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":{"form":"tower","dust":true,"digits":"10.020…ₑ","reading":null}},
+         "bulbs":{"b1":null,"b2":{"t":"t1","l":1,"s":1,"slot":0},"b3":{"t":"t1","l":-2,"s":1,"slot":0},"b4":{"t":"t1","l":-2,"s":1,"slot":1}}},
+  "motion":{"b1":{"path":[[0,1.0986],[0.45,-1.2668],[0.9,-4.5055]],"fade":[0.9,1]},
+            "b2":{"in":[0.0095,0.0905],"grow":true},"b3":{"in":[0.5042,0.5852],"grow":true},"b4":{"in":[0.5042,0.5852],"grow":true}}},
+ {"i":4,"kind":"return","node":"n1","caption":"3 rides up into the triangle.","ledger":{"law":"move","value":"3"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
+ {"i":5,"kind":"output","node":"io","caption":"Output [3].","ledger":{"law":"move","value":"3"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
+ "result":{"values":["3"],"text":"[3]"},
+ "stats":{"beats":6,"nodes":1,"maxLevels":5,"maxBulbs":3}};
+test('a base registered from outside plays through the flow beats exactly as the MEASURE 3 fixture (6.5)', async () => {
+  const {registerBase, hasBase} = await import('../src/machine/registry.js');
+  if (hasBase('e')) return;     // the real base e is loaded: its own tests cover this
+  registerBase('e', {
+    id: 'e', palette: ['measure'],
+    parseValue: text => text === '3' ? {ok: true, value: '3'} : {ok: false, error: 'stub'},
+    evaluate: (op, args) => ({ok: true, values: [args[0]]}),
+    display: (value, {form}) => form === 'light' ? {text: '3', reading: 'ln 3 ≈ 1.0986'} : {text: '3', digits: '10.020…ₑ'},
+    checkLimits: () => null, validateTower: () => [],
+    place(b, t, value, {asLight}) {
+      if (!asLight || b.scene.towers[t].form === 'light') return;
+      b.tower(t, {form: 'light'}); b.bulb(b.id('b'), {t, l: 1.0986, s: 1, k: 'light'});
+    },
+    ops: {measure(b, node, [t]) {
+      b.begin('unfold', node, {caption: 'The light falls and leaves the bulbs that fit: 3 = 10.020…ₑ.', ledger: {law: 'unfold', value: '3'}});
+      b.node(node, {glyph: 0});
+      b.tower(t, {form: 'tower', dust: true});
+      const [[light]] = b.bulbsOf(t);
+      b.drop(light, {path: [[0, 1.0986], [0.45, -1.2668], [0.9, -4.5055]], fade: [0.9, 1]});
+      b.bulb(b.id('b'), {t, l: 1, s: 1, slot: 0}, {in: [0.0095, 0.0905], grow: true});
+      b.bulb(b.id('b'), {t, l: -2, s: 1, slot: 0}, {in: [0.5042, 0.5852], grow: true});
+      b.bulb(b.id('b'), {t, l: -2, s: 1, slot: 1}, {in: [0.5042, 0.5852], grow: true});
+      b.end();
+      return {result: t};
+    }},
+  });
+  const r = planMachine({tree: {n1: {op: 'measure', parent: 'io', socket: 'C'}}, inputs: ['3'], base: 'e'});
+  assert.ok(r.ok, r.message);
+  for (const want of fixture('e-measure-3', PLAN_E_MEASURE_3)) assert.deepEqual(JSON.parse(JSON.stringify(r.plan)), want);
+  assert.deepEqual(validatePlan(r.plan), []);
 });
 test('PRIME regressions: 7 + 5 = 12, 9 + 5 = 14, the 40 + 15 label on top, 257, 1024, 0 + 0, [5, 3]', () => {
   assert.equal(plan('add', ['7', '5']).result.text, '[12]');
