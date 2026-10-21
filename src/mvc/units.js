@@ -1,16 +1,22 @@
-// Each token is one unit of its decimal place (a singleton, ten-stack, or hundred-stack).
-// Every phase conserves signed value. Geometry is assigned only by the view.
-export function unitValue(tokens){return tokens.reduce((sum,t)=>sum+BigInt(t.sign)*10n**BigInt(t.place),0n);}
-export function unitPlan(a,b,target,source){return unitPlanMany(a,target,[{value:b,owner:source}]);}
+// Each token is one unit of its place (a singleton, ten-stack, or hundred-stack in decimal;
+// 2^k or 3^k cards in base 2 and balanced ternary). Every phase conserves signed value.
+// Geometry is assigned only by the view.
+import {bases,wholeDigits} from './bases.js';
+export function unitValue(tokens,radix=10n){return tokens.reduce((sum,t)=>sum+BigInt(t.sign)*radix**BigInt(t.place),0n);}
+export function unitPlan(a,b,target,source,base='decimal'){return unitPlanMany(a,target,[{value:b,owner:source}],{base});}
 // Several sources merge into one target (repeated addition). A source's transfers may
 // start after `delay` seconds; everything else follows the dependency schedule.
-export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
+export function unitPlanMany(a,target,sources,{sequential=false,speed=1,base='decimal'}={}){
+ const kind=bases[base];if(kind.irrational)throw Error('Cards regroup only in whole-number bases.');
+ const R=kind.radix,radix=BigInt(R),balanced=!!kind.balanced;
  let serial=0,tokens=[];const phases=[],source=sources.length===1?sources[0].owner:null,owners=new Set(sources.map(s=>s.owner));
  const make=(sign,place,owner,cell)=>({id:`u${serial++}`,sign,place,owner,cell});
- for(const [value,owner] of [[a,target],...sources.map(s=>[s.value,s.owner])])[...String(Math.abs(value))].reverse().forEach((d,place)=>{for(let cell=0;cell<Number(d);cell++)tokens.push(make(Math.sign(value),place,owner,cell));});
- const initial=tokens.map(t=>({...t})),total=unitValue(tokens);
+ // A digit d is |d| cards of its place; balanced ternary digits carry their own sign.
+ const digits=value=>base==='decimal'?[...String(Math.abs(value))].reverse().map((d,place)=>({place,digit:Number(d)*Math.sign(value)})):wholeDigits(value,base).map(x=>({place:x.place,digit:balanced?x.digit:x.digit*Math.sign(value)}));
+ for(const [value,owner] of [[a,target],...sources.map(s=>[s.value,s.owner])])for(const {place,digit} of digits(value))for(let cell=0;cell<Math.abs(digit);cell++)tokens.push(make(Math.sign(digit),place,owner,cell));
+ const initial=tokens.map(t=>({...t})),total=unitValue(tokens,radix);
  const snapshot=()=>tokens.map(t=>({...t}));
- const add=(type,removed,created)=>{const before=snapshot();tokens=tokens.filter(t=>!removed.includes(t.id)).concat(created);if(unitValue(tokens)!==total)throw Error('Unit animation lost mathematical value.');phases.push({type,before,after:snapshot(),removed,created:created.map(t=>t.id)});};
+ const add=(type,removed,created)=>{const before=snapshot();tokens=tokens.filter(t=>!removed.includes(t.id)).concat(created);if(unitValue(tokens,radix)!==total)throw Error('Unit animation lost mathematical value.');phases.push({type,before,after:snapshot(),removed,created:created.map(t=>t.id)});};
  const bucket=(place,sign)=>tokens.filter(t=>t.owner===target&&t.place===place&&(sign===undefined||t.sign===sign));
  const free=place=>{const used=new Set(bucket(place).map(t=>t.cell));let cell=0;while(used.has(cell))cell++;return cell;};
  // Cancellation starts deepest in the tray: the receiving card in the bottom-right-most
@@ -29,11 +35,16 @@ export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
  function normalize(allowCarry=true){
   let changed=true;
   while(changed){changed=false;
-   for(let place=0;place<17;place++){
+   for(let place=0;place<64;place++){
     const plus=bucket(place,1),minus=bucket(place,-1);
+    const group=plus.length>=R?plus:minus.length>=R?minus:null;
+    // Balanced ternary stacks three like cards before a zero pair cancels (the pair below made them).
+    if(balanced&&group&&allowCarry){add('carry',group.slice(0,R).map(t=>t.id),[make(group[0].sign,place+1,target,free(place+1))]);changed=true;break;}
     if(plus.length&&minus.length){add('neutralize',cancelPair(plus,minus).map(t=>t.id),[]);changed=true;break;}
-    const group=plus.length>=10?plus:minus.length>=10?minus:null;
-    if(group&&allowCarry){add('carry',group.slice(0,10).map(t=>t.id),[make(group[0].sign,place+1,target,free(place+1))]);changed=true;break;}
+    if(group&&allowCarry){add('carry',group.slice(0,R).map(t=>t.id),[make(group[0].sign,place+1,target,free(place+1))]);changed=true;break;}
+    // Two like cards in balanced ternary: a zero pair appears beside them (+1 − 1 = 0), so
+    // three like cards stack into the next place and the opposite card stays: 2 = 3 − 1.
+    if(balanced&&allowCarry&&(plus.length===2||minus.length===2)){const sign=plus.length===2?1:-1,first=free(place),used=new Set([...bucket(place).map(t=>t.cell),first]);let second=0;while(used.has(second))second++;add('pair',[],[make(sign,place,target,first),make(-sign,place,target,second)]);changed=true;break;}
    }
   }
  }
@@ -50,16 +61,17 @@ export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
  normalize();
  const sign=total<0n?-1:1;
  // Borrow from the closest higher occupied place, splitting recursively through zeros.
- while(tokens.some(t=>t.sign!==sign)){
+ // (Balanced ternary keeps both signs: each place holds at most one card, of either sign.)
+ while(!balanced&&tokens.some(t=>t.sign!==sign)){
   const opposing=tokens.filter(t=>t.sign!==sign).sort((a,b)=>a.place-b.place)[0];
   const donor=tokens.filter(t=>t.sign===sign&&t.place>opposing.place).sort((a,b)=>a.place-b.place)[0];
   if(!donor)throw Error('Unable to borrow for unit animation.');
   const place=donor.place-1,used=new Set(bucket(place,sign).map(t=>t.cell));
-  const children=Array.from({length:10},()=>{let cell=0;while(used.has(cell))cell++;used.add(cell);return make(sign,place,target,cell);});
+  const children=Array.from({length:R},()=>{let cell=0;while(used.has(cell))cell++;used.add(cell);return make(sign,place,target,cell);});
   add('borrow',[donor.id],children);normalize(false);
  }
  // Compact gaps left by cancellation without changing token identities or weights.
- const before=snapshot();for(let place=0;place<17;place++)bucket(place).sort((a,b)=>a.cell-b.cell).forEach((t,i)=>{t.cell=i;});
+ const before=snapshot();for(let place=0;place<64;place++)bucket(place).sort((a,b)=>a.cell-b.cell).forEach((t,i)=>{t.cell=i;});
  if(before.some((t,i)=>t.cell!==tokens[i].cell))phases.push({type:'settle',before,after:snapshot(),removed:[],created:[]});
  // Bind each cancellation before playback. Existing receiving cards win, then
  // borrowed receiving units. Incoming cards land on these cells, never a midpoint.
@@ -74,14 +86,14 @@ export function unitPlanMany(a,target,sources,{sequential=false,speed=1}={}){
  }
  // Pairs in one place pop from the bottom-right backwards, a short ripple that can be counted.
  const rank={};for(const phase of phases.filter(p=>p.type==='neutralize')){const place=phase.receiver.place;phase.lag=.06*(rank[place]=(rank[place]??-1)+1);}
- const plan={initial,phases,final:snapshot(),target,source,total:String(total),cancelTargets,speed};scheduleUnits(plan);return plan;
+ const plan={initial,phases,final:snapshot(),target,source,total:String(total),cancelTargets,speed,base};scheduleUnits(plan);return plan;
 }
 export function scheduleUnits(plan){
  const ready=new Map();let end=0;
  for(const phase of plan.phases){
   const inputs=phase.type==='settle'?phase.before.map(t=>t.id):phase.removed;
   phase.start=Math.max(phase.type==='settle'?end:phase.delay||0,...inputs.map(id=>ready.get(id)||0),...(phase.waits||[]).map(i=>plan.phases[i].start))+(phase.lag||0);
-  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:phase.type==='neutralize'?.45:.8)/(plan.speed||1);
+  phase.end=phase.start+(phase.type==='transfer'?.45:phase.type==='settle'?.25:phase.type==='neutralize'||phase.type==='pair'?.45:.8)/(plan.speed||1);
   for(const id of (phase.type==='settle'?phase.after.map(t=>t.id):phase.created))ready.set(id,phase.end);
   end=Math.max(end,phase.end);
  }

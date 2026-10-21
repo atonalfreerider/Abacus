@@ -154,3 +154,7 @@
  [data-style=cyber] .original-dock>:nth-child(2)>button{font-size:13px}[data-style=cyber] .original-dock #solve{font-size:17px}
 }
 @media(max-width:440px){[data-style=cyber] .brand{letter-spacing:.12em;font-size:14px}[data-style=cyber] .brand small{letter-spacing:.02em;font-size:7.5px;gap:.5em}[data-style=cyber] nav{gap:3px}[data-style=cyber] nav button{padding:5px 5px;letter-spacing:.02em}}
+/* Number bases: the bar over a balanced-ternary 1 (the digit −1) and the ellipsis of base e. */
+[data-style=cyber] #equation-svg .numeral-bar{stroke:var(--magenta);filter:drop-shadow(0 0 4px #ff3d8b)}
+[data-style=cyber] #equation-svg .digit-ellipsis circle{fill:var(--cyan)}
+[data-style=cyber] #base-cycle{color:var(--cyan);border-color:var(--cyan)}

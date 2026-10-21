@@ -9,6 +9,7 @@ import { initNative } from '../native.js';
 import { placeMetadata } from '../place-value.js';
 import { setStyle,onStyle,ink } from './theme.js';
 import { statusBarStyle } from '../native.js';
+import { numeral,setBase,onBase,bases,baseOrder,baseSpec,baseText,placeMeta,digitGlyph } from './bases.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
 const surface=new Surface($('stage'));
@@ -32,8 +33,14 @@ function decorate(){
  const lift=vertical?0:-70-Math.min(120,Math.abs(to.x-from.x)*.12),path=vertical?`M${from.x+90} ${from.y+75}C${from.x+200} ${from.y+75} ${to.x+200} ${to.y+75} ${to.x+90} ${to.y+75}`:`M${from.x} ${from.y-18}C${from.x} ${from.y+lift} ${to.x} ${to.y+lift} ${to.x} ${to.y-18}`;
  document.querySelector('#equation-svg .scene-root').insertAdjacentHTML('beforeend',`<g class="hint-arrow" pointer-events="none"><path d="${path}"/><circle cx="${vertical?to.x+90:to.x}" cy="${vertical?to.y+75:to.y-18}" r="7"/></g>`);
 }
+// Outside decimal a solved x is also written in the cards' base.
+function statusText(){
+ const text=controller.status(),m=controller.model;if(numeral.id==='decimal')return text;
+ if(m.expression){const [only]=m.state.left;return m.state.left.length===1&&!only.expr&&only.kind==='constant'?`${text} = ${baseText(only.value)}`:text;}
+ const r=m.result();return math.isSolved(m.state)&&r.type==='unique'?`${text} = ${baseText(r.value)}`:text;
+}
 function refresh() {
- $('equation-status').textContent=controller.status();
+ $('equation-status').textContent=statusText();
  $('progress').value=controller.clock.progress;
  $('pause').textContent=controller.clock.playing?'Pause':'Play';
  for(const id of ['combine','solve','multiply','divide','tutor-step','tutor-hint','tutor-show','tutor-action'])$(id).disabled=controller.busy;
@@ -49,7 +56,21 @@ const dragger=new Dragger($('stage'),controller,{
 // Peek (firm press or long press): what a card holds, without changing anything. A
 // number shows its places as cards; a term still to be worked out shows every step of
 // its order of operations through to the answer.
+const SUP='⁰¹²³⁴⁵⁶⁷⁸⁹',sup=k=>String(k).replace(/\d/g,d=>SUP[d]).replace('-','⁻');
+const short=x=>Number.isInteger(x)?String(x):x.toFixed(x<1?3:2).replace(/0+$/,'');
+// A number in another base: each place's digit, what one of its cards is worth and how
+// many cards its stack holds.
+function basePeek(t){
+ const base=numeral.id,b=bases[base],spec=baseSpec(t.value,base),title=`${escapeHtml(math.termText(t,true))} = ${escapeHtml(baseText(t.value))}`;
+ if(!spec)return `<h2>${title}</h2><p>This fraction does not end in ${b.name.toLowerCase()}: its denominator is not a power of ${b.radix}. Tap it to divide it out.</p>`;
+ const symbol=base==='e'?'e':String(b.radix),rows=spec.places.filter(p=>p.digit).map(p=>{
+  const meta=placeMeta(p.exponent,base),worth=b.radix**p.exponent,cards=p.exponent<0?`a card ${short(worth)} of a whole`:meta.cardCount===1?'one card':base==='e'?`a stack of ${short(worth)} cards (${Math.floor(worth)} and a slice)`:`a stack of ${short(worth)} cards`;
+  return `<li>${p.signed<0?'−':''}${p.digit} × ${symbol}${sup(p.exponent)}${base==='e'||p.exponent<0?'':` = ${p.signed<0?'−':''}${p.digit*worth}`}: ${p.digit>1?`${p.digit} × `:''}${cards}${p.negative&&b.balanced?' (red: the digit T)':''}</li>`;});
+ const note=base==='binary'?'Two cards in a place stack into one card of the next place.':base==='ternary'?'Red cards are the digit −1 (T), so the number needs no minus sign. Two like cards become a zero pair and a stack of three.':`e is transcendental: only 0, 1 and 2 end in base e${spec.exact?'':', so these digits run on (…)'}.`;
+ return `<h2>${title}</h2><ol>${rows.join('')}</ol><p>${note}</p>`;
+}
 function peekText(t){
+ if(numeral.id!=='decimal'&&!t.expr&&t.kind==='constant')return basePeek(t);
  if(t.expr){const chain=[math.termText(t,true)];let next=t;while((next=math.evaluateStep(next))&&chain.length<12)chain.push(math.termText(next,true));
   return `<h2>Worked out in order</h2><ol>${chain.slice(1).map(step=>`<li>${escapeHtml(step)}</li>`).join('')}</ol><p>Tap the term to watch each step.</p>`;}
  if(t.kind==='variable')return `<h2>The unknown</h2><p>${escapeHtml(math.termText(t,true))} ${math.eq(math.abs(t.value),math.frac(1))?'is one x: get it alone to find its value.':'is that many groups of x.'}</p>`;
@@ -121,7 +142,10 @@ $('open-tutor').onclick=()=>$('lesson-dialog').showModal();
  if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
  const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${typesetExample(exampleOf(lesson))}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
 }}
+// Lessons count in tens: a lesson shows decimal cards and gives the base back afterwards.
+let lessonBase=null;
 async function startLesson(lesson){
+ if(numeral.id!=='decimal'){lessonBase=numeral.id;setBase('decimal');}
  stopPlaying();tutor=new Tutor(lesson);tutor.found=new Set();hint=null;entry.active=false;$('entry-bar').hidden=true;
  $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);controller.model.leftToRight=!!lesson.pemdas;
  if(lesson.graph){(await showGraph(true)).setEquations(exampleOf(lesson));}
@@ -130,7 +154,7 @@ async function startLesson(lesson){
  say(`${lesson.intro} Watch: press Next step, or Play all.`);refresh();
 }
 function say(text,tone=''){$('tutor-prompt').textContent=text;$('tutor-prompt').dataset.tone=tone;}
-function leaveTutor(){stopPlaying();tutor=null;hint=null;controller.model.leftToRight=false;$('tutor-bar').hidden=true;$('tutor-bar').classList.remove('graph-lesson');controller.render();}
+function leaveTutor(){if(lessonBase&&tutor){const base=lessonBase;lessonBase=null;setBase(base);}stopPlaying();tutor=null;hint=null;controller.model.leftToRight=false;$('tutor-bar').hidden=true;$('tutor-bar').classList.remove('graph-lesson');controller.render();}
 const lessonDone=()=>tutor.lesson.graph?(tutor.phase==='example'?!!tutor.shown:!!tutor.solved):finished(controller.model);
 function refreshTutor(){
  const example=tutor.phase==='example',done=lessonDone();
@@ -240,3 +264,9 @@ onStyle(name=>{surface.restyle();graph?.restyle();controller.render();surface.pr
 $('style').onchange=event=>{setStyle(event.target.value);try{localStorage.setItem('abacus-style',event.target.value);}catch{}};
 if(document.documentElement.dataset.style==='cyber')setStyle('cyber');
 $('style').value=ink.name;
+// Numerals: the base the cards are drawn and regrouped in. Saved per device.
+onBase(id=>{controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
+const chooseBase=id=>{lessonBase=null;setBase(id);try{localStorage.setItem('abacus-base',id);}catch{}};
+$('numerals').onchange=event=>chooseBase(event.target.value);
+$('base-cycle').onclick=()=>chooseBase(baseOrder[(baseOrder.indexOf(numeral.id)+1)%baseOrder.length]);
+{let saved=null;try{saved=new URLSearchParams(location.search).get('base')||localStorage.getItem('abacus-base');}catch{}if(bases[saved])setBase(saved);}

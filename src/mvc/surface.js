@@ -1,7 +1,7 @@
 // Persistent SVG surface. Textures and stack definitions are created once and stay
 // decoded; each frame replaces only the scene body. Replacing the whole SVG every
 // frame re-decoded the texture patterns (visible flicker) and repainted every face.
-import {renderScene,stackIds,stackContent,textureDefs} from './view.js';
+import {renderScene,stackIds,stackContent,textureDefs,stackId} from './view.js';
 import {rasterStack,rasterReady,prewarm} from './raster.js';
 const NS='http://www.w3.org/2000/svg';
 export class Surface {
@@ -11,7 +11,7 @@ export class Surface {
  }
  // A new style redraws the face patterns and every cached stack.
  restyle(){this.svg.querySelector('.texture-defs').innerHTML=textureDefs();this.defs.innerHTML='';this.stacks.clear();}
- prewarm(camera){const ids=[];for(const exponent of [0,1,2,3,4,5,-1,-2])for(const color of ['blue','red','green'])ids.push(`stack-${color}-${String(exponent).replace('-','m')}-${camera}`);prewarm(ids);}
+ prewarm(camera){const ids=[];for(const exponent of [0,1,2,3,4,5,-1,-2])for(const color of ['blue','red','green'])ids.push(stackId(color,exponent,camera));prewarm(ids);}
  ensureStack(id){
   if(this.stacks.has(id))return;this.stacks.add(id);
   const group=document.createElementNS(NS,'g');group.id=id;this.defs.append(group);

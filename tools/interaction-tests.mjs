@@ -149,6 +149,27 @@ try{
   await pick('sketchpad');await wait(600);
   expect(await page.eval(`!!document.querySelector('#graph-svg defs pattern#g-blue image')&&document.querySelector('#graph-svg .graph-curve').getAttribute('stroke')`),'#2f5d6b','graph back to paper');
  });
+ await check('number bases: binary carries card by card, balanced ternary needs no minus sign, base e runs on, and lessons count in tens',async()=>{
+  const base=id=>page.eval(`(()=>{const s=document.getElementById('numerals');s.value='${id}';s.dispatchEvent(new Event('change'));})()`);
+  await base('binary');await load('13 + 9');expect(await page.eval(`document.getElementById('base-cycle').textContent`),'2','base button');
+  expect(await page.eval(`[...document.querySelectorAll('#equation-svg .numeral')].map(n=>n.textContent).join('')`),'11011001','13 and 9 in binary trays');
+  await page.eval(`document.getElementById('combine').click()`);
+  let carried=false;for(let t=0;t<40&&!carried;t++){carried=await page.eval(`document.querySelector('#equation-svg .unit-animation')?.dataset.phase==='carry'`);await wait(50);}
+  if(!carried)throw Error('no binary carry was animated');
+  await idle();expect(await status(),'22 = 10110₂','13 + 9 in base 2');
+  await base('ternary');await load('x - 5 = 13');
+  expect(await page.eval(`(()=>{const five=document.querySelector('#equation-svg .term[data-index="1"]');return [...five.querySelectorAll(':scope > text')].map(t=>t.textContent).join('')+'|'+five.querySelectorAll('.numeral-bar').length;})()`),'+|1','−5 is + T11, its 9s digit barred');
+  for(let i=0;i<3&&!/Solved/.test(await status());i++){await page.eval(`document.getElementById('solve').click()`);await idle();}
+  expect(await status(),'Solved: x = 18 = 1T00₃̄','solved in balanced ternary');
+  await base('e');await load('30');const [thirty]=await terms();
+  await page.mouse('mouseMoved',thirty.x,thirty.y,{buttons:0});await page.mouse('mousePressed',thirty.x,thirty.y);await wait(750);const peek=await page.eval(`document.getElementById('peek').innerText`);await page.mouse('mouseReleased',thirty.x,thirty.y);
+  if(!/30 = 1102\.11…ₑ/.test(peek)||!/e³/.test(peek)||!/run on/.test(peek))throw Error('base e peek: '+peek);
+  expect(await page.eval(`!!document.querySelector('#equation-svg .digit-ellipsis')`),true,'ellipsis after the last tray');
+  await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`document.querySelector('#lessons button').click()`);await wait(500);
+  expect(await page.eval(`document.getElementById('numerals').value`),'decimal','a lesson counts in tens');
+  await page.eval(`document.getElementById('tutor-close').click()`);await wait(200);
+  expect(await page.eval(`document.getElementById('numerals').value`),'e','leaving the lesson gives the base back');
+ });
  await check('graph: dragging the point stays at frame rate',async()=>{
   await openGraph();const from=await graphRect('#graph-svg .tracer circle');
   await page.eval(`window.__frames=[];(function f(t){window.__frames.push(t);if(window.__frames.length<300)requestAnimationFrame(f);})(performance.now())`);
