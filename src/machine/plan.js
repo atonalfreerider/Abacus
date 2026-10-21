@@ -250,7 +250,7 @@ export function evaluateScene(scene, base) {
 }
 
 // ── validatePlan ────────────────────────────────────────────────
-const FLOW = ['input', 'deliver', 'fanout', 'return', 'output'];
+const FLOW = ['input', 'deliver', 'fanout', 'return', 'output'], FLOW_IO = ['input', 'deliver', 'fanout', 'output'];
 const E_KINDS = ['pile', 'legal', 'fold', 'unfold', 'slide', 'meet', 'race', 'read'];
 const VALUE_LAWS = ['quotient', 'compare', 'gate', 'complement', 'read'];
 // Every invariant of 6.9 at every beat end: 'beat 7 I3: tower t2 has a leading dark bulb'.
@@ -268,52 +268,63 @@ export function validatePlan(plan) {
   const seen = {nodes: new Set(Object.keys(scene.nodes)), towers: new Set(Object.keys(scene.towers)), bulbs: new Set(Object.keys(scene.bulbs))};
   const facts = {first: new Map(), work: new Map(), collide: new Map()};
   let value = evaluateScene(scene, base).join(' | ');
-  plan.beats.forEach((beat, i) => {
-    const err = (inv, msg) => errs.push(`beat ${i} ${inv}: ${msg}`);
+  const old = {nodes: new Map(), towers: new Map(), bulbs: new Map()}, touched = new Set();
+  for (let i = 0; i < plan.beats.length; i++) {
+    const beat = plan.beats[i], err = (inv, msg) => errs.push(`beat ${i} ${inv}: ${msg}`);
     if (beat.i !== i) err('I6', `the beat is numbered ${beat.i}`);
-    if (!['input', 'deliver', 'fanout', 'output'].includes(beat.kind) && scene.nodes[beat.node]) {
+    if (!FLOW_IO.includes(beat.kind) && scene.nodes[beat.node]) {
       if (!facts.first.has(beat.node)) facts.first.set(beat.node, {i, ...operandsOf(scene, beat.node, listOf)});
-      if (!facts.work.has(beat.node) && !['flip', 'addone'].includes(beat.kind)) facts.work.set(beat.node, {i, ...operandsOf(scene, beat.node, listOf)});
+      if (!facts.work.has(beat.node) && beat.kind !== 'flip' && beat.kind !== 'addone') facts.work.set(beat.node, {i, ...operandsOf(scene, beat.node, listOf)});
     }
-    const set = beat.set ?? {}, old = {nodes: {}, towers: {}, bulbs: {}};
-    for (const kind of KINDS) for (const id in set[kind] ?? {}) {
-      const p = set[kind][id], was = scene[kind][id];
-      old[kind][id] = was;
-      if (p === null) delete scene[kind][id];
-      else { const next = was ? {...was, ...p} : {...p}; for (const f in p) if (p[f] === null) delete next[f]; scene[kind][id] = next; }
-      if (kind === 'bulbs') { if (was) members.get(was.t)?.delete(id); if (p !== null) join(id, scene.bulbs[id]); }
+    const set = beat.set ?? {};
+    for (const kind of KINDS) {
+      const patch = set[kind], was = old[kind], live = scene[kind];
+      was.clear();
+      if (!patch) continue;
+      for (const id in patch) {
+        const p = patch[id], prev = live[id];
+        was.set(id, prev);
+        if (p === null) delete live[id];
+        else {
+          const next = prev ? {...prev} : {};
+          for (const f in p) { const v = p[f]; if (v === null) delete next[f]; else next[f] = v; }
+          live[id] = next;
+        }
+        if (kind === 'bulbs') { if (prev) members.get(prev.t)?.delete(id); if (p !== null) join(id, live[id]); }
+        // I6: ids are never reused
+        if (p !== null && !prev) { if (seen[kind].has(id)) err('I6', `${id} is reused`); seen[kind].add(id); }
+      }
     }
-    const before = (kind, id) => id in old[kind] ? old[kind][id] : scene[kind][id];
     // I8
     if (typeof beat.caption !== 'string' || !beat.caption.trim()) err('I8', 'the caption is empty');
     else if (beat.caption.length > 110) err('I8', `the caption has ${beat.caption.length} characters`);
     const dur = beat.dur ?? 1;
     if (!(dur === 1 || dur === 0.5 && beat.kind === 'carry')) err('I8', `a ${beat.kind} beat lasts ${dur}`);
-    // I6: ids are never reused; from/to name towers that exist
-    for (const kind of KINDS) for (const id in set[kind] ?? {}) {
-      if (set[kind][id] === null || old[kind][id]) continue;
-      if (seen[kind].has(id)) err('I6', `${id} is reused`);
-      seen[kind].add(id);
-    }
-    for (const [id, m] of Object.entries(beat.motion ?? {})) {
-      if (m.from && !before('towers', m.from.t)) err('I6', `bulb ${id} comes from tower ${m.from.t}, which is not there`);
+    // I6: from/to name towers that exist in the right scene
+    if (beat.motion) for (const id in beat.motion) {
+      const m = beat.motion[id];
+      if (m.from && !(old.towers.has(m.from.t) ? old.towers.get(m.from.t) : scene.towers[m.from.t])) err('I6', `bulb ${id} comes from tower ${m.from.t}, which is not there`);
       if (m.to && !scene.towers[m.to.t]) err('I6', `bulb ${id} goes to tower ${m.to.t}, which is not there`);
     }
     // I2, I3: every tower the beat touched
-    const touched = new Set(Object.keys(set.towers ?? {}));
-    for (const id in set.bulbs ?? {}) { if (old.bulbs[id]) touched.add(old.bulbs[id].t); if (scene.bulbs[id]) touched.add(scene.bulbs[id].t); }
+    touched.clear();
+    for (const [id, prev] of old.bulbs) { if (prev) touched.add(prev.t); const now = scene.bulbs[id]; if (now) touched.add(now.t); }
+    // a tower that only moved keeps its validity, unless it left a quotient register's place
+    for (const [id, prev] of old.towers) if (!touched.has(id) && !(prev && !prev.at.endsWith('.Q') && Object.keys(set.towers[id] ?? {}).every(f => f === 'at' || f === 'note'))) touched.add(id);
     for (const t of touched) if (scene.towers[t]) for (const e of spec.validateTower(scene, t, listOf(t))) errs.push(`beat ${i} ${e}`);
-    // I1
-    const after = evaluateScene(scene, base).join(' | '), law = beat.ledger?.law;
-    if (after !== value && !VALUE_LAWS.includes(law) && !(law === 'power' && beat.kind === 'fanout')) err('I1', `the machine's value changed from ${value} to ${after}`);
-    value = after;
+    // I1: the tree's value reads only nodes and towers
+    if (set.nodes || set.towers) {
+      const after = evaluateScene(scene, base).join(' | '), law = beat.ledger?.law;
+      if (after !== value && !VALUE_LAWS.includes(law) && !(law === 'power' && beat.kind === 'fanout')) err('I1', `the machine's value changed from ${value} to ${after}`);
+      value = after;
+    }
     for (const e of ledgerErrors(beat.ledger, base)) err('I4', e);
     for (const e of motionErrors(beat, old.bulbs, scene, base)) err('I5', e);
     if (beat.kind === 'collide') facts.collide.set(i, ['C', 'L'].map(s => {
       const t = Object.keys(scene.towers).find(x => scene.towers[x].at === `${beat.node}.${s}`);
       return {owed: t ? listOf(t).filter(([, x]) => x.o).length : 0, pending: !!scene.towers[t]?.pending};
     }));
-  });
+  }
   const last = plan.beats.length - 1;
   for (const [id, t] of Object.entries(scene.towers)) if (!/^out:\d+$/.test(t.at)) errs.push(`beat ${last} I6: tower ${id} is left at ${t.at}`);
   for (const id of Object.keys(scene.nodes)) errs.push(`beat ${last} I6: node ${id} is left`);
@@ -370,16 +381,16 @@ function ledgerErrors(L, base) {
   } catch (e) { out.push(`${L.law}: ${e.message}`); }
   return out;
 }
-// I5: what each kind of beat may do to a bulb's level (S holds the S_i entries of the bulbs
-// the beat changed, N is S_{i+1}).
+// I5: what each kind of beat may do to a bulb's level (S maps each bulb the beat changed to
+// its S_i entry, N is S_{i+1}).
 function motionErrors(beat, S, N, base) {
   const kind = beat.kind, out = [], motion = beat.motion ?? {};
   if (E_KINDS.includes(kind)) return base === 'e' || kind === 'read' ? out : [`${kind} happens only in base e`];
   const radix = RADIX[base];
   const k = kind === 'shift' || kind === 'prep' ? beat.ledger?.k : kind === 'drop' && radix ? digits(BigInt(beat.ledger.b), base).length - 1 : null;
   let movers = 0;
-  for (const id of Object.keys(beat.set?.bulbs ?? {})) {
-    const o = S[id], n = N.bulbs[id], m = motion[id] ?? {};
+  for (const [id, o] of S) {
+    const n = N.bulbs[id], m = motion[id] ?? {};
     if (!o || o.k === 'light' || n?.k === 'light') continue;
     const dl = n ? n.l - o.l : m.to ? m.to.l - o.l : 0, lamp = o.k === 'lamp';
     if (!dl) continue;

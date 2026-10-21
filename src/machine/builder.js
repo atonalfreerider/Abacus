@@ -10,7 +10,9 @@ import {getBase} from './registry.js';
 export class LimitError extends Error {
   constructor(message) { super(message); this.name = 'LimitError'; }
 }
-const RADIX = {binary: 2n, ternary: 3n};
+const RADIX = {binary: 2n, ternary: 3n}, POWERS = {binary: [1n], ternary: [1n]};
+const SMALL_LEVEL = {binary: 50, ternary: 31};    // towers this low sum exactly in a Number
+const NUMBER_POWERS = {binary: Array.from({length: 51}, (_, k) => 2 ** k), ternary: Array.from({length: 32}, (_, k) => 3 ** k)};
 const DISPLAY = ['text', 'approx', 'digits', 'reading'];
 const KINDS = ['nodes', 'towers', 'bulbs'];
 const clean = props => { const out = {}; for (const f in props) if (props[f] !== null && props[f] !== undefined) out[f] = props[f]; return out; };
@@ -25,15 +27,19 @@ export class PlanBuilder {
   #s = {nodes: {}, towers: {}, bulbs: {}};
   #next = {b: 0, t: 0, n: 0};
   #index = new Map();                 // tower id → Set of its bulb ids
+  #sorted = new Map();                // tower id → its bulbs by level and slot
   #start = null; #beats = [];
-  #beat = null; #orig = null; #motion = null; #marks = null;
-  #texts = null; #lamps = null; #bulbTowers = null;
+  #beat = null; #motion = null; #marks = null;
+  // per beat, cleared at each begin: first-touch entries, planner-written texts, towers whose
+  // lamp or bulbs changed
+  #orig = {nodes: new Map(), towers: new Map(), bulbs: new Map()};
+  #texts = new Set(); #lamps = new Set(); #bulbTowers = new Set(); #towers = new Set();
   #stats = {nodes: new Set(), maxLevels: 0, maxBulbs: 0, bulbs: 0};
 
   constructor({base, tree = {}, inputs = [], pace = 'together', limits = {}, check = true}) {
     this.#base = base; this.#spec = getBase(base); this.#pace = pace;
     this.#limits = {levels: Infinity, nodes: Infinity, beats: Infinity, ...limits}; this.#check = check;
-    this.tree = structuredClone(tree); this.inputs = inputs.map(String);
+    this.tree = Object.fromEntries(Object.entries(tree).map(([id, node]) => [id, {...node}])); this.inputs = inputs.map(String);
     for (const [id, node] of Object.entries(tree)) {
       const m = /^n(\d+)$/.exec(id); if (m) this.#next.n = Math.max(this.#next.n, Number(m[1]));
       this.#s.nodes[id] = {...node}; this.#stats.nodes.add(id);
@@ -57,8 +63,9 @@ export class PlanBuilder {
     if (this.#beats.length >= this.#limits.beats) throw new LimitError(`more than ${this.#limits.beats} beats`);
     if (!this.#start) this.#freeze();
     this.#beat = {i: this.#beats.length, kind, node, dur, caption, ledger};
-    this.#orig = {nodes: new Map(), towers: new Map(), bulbs: new Map()};
-    this.#motion = {}; this.#marks = []; this.#texts = new Set(); this.#lamps = new Set(); this.#bulbTowers = new Set();
+    for (const kind of KINDS) this.#orig[kind].clear();
+    this.#texts.clear(); this.#lamps.clear(); this.#bulbTowers.clear();
+    this.#motion = {}; this.#marks = [];
     return this;
   }
   // Caption and ledger may be settled once the beat's work is known.
@@ -72,12 +79,17 @@ export class PlanBuilder {
     const orig = this.#orig[kind];
     if (!orig.has(id)) orig.set(id, this.#s[kind][id]);
   }
-  #motionFor(id, motion) { if (motion && this.#beat) this.#motion[id] = {...this.#motion[id], ...motion}; }
+  #motionFor(id, motion) {
+    if (!motion || !this.#beat) return;
+    const prev = this.#motion[id];
+    this.#motion[id] = prev ? {...prev, ...motion} : motion;
+  }
 
   bulb(id, props = {}, motion) {
     const old = this.#s.bulbs[id];
     this.#touch('bulbs', id);
     const next = old ? merge(old, props) : clean(props);
+    if (next.s === 0) next.s = 0;       // never −0: plans are compared after a JSON round trip
     if (old?.t !== next.t) {
       if (old) this.#index.get(old.t)?.delete(id);
       let set = this.#index.get(next.t); if (!set) this.#index.set(next.t, set = new Set()); set.add(id);
@@ -96,6 +108,8 @@ export class PlanBuilder {
     this.#motionFor(id, motion);
   }
   #noteBulb(old, next) {
+    if (old) this.#sorted.delete(old.t);
+    if (next) this.#sorted.delete(next.t);
     if (!this.#beat) return;
     for (const b of [old, next]) if (b) { this.#bulbTowers.add(b.t); if (b.k === 'lamp') this.#lamps.add(b.t); }
   }
@@ -103,7 +117,7 @@ export class PlanBuilder {
     const old = this.#s.towers[id];
     this.#touch('towers', id);
     this.#s.towers[id] = old ? merge(old, props) : clean(props);
-    if ('text' in props && this.#texts) this.#texts.add(id);
+    if ('text' in props && this.#beat) this.#texts.add(id);
     return id;
   }
   dropTower(id) {
@@ -125,16 +139,36 @@ export class PlanBuilder {
   mark(m) { this.#marks.push(m); }
   motion(id, motion) { this.#motionFor(id, motion); }
 
+  // [id, bulb] by level, then slot. The list is cached until one of the tower's bulbs
+  // changes, so callers read it and never modify it.
   bulbsOf(towerId) {
+    let out = this.#sorted.get(towerId);
+    if (out) return out;
     const ids = this.#index.get(towerId); if (!ids) return [];
-    const out = []; for (const id of ids) out.push([id, this.#s.bulbs[id]]);
-    return out.sort((a, b) => a[1].l - b[1].l || (a[1].slot ?? 0) - (b[1].slot ?? 0));
+    out = []; for (const id of ids) out.push([id, this.#s.bulbs[id]]);
+    out.sort((a, b) => a[1].l - b[1].l || (a[1].slot ?? 0) - (b[1].slot ?? 0));
+    this.#sorted.set(towerId, out);
+    return out;
   }
   valueOf(towerId) {
     const radix = RADIX[this.#base];
     if (!radix) throw new Error(`valueOf needs whole-number levels, not base ${this.#base}`);
+    const ids = this.#index.get(towerId) || [], small = SMALL_LEVEL[this.#base];
+    let fits = true;
+    for (const id of ids) if (this.#s.bulbs[id].l > small) { fits = false; break; }
+    if (fits) {     // exact in a Number: the sum stays below 2^53
+      const p = NUMBER_POWERS[this.#base];
+      let v = 0;
+      for (const id of ids) { const b = this.#s.bulbs[id]; if (b.s) v += b.s * p[b.l]; }
+      return BigInt(v);
+    }
+    const powers = POWERS[this.#base];
     let v = 0n;
-    for (const id of this.#index.get(towerId) || []) { const b = this.#s.bulbs[id]; if (b.s) v += BigInt(b.s) * radix ** BigInt(b.l); }
+    for (const id of ids) {
+      const b = this.#s.bulbs[id]; if (!b.s) continue;
+      while (powers.length <= b.l) powers.push(powers.at(-1) * radix);
+      v += b.s > 0 ? powers[b.l] : -powers[b.l];
+    }
     return v;
   }
   // Levels a tower occupies, as LIMITS counts them (the lamp and a base-e light excluded;
@@ -171,18 +205,31 @@ export class PlanBuilder {
     if (levels > this.#stats.maxLevels) this.#stats.maxLevels = levels;
   }
 
+  // A tower that only moved (bulbs, value and flags as they were) keeps its levels and its
+  // validity; leaving a quotient register's place ends an exemption, so that move counts.
+  #moved(id) {
+    if (this.#bulbTowers.has(id)) return false;
+    const was = this.#orig.towers.get(id), now = this.#s.towers[id];
+    if (!was) return !this.#orig.towers.has(id);
+    for (const f in now) if (f !== 'at' && f !== 'note' && was[f] !== now[f]) return false;
+    for (const f in was) if (!(f in now)) return false;
+    return !was.at.endsWith('.Q');
+  }
   end() {
     const beat = this.#beat; if (!beat) throw new Error('no beat is open');
-    const towers = new Set([...this.#orig.towers.keys(), ...this.#bulbTowers]);
+    const towers = this.#towers;
+    towers.clear();
+    for (const id of this.#orig.towers.keys()) towers.add(id);
+    for (const id of this.#bulbTowers) towers.add(id);
     for (const id of towers) {
       const now = this.#s.towers[id]; if (!now || now.pending || this.#texts.has(id)) continue;
       const was = this.#orig.towers.has(id) ? this.#orig.towers.get(id) : now;
       if (!was || was.value !== now.value || was.form !== now.form || was.pending || this.#lamps.has(id)) this.#fill(id);
     }
-    for (const id of towers) if (this.#s.towers[id]) this.#measure(id);
+    for (const id of towers) if (this.#s.towers[id] && !this.#moved(id)) this.#measure(id);
     if (this.#check) {
       const errors = [];
-      for (const id of towers) if (this.#s.towers[id]) errors.push(...this.#spec.validateTower(this.#s, id));
+      for (const id of towers) if (this.#s.towers[id] && !this.#moved(id)) errors.push(...this.#spec.validateTower(this.#s, id, this.bulbsOf(id)));
       if (errors.length) throw new Error(`beat ${beat.i} (${beat.kind} at ${beat.node}): ${errors.join('; ')}`);
     }
     this.#stats.maxBulbs = Math.max(this.#stats.maxBulbs, this.#stats.bulbs);

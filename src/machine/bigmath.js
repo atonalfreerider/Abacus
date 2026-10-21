@@ -9,22 +9,32 @@ const abs = n => n < 0n ? -n : n;
 export const signOf = n => n > 0n ? 1 : n < 0n ? -1 : 0;
 export const bitLength = n => n === 0n ? 0 : abs(n).toString(2).length;
 
+// Below 2^31 the digits come from exact Number arithmetic; the answer is the same.
+const SMALL = 2n ** 31n;
 // LSB first; [0] for 0.
 export function digits(n, base) {
   n = BigInt(n);
   if (n === 0n) return Int8Array.of(0);
-  const out = [];
-  if (base === 'ternary') {
-    for (let m = n; m !== 0n;) { let r = Number(((m % 3n) + 3n) % 3n); if (r === 2) r = -1; out.push(r); m = (m - BigInt(r)) / 3n; }
-  } else {
-    const s = signOf(n);
-    for (const c of abs(n).toString(2)) out.push(c === '1' ? s : 0);
-    out.reverse();
+  if (n < SMALL && n > -SMALL) {
+    let m = Number(n), k = 0;
+    const out = new Int8Array(32);
+    if (base === 'ternary') while (m !== 0) { let r = m % 3; if (r < 0) r += 3; if (r === 2) r = -1; out[k++] = r; m = (m - r) / 3; }
+    else { const s = m < 0 ? -1 : 1; for (m = Math.abs(m); m; m >>>= 1) out[k++] = m & 1 ? s : 0; }
+    return out.slice(0, k);
   }
+  const out = [];
+  if (base === 'ternary') for (let m = n; m !== 0n;) { let r = Number(((m % 3n) + 3n) % 3n); if (r === 2) r = -1; out.push(r); m = (m - BigInt(r)) / 3n; }
+  else { const s = signOf(n); for (const c of abs(n).toString(2)) out.push(c === '1' ? s : 0); out.reverse(); }
   return Int8Array.from(out);
 }
 export function fromDigits(d, base) {
-  const r = RADIX[base]; let v = 0n;
+  const r = RADIX[base];
+  if (d.length <= 19) {          // 3^19 < 2^31: exact in a Number
+    let v = 0; const radix = Number(r);
+    for (let k = d.length - 1; k >= 0; k--) v = v * radix + d[k];
+    return BigInt(v);
+  }
+  let v = 0n;
   for (let k = d.length - 1; k >= 0; k--) v = v * r + BigInt(d[k]);
   return v;
 }

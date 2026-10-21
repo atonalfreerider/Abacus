@@ -14,6 +14,9 @@ import {gate, not, neg} from './ops/logic.js';
 export const INPUT_LIMIT = {binary: (1n << 63n) - 1n, ternary: (3n ** 40n - 1n) / 2n};
 export const NAMES = {binary: 'Base 2', ternary: 'Balanced ternary'};
 const abs = v => v < 0n ? -v : v;
+// Levels whose whole tower sums stay below 2^53 in a Number: 3^32 < 2^51.
+const SMALL_LEVEL = {binary: 50, ternary: 31};
+const NUMBER_POWERS = {binary: Array.from({length: 51}, (_, k) => 2 ** k), ternary: Array.from({length: 32}, (_, k) => 3 ** k)};
 const LIMIT_TEXT = {
   binary: 'Base 2 takes whole numbers below 2⁶³ in size (9 223 372 036 854 775 808).',
   ternary: 'Balanced ternary takes whole numbers of up to 40 trits (±6 078 832 729 528 464 400).',
@@ -49,9 +52,13 @@ function validateTower(base) {
     if (!t) return [`I2: ${name} is missing`];
     if (!t.text) errs.push(`I2: ${name} has no text`);
     const bulbs = list ?? Object.entries(scene.bulbs).filter(([, x]) => x.t === id);
-    let sum = 0n;
-    for (const [, x] of bulbs) if (x.s && Number.isInteger(x.l) && x.l >= 0) sum += x.s > 0 ? power(x.l) : -power(x.l);
-    if (String(sum) !== t.value) errs.push(`I2: ${name} holds ${sum} but reads ${t.value}`);
+    // exact in a Number while every level is low enough; BigInt otherwise
+    let small = true;
+    for (const [, x] of bulbs) if (x.l > SMALL_LEVEL[base]) { small = false; break; }
+    let sum;
+    if (small) { sum = 0; for (const [, x] of bulbs) if (x.s && Number.isInteger(x.l) && x.l >= 0) sum += x.s * NUMBER_POWERS[base][x.l]; sum = String(sum); }
+    else { let big = 0n; for (const [, x] of bulbs) if (x.s && Number.isInteger(x.l) && x.l >= 0) big += x.s > 0 ? power(x.l) : -power(x.l); sum = String(big); }
+    if (sum !== t.value) errs.push(`I2: ${name} holds ${sum} but reads ${t.value}`);
     if (t.pending) return errs;
     const col = [], lamps = [];
     for (const [bid, x] of bulbs) {
