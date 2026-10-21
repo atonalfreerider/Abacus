@@ -208,7 +208,8 @@ export class MachineView extends EventTarget {
       const ask = pace => { try { return planMachine({ tree: this.tree, inputs: this.inputs, base: this.base, pace }); } catch (error) { console.error(error); return { ok: false, reason: 'input', message: error.message }; } };
       r = ask(this.pace);
       // Level pace that would run too long falls back to carries together (design 6.10).
-      if (!r.ok && r.reason === 'tooBig' && this.pace === 'level') { const again = ask('together'); if (again.ok) { r = again; r.note = 'Carries play together: one level at a time would be too long for this run.'; } }
+      if (!r.ok && r.reason === 'tooBig' && this.pace === 'level') { const again = ask('together'); if (again.ok) r = again; }
+      if (r.ok && r.plan.pace !== this.pace) r.note = 'Carries play together: one level at a time would be too long for this run.';
     }
     if (r.ok) { this.answer = r.plan.result; this.use(r.plan); }
     else {
@@ -407,10 +408,10 @@ export class MachineView extends EventTarget {
   // Text, controls and attributes that follow the clock. Cheap; most of it only on change.
   sync(t, force = false) {
     const c = this.clock, n = c.n, boundary = Math.max(0, Math.min(n, Math.floor(t + 1e-9))), running = c.started && !c.done;
-    const s = this.stage.dataset;
-    s.beat = String(c.beat); s.beats = String(n); s.playing = String(c.playing); s.t = String(Math.round(t * 1000) / 1000);
-    this.mode.classList.toggle('running', running);
-    $('machine-pause').setAttribute('aria-pressed', String(c.paused)); $('machine-pause').textContent = c.paused ? 'Resume' : 'Pause';
+    const s = this.stage.dataset, put = (key, v) => { if (s[key] !== v) s[key] = v; };
+    put('beat', String(c.beat)); put('beats', String(n)); put('playing', String(c.playing)); put('t', String(Math.round(t * 1000) / 1000));
+    if (this.mode.classList.contains('running') !== running) this.mode.classList.toggle('running', running);
+    const pause = $('machine-pause'); if (pause.getAttribute('aria-pressed') !== String(c.paused)) { pause.setAttribute('aria-pressed', String(c.paused)); pause.textContent = c.paused ? 'Resume' : 'Pause'; }
     const shown = c.run ? c.run.i : c.beat;
     if (!force && boundary === this.lastBoundary && shown === this.lastShown) return;
     this.lastBoundary = boundary; this.lastShown = shown;
