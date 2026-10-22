@@ -143,8 +143,10 @@ function typesetExample(example){
 const answer=()=>controller.model.expression?`The answer is ${controller.status()}`:controller.status();
 // Tutor: a worked example step by step, then a fresh problem of the same shape.
 // Every launch deals new worked examples, so the lessons differ each time the app opens.
-// (?examples=written keeps the written examples, for tests and recorded videos.)
-if(new URLSearchParams(location.search).get('examples')!=='written')dealExamples(crypto.getRandomValues(new Uint32Array(1))[0]);
+// (?examples=written keeps the written examples and deals the same practice problems
+// every time, for tests and recorded videos.)
+const writtenExamples=new URLSearchParams(location.search).get('examples')==='written';
+if(!writtenExamples)dealExamples(crypto.getRandomValues(new Uint32Array(1))[0]);
 $('open-tutor').onclick=()=>$('lesson-dialog').showModal();
 {let group='';for(const lesson of lessons){
  if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
@@ -155,7 +157,7 @@ let lessonBase=null;
 async function startLesson(lesson){
  if(!$('machine-mode').hidden)await showMachine(false);
  if(numeral.id!=='decimal'){lessonBase=numeral.id;setBase('decimal');}
- stopPlaying();tutor=new Tutor(lesson);tutor.found=new Set();hint=null;entry.active=false;$('entry-bar').hidden=true;
+ stopPlaying();tutor=new Tutor(lesson,writtenExamples?1:undefined);tutor.found=new Set();hint=null;entry.active=false;$('entry-bar').hidden=true;
  $('tutor-bar').classList.toggle('graph-lesson',!!lesson.graph);controller.model.leftToRight=!!lesson.pemdas;
  if(lesson.graph){(await showGraph(true)).setEquations(exampleOf(lesson));}
  else{if(!$('graph-mode').hidden)showGraph(false);safe(()=>controller.load(exampleOf(lesson)));}
