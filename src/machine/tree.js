@@ -98,9 +98,12 @@ function parser(tokens, base) {
     return left;
   };
   const sym = SYMBOLS[base] ?? {};
+  // −x: a negative number when x is one, else the NEG block. A base without NEG (binary,
+  // base e) writes it as 0 − x, which its − block plays as NEGATE then ADD.
+  const minus = x => spec.palette.includes('neg') || !spec.palette.includes('sub') ? node('neg', [x]) : node('sub', [leafOf('0'), x]);
   const unary = () => {
     if (is('+')) { take(); return unary(); }
-    if (is('-')) { take(); const x = unary(); return x.leaf !== undefined ? {...leafOf(`-${x.leaf}`.replace('--', '')), int: x.int} : node('neg', [x]); }
+    if (is('-')) { take(); const x = unary(); return x.leaf !== undefined ? {...leafOf(`-${x.leaf}`.replace('--', '')), int: x.int} : minus(x); }
     if (is('~')) { take(); if (!sym['~']) throw new Refusal('This base has no NOT block.'); return node(sym['~'], [unary()]); }
     return primary();
   };

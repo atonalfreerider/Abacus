@@ -34,6 +34,20 @@ test('expressions build trees whose inputs fill the sockets depth-first, left fi
   assert.deepEqual(shape('-(5*3)', 'ternary'), [{n1: 'neg@io.C', n2: 'mul@n1.C'}, ['5', '3']]);
   assert.deepEqual(shape('2*3+4*5-6'), [{n1: 'sub@io.C', n2: 'add@n1.L', n3: 'mul@n2.L', n4: 'mul@n2.R'}, ['2', '3', '4', '5', '6']]);
 });
+test('in binary, which has no NEG block, minus before a bracket is 0 − x; before a number it is a negative number', () => {
+  const run = (text, base = 'binary') => { const e = parseExpression(text, base); assert.ok(e.ok, e.error); return [e, evaluateTree(e.tree, e.inputs, base)]; };
+  let [e, v] = run('-(3+4)');
+  assert.deepEqual(e.tree, {n1: {op: 'sub', parent: 'io', socket: 'C'}, n2: {op: 'add', parent: 'n1', socket: 'R'}});
+  assert.deepEqual(e.inputs, ['0', '3', '4']); assert.deepEqual(v.values, ['-7']);
+  [e, v] = run('5*-(2+1)');
+  assert.deepEqual(e.inputs, ['5', '0', '2', '1']); assert.deepEqual(v.values, ['-15']);
+  assert.deepEqual(run('--(3+4)')[1].values, ['7']);
+  assert.deepEqual(run('-~5')[1].values, ['6']);
+  assert.deepEqual(run('-(5)*2')[0].inputs, ['-5', '2']);
+  assert.deepEqual(run('-(3+4)', 'ternary')[0].tree.n1, {op: 'neg', parent: 'io', socket: 'C'}, 'balanced ternary keeps its NEG block');
+  const p = planMachine({tree: e.tree, inputs: e.inputs, base: 'binary'});
+  assert.ok(p.ok); assert.deepEqual(p.plan.result.values, ['-15']);
+});
 test('>> is refused with its message, and so are blocks a base lacks', () => {
   assert.deepEqual(parseExpression('-13>>2', 'binary'), {ok: false, error: 'In the machine a right shift truncates toward zero like ÷: write shr(−13, 2).'});
   assert.match(parseExpression('45 >> 2', 'binary').error, /truncates toward zero like ÷: write shr\(45, 2\)/);

@@ -171,7 +171,7 @@ function randomJobs() {
 // found, whose running divisions once fed a count.
 const NESTED = 400;
 const REGRESSIONS = [['shr(-5, 2/(-11))', 'ternary'], ['shl(-10, -18/39)', 'ternary'], ['shr(shl(16,3), 4%(-12))', 'binary'],
-  ['shl(5, 7/2)', 'binary'], ['shr(45, 2%3)', 'ternary'], ['(12&10)+((12^10)<<1)', 'binary']];
+  ['shl(5, 7/2)', 'binary'], ['shr(45, 2%3)', 'ternary'], ['(12&10)+((12^10)<<1)', 'binary'], ['-(3+4)*5', 'binary'], ['5*-(2+1)', 'binary']];
 function nestedJobs() {
   let seed = 72026;
   const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
