@@ -1,0 +1,13 @@
+{"v":1,"base":"e","pace":"together","tree":{"n1":{"op":"ln","parent":"io","socket":"C"}},"inputs":["112"],
+ "start":{"nodes":{"n1":{"op":"ln","parent":"io","socket":"C"}},
+  "towers":{"t1":{"at":"in:0","form":"light","value":"112","text":"112","reading":"ln 112 ≈ 4.7185"}},
+  "bulbs":{"b1":{"t":"t1","l":4.7185,"s":1,"k":"light"}}},
+ "beats":[
+ {"i":0,"kind":"input","node":"io","caption":"[112] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"}}}},
+ {"i":1,"kind":"deliver","node":"n1","caption":"112 rides down the wire to the ruler.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"}}}},
+ {"i":2,"kind":"fanout","node":"n1","caption":"112 arrives as one light at height ln 112 ≈ 4.7185.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C"}}}},
+ {"i":3,"kind":"read","node":"n1","caption":"ln 112 ≈ 4.7185: the height of the folded light.","ledger":{"law":"read","value":"112","h":4.7185},"set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":{"value":"ln(112)","text":"ln 112 ≈ 4.7185","reading":null}}}},
+ {"i":4,"kind":"return","node":"n1","caption":"ln 112 ≈ 4.7185 rides up into the triangle.","ledger":{"law":"move","value":"ln(112)"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
+ {"i":5,"kind":"output","node":"io","caption":"Output [ln 112 ≈ 4.7185].","ledger":{"law":"move","value":"ln(112)"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
+ "result":{"values":["ln(112)"],"text":"[ln 112 ≈ 4.7185]"},
+ "stats":{"beats":6,"nodes":1,"maxLevels":0,"maxBulbs":1}}

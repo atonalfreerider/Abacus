@@ -1,0 +1,13 @@
+{"v":1,"base":"e","pace":"together","tree":{"n1":{"op":"mule","parent":"io","socket":"C"}},"inputs":["3","2"],
+ "start":{"nodes":{"n1":{"op":"mule","parent":"io","socket":"C"}},
+  "towers":{"t1":{"at":"in:0","form":"light","value":"3","text":"3","reading":"ln 3 ≈ 1.0986"},"t2":{"at":"in:1","form":"light","value":"2","text":"2","reading":"ln 2 ≈ 0.6931"}},
+  "bulbs":{"b1":{"t":"t1","l":1.0986,"s":1,"k":"light"},"b2":{"t":"t2","l":0.6931,"s":1,"k":"light"}}},
+ "beats":[
+ {"i":0,"kind":"input","node":"io","caption":"[3, 2] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"},"t2":{"at":"io:1"}}}},
+ {"i":1,"kind":"deliver","node":"n1","caption":"The numbers ride down the wire to the ×eᵏ block.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"},"t2":{"at":"n1.C:1"}}}},
+ {"i":2,"kind":"fanout","node":"n1","caption":"3 and 2 drop into the sockets and stand up; 2 becomes ×e².","ledger":{"law":"power","k":2,"out":"e^2"},"set":{"nodes":{"n1":{"arg":"e^2"}},"towers":{"t1":{"at":"n1.L","form":"tower","dust":true,"digits":"10.020…ₑ","reading":null},"t2":{"at":"n1.R","form":"tower","value":"e^2","text":"e²","note":"×e²","approx":"≈ 7.389","digits":"100ₑ","reading":null}},"bulbs":{"b1":null,"b3":{"t":"t1","l":-2,"s":1,"slot":0},"b4":{"t":"t1","l":-2,"s":1,"slot":1},"b5":{"t":"t1","l":1,"s":1,"slot":0},"b2":null,"b6":{"t":"t2","l":2,"s":1,"slot":0}}}},
+ {"i":3,"kind":"shift","node":"n1","caption":"3 × e²: 3 rises 2 levels; 1 bulb condenses out of the dust. 3e².","ledger":{"law":"shift","a":"3","m":"e^2","k":2,"sign":1,"out":"3e^2"},"set":{"nodes":{"n1":{"glyph":0}},"towers":{"t2":null,"t1":{"at":"n1.C","value":"3e^2","text":"3e²","digits":"1002.001…ₑ","approx":"≈ 22.17"}},"bulbs":{"b3":{"l":0},"b4":{"l":0},"b5":{"l":3},"b7":{"t":"t1","l":-3,"s":1,"slot":0},"b6":null}},"motion":{"b7":{"in":[0.6,0.9],"grow":true},"b6":{"to":{"t":"t1","l":2},"dissolve":true}}},
+ {"i":4,"kind":"return","node":"n1","caption":"3e² rides up into the triangle.","ledger":{"law":"move","value":"3e^2"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
+ {"i":5,"kind":"output","node":"io","caption":"Output [3e²].","ledger":{"law":"move","value":"3e^2"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
+ "result":{"values":["3e^2"],"text":"[3e²]"},
+ "stats":{"beats":6,"nodes":1,"maxLevels":7,"maxBulbs":4}}
