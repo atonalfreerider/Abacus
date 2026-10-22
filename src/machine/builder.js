@@ -16,6 +16,10 @@ const NUMBER_POWERS = {binary: Array.from({length: 51}, (_, k) => 2 ** k), terna
 const DISPLAY = ['text', 'approx', 'digits', 'reading'];
 const KINDS = ['nodes', 'towers', 'bulbs'];
 const clean = props => { const out = {}; for (const f in props) if (props[f] !== null && props[f] !== undefined) out[f] = props[f]; return out; };
+const unchanged = (old, props) => {
+  for (const f in props) { const v = props[f]; if (v === null || v === undefined ? f in old : old[f] !== v) return false; }
+  return true;
+};
 const merge = (old, props) => {
   const out = {...old};
   for (const f in props) { if (props[f] === null || props[f] === undefined) delete out[f]; else out[f] = props[f]; }
@@ -87,6 +91,9 @@ export class PlanBuilder {
 
   bulb(id, props = {}, motion) {
     const old = this.#s.bulbs[id];
+    // a patch that changes nothing (a survivor written back where it stands, as a collision
+    // writes its whole column) leaves the bulb, its tower and the diff alone
+    if (old && unchanged(old, props)) { this.#motionFor(id, motion); return id; }
     this.#touch('bulbs', id);
     const next = old ? merge(old, props) : clean(props);
     if (next.s === 0) next.s = 0;       // never −0: plans are compared after a JSON round trip
@@ -150,9 +157,11 @@ export class PlanBuilder {
     this.#sorted.set(towerId, out);
     return out;
   }
+  // The bigint a tower's bulbs sum to (6.6), for the whole-number bases. A base-e tower has
+  // no bigint value (its levels are powers of e), so its planners read Tower.value instead.
   valueOf(towerId) {
     const radix = RADIX[this.#base];
-    if (!radix) throw new Error(`valueOf needs whole-number levels, not base ${this.#base}`);
+    if (!radix) throw new Error(`valueOf sums whole-number levels; base ${this.#base} reads Tower.value`);
     const ids = this.#index.get(towerId) || [], small = SMALL_LEVEL[this.#base];
     let fits = true;
     for (const id of ids) if (this.#s.bulbs[id].l > small) { fits = false; break; }

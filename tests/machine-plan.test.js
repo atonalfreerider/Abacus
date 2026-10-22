@@ -1,8 +1,8 @@
 // Every binary and ternary block, exhaustively over small operands and at random near the
-// limits: each plan's result equals the oracle and validatePlan finds every invariant (I1–I8)
-// holding at every beat. Plans are pure: planned twice they are equal, and JSON-safe.
-// The ~48 000 plans are checked by a pool of worker threads running this same file, so the
-// file keeps to its 20 s budget (6.9).
+// limits, and seeded random machines of several blocks: each plan's result equals the oracle
+// and validatePlan finds every invariant (I1–I8) holding at every beat. Plans are pure:
+// planned twice they are equal, and JSON-safe. The ~49 000 plans are checked by a pool of
+// worker threads running this same file, so the file keeps to its 20 s budget (6.9).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Worker, isMainThread, parentPort, workerData} from 'node:worker_threads';
@@ -10,15 +10,14 @@ import {availableParallelism} from 'node:os';
 import {planMachine, validatePlan, LIMITS} from '../src/machine/plan.js';
 import {evaluate, OPS} from '../src/machine/oracle.js';
 import {digits} from '../src/machine/bigmath.js';
+import {ARITY, parseExpression} from '../src/machine/tree.js';
 
 const started = performance.now();
 const tree = op => ({n1: {op, parent: 'io', socket: 'C'}});
-const UNARY = ['not', 'neg'], SHIFTS = ['shl', 'shr'], DIVIDE = ['div', 'mod'];
+const UNARY = ['not', 'neg'], SHIFTS = ['shl', 'shr'], DIVIDE = ['div', 'mod'], QUOTIENTS = ['div', 'mod', 'shr'];
 const expected = (op, base, args) => {
-  const r = evaluate(op, base, args.map(BigInt));
-  if (op === 'div' || op === 'shr') return [String(r.value), String(r.remainder)];
-  if (op === 'mod') return [String(r.quotient), String(r.value)];
-  return [String(r.value)];
+  const r = evaluate(op === 'mod' ? 'div' : op, base, args.map(BigInt));
+  return op === 'div' || op === 'mod' || op === 'shr' ? [String(r.value), String(r.remainder)] : [String(r.value)];
 };
 // One plan, checked: the oracle's answer, every invariant, MULT's beat count and, when
 // asked, purity: planned twice it is equal and JSON-safe, and the faster of the two plans
@@ -44,7 +43,12 @@ function same(x, y) {
   for (const k of kx) if (!(k in y) || !same(x[k], y[k])) return false;
   return true;
 }
+// A job that throws (a planner or validatePlan bug) is reported as that job's error.
 function check(job) {
+  try { return job.tree || job.text ? checkMachine(job) : checkBlock(job); }
+  catch (e) { return [`${job.text ?? (job.tree ? textOf(job.tree, job.inputs) : `${job.op}(${job.args.join(', ')})`)} in ${job.base}: throws ${e.message}`]; }
+}
+function checkBlock(job) {
   const {op, base, args, pace = 'together', pure = false} = job;
   const label = `${op}(${args.join(', ')}) in ${base}, ${pace}`, errs = [];
   const t0 = performance.now(), r = planMachine({tree: tree(op), inputs: args, base, pace}), ms = performance.now() - t0;
@@ -63,6 +67,59 @@ function check(job) {
     if (!jsonSafe(r.plan)) errs.push(`${label}: the plan does not survive JSON`);
     else if (!same(again.plan, r.plan)) errs.push(`${label}: a second plan differs`);
   }
+  return errs;
+}
+
+// A machine of several blocks, against the oracle block by block: below the root DIV and SHR
+// pass q up and MOD passes r; the root's DIV, MOD and SHR give [q, r]. A machine the oracle
+// cannot run (a zero divisor, a negative count) must be refused for that reason on that block.
+const socketsOf = op => ARITY[op] === 1 ? ['C'] : ['L', 'R'];
+function oracleOf(tree, inputs, base) {
+  const ids = Object.keys(tree), root = ids.find(id => tree[id].parent === 'io');
+  const child = (id, s) => ids.find(c => tree[c].parent === id && tree[c].socket === s);
+  let next = 0;
+  const visit = id => {
+    const op = tree[id].op, args = [];
+    for (const s of socketsOf(op)) {
+      const c = child(id, s), v = c ? visit(c) : {value: BigInt(inputs[next++])};
+      if (v.error) return v;
+      args.push(v.value);
+    }
+    const quotient = id === root && QUOTIENTS.includes(op), r = evaluate(op === 'mod' && quotient ? 'div' : op, base, args);
+    return r.error ? {error: r.error, node: id} : quotient ? {values: [r.value, r.remainder]} : {value: r.value};
+  };
+  const r = visit(root);
+  return r.error ? r : {values: (r.values ?? [r.value]).map(String)};
+}
+const textOf = (tree, inputs) => {
+  const ids = Object.keys(tree);
+  let next = 0;
+  const visit = id => `${tree[id].op}(${socketsOf(tree[id].op).map(s => {
+    const c = ids.find(x => tree[x].parent === id && tree[x].socket === s);
+    return c ? visit(c) : inputs[next++];
+  }).join(', ')})`;
+  return visit(ids.find(id => tree[id].parent === 'io'));
+};
+function checkMachine({text, tree, inputs, base, pace = 'together'}) {
+  if (text) {
+    const e = parseExpression(text, base);
+    if (!e.ok) return [`${text} in ${base}: ${e.error}`];
+    ({tree, inputs} = e);
+  }
+  const label = `${textOf(tree, inputs)} in ${base}, ${pace}`, want = oracleOf(tree, inputs, base);
+  const r = planMachine({tree, inputs, base, pace});
+  if (want.error) {
+    const right = !r.ok && r.reason === want.error && (r.reason === 'tooBig' || r.node === want.node);
+    return right ? [] : [`${label}: should be refused (${want.error} at ${want.node}), not ${r.ok ? 'planned' : `${r.reason} at ${r.node}`}`];
+  }
+  if (!r.ok) {
+    // a value past the tower cap is refused, with the exact answer
+    if (r.reason === 'tooBig' && JSON.stringify(r.result?.values) === JSON.stringify(want.values)) return [];
+    return [`${label}: ${r.reason}: ${r.message}`];
+  }
+  const errs = [];
+  if (JSON.stringify(r.plan.result.values) !== JSON.stringify(want.values)) errs.push(`${label}: gives ${r.plan.result.values}, not ${want.values}`);
+  for (const e of validatePlan(r.plan).slice(0, 3)) errs.push(`${label}: ${e}`);
   return errs;
 }
 
@@ -106,27 +163,77 @@ function randomJobs() {
   }
   return jobs;
 }
-// Deal the jobs round-robin to worker threads running this file.
+// Seeded random machines of two to five blocks: gates and comparisons feeding arithmetic,
+// DIV, MOD and SHR feeding divisors and shift counts (where a running division reads as a
+// fraction), NOT and NEG inside, and level pace in the children; and the trees the reviews
+// found, whose running divisions once fed a count.
+const NESTED = 400;
+const REGRESSIONS = [['shr(-5, 2/(-11))', 'ternary'], ['shl(-10, -18/39)', 'ternary'], ['shr(shl(16,3), 4%(-12))', 'binary'],
+  ['shl(5, 7/2)', 'binary'], ['shr(45, 2%3)', 'ternary'], ['(12&10)+((12^10)<<1)', 'binary'], ['-(3+4)*5', 'binary'], ['5*-(2+1)', 'binary']];
+function nestedJobs() {
+  let seed = 72026;
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const int = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1)), pick = xs => xs[int(0, xs.length - 1)];
+  const jobs = REGRESSIONS.map(([text, base]) => ({text, base}));
+  for (const base of ['binary', 'ternary']) for (let n = 0; n < NESTED; n++) {
+    let tree, inputs;
+    do {
+      tree = {}; inputs = [];
+      let id = 0, blocks = int(2, 5);
+      // a count socket takes a small whole number, or a block whose answer may be one
+      const grow = (parent, socket, count) => {
+        if (parent !== 'io' && (blocks <= 0 || rand() < 0.3)) { inputs.push(String(count ? int(0, 4) : int(-12, 12))); return; }
+        blocks--;
+        const op = count ? pick(['div', 'mod', 'shr', 'add', 'sub', 'cmp']) : pick(OPS[base]), node = `n${++id}`;
+        tree[node] = {op, parent, socket};
+        for (const s of socketsOf(op)) grow(node, s, SHIFTS.includes(op) && s === 'R');
+      };
+      grow('io', 'C', false);
+    } while (Object.keys(tree).length < 2);
+    jobs.push({tree, inputs, base, pace: rand() < 0.25 ? 'level' : 'together'});
+  }
+  return jobs;
+}
+// The sweeps share one pool, dealt round-robin to worker threads running this file: as many
+// as the machine has CPUs, up to 4 (the main thread only waits), so a two-CPU machine still
+// splits the work; one CPU checks everything here. The 20 s budget is the reference
+// machine's (4 cores, 8 threads); a machine with fewer CPUs gets it in proportion.
+const WORKERS = Math.min(4, availableParallelism()), BUDGET = 20000 * Math.max(1, 4 / WORKERS);
+function tally(jobs) {
+  const out = {};
+  for (const job of jobs) { const r = out[job.sweep] ??= {errors: [], count: 0}; r.count++; r.errors.push(...check(job)); }
+  return out;
+}
 async function pool(jobs) {
-  const n = Math.max(1, Math.min(4, availableParallelism() - 1));
-  if (n === 1) return {errors: jobs.flatMap(check), count: jobs.length};
-  const shares = Array.from({length: n}, (_, k) => jobs.filter((_, i) => i % n === k));
-  const errors = await Promise.all(shares.map(share => new Promise((resolve, reject) => {
+  if (WORKERS < 2) return tally(jobs);
+  const shares = Array.from({length: WORKERS}, (_, k) => jobs.filter((_, i) => i % WORKERS === k));
+  const parts = await Promise.all(shares.map(share => new Promise((resolve, reject) => {
     const worker = new Worker(new URL(import.meta.url), {workerData: {jobs: share}});
     worker.once('message', resolve); worker.once('error', reject);
   })));
-  return {errors: errors.flat(), count: jobs.length};
+  const out = {};
+  for (const part of parts) for (const [sweep, {errors, count}] of Object.entries(part)) {
+    const r = out[sweep] ??= {errors: [], count: 0}; r.count += count; r.errors.push(...errors);
+  }
+  return out;
 }
 
-if (!isMainThread) parentPort.postMessage(workerData.jobs.flatMap(check));
+if (!isMainThread) parentPort.postMessage(tally(workerData.jobs));
 else {
+  const tag = (sweep, jobs) => jobs.map(job => ({...job, sweep}));
+  const sweeps = pool([...tag('exhaustive', exhaustive()), ...tag('random', randomJobs()), ...tag('nested', nestedJobs())]);
   test('every block in both bases over [−20, 20] (k ∈ [0, 6] for shifts, b ≠ 0 for ÷ and %; ADD, SUB and MULT in both paces)', async () => {
-    const {errors, count} = await pool(exhaustive());
+    const {errors, count} = (await sweeps).exhaustive;
     assert.deepEqual(errors.slice(0, 10), []);
     assert.equal(count, 43091);
   });
+  test(`${NESTED} seeded random machines of two to five blocks per base, and the reviews' trees, match the oracle block by block`, async () => {
+    const {errors, count} = (await sweeps).nested;
+    assert.deepEqual(errors.slice(0, 10), []);
+    assert.equal(count, 2 * NESTED + REGRESSIONS.length);
+  });
   test(`${RANDOM_PAIRS} seeded random operands per block and base, near the limits: exact, pure, and planned in under 50 ms`, async () => {
-    const {errors, count} = await pool(randomJobs());
+    const {errors, count} = (await sweeps).random;
     const slow = errors.filter(e => e.startsWith('slow ')).map(e => JSON.parse(e.slice(5)));
     assert.deepEqual(errors.filter(e => !e.startsWith('slow ')).slice(0, 10), []);
     assert.equal(count, RANDOM_PAIRS * (OPS.binary.length + OPS.ternary.length));
@@ -157,7 +264,7 @@ else {
     assert.equal(planMachine({tree: tree('min'), inputs: ['1', '2'], base: 'binary'}).reason, 'input');
     assert.equal(planMachine({tree: tree('add'), inputs: '[16,7]', base: 'binary'}).plan.result.text, '[23]');
   });
-  test('machine-plan.test.js runs in under 20 s', () => {
-    assert.ok(performance.now() - started < 20000, `${Math.round(performance.now() - started)} ms`);
+  test(`machine-plan.test.js runs in under ${BUDGET / 1000} s`, () => {
+    assert.ok(performance.now() - started < BUDGET, `${Math.round(performance.now() - started)} ms`);
   });
 }
