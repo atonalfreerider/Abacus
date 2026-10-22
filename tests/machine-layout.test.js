@@ -258,7 +258,7 @@ test('a tall tower settles whole at the end of its beat whenever its bulbs fit (
     for (const p of ends) assert.ok(p.y - R >= y0 - 1e-6 && p.y + R <= cam.y + cam.h + 1e-6 && p.x - R >= cam.x - 1e-6 && p.x + R <= cam.x + cam.w + 1e-6, `beat ${i} (${beat.kind}): a bulb ends at ${p.y}, the stage ${y0}..${cam.y + cam.h}`);
     settled++;
   });
-  assert.ok(settled >= 30 && tall <= 2, `${settled} beats settled, ${tall} taller than the stage`);
+  assert.ok(settled >= 36 && tall <= 2, `${settled} beats settled, ${tall} taller than the stage`);
 });
 // A machine still being built has no towers to widen its blocks: siblings are kept apart by
 // their socket rings (r 44) and a selected socket's mark (r 52), so a tap on one socket's

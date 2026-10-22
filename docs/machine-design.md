@@ -155,6 +155,7 @@ All label text comes from the plan (`Tower.text`, `approx`, `digits`, `reading`,
   - Light towers show `reading`: `ln 112 ≈ 4.7185`.
   - Timing: the text switches at u ≥ 0.9 of each beat and the pill is always placed on top. This fixes PRIME's label left inside the stack.
   - Placement: centred on its tower, but an `.L` pill's right edge never passes x = −14 and an `.R` pill's left edge never passes x = +14 (relative to the node). Long pills shift outward, so sibling pills never overlap (6.3b).
+  - **Legibility at small scales** (`view.minFont`, which the mode sets to 10 px; the recording leaves it unset): wherever the camera draws small, as on a phone at its smallest scale, a pill's 27-unit text draws at 6.6 px and the INPUT/OUTPUT captions at 3.4 px. A label whose text would draw under minFont (a caption under 0.8 of it) grows about its foot (centred, or from a corner; an IO pill also from its top or middle, a caption from its inner end) up to that size, into free space only: never over a bulb where it starts or ends the beat, a block, IO, a static tower's furniture, another label (2 px apart, the active node's pills placed first) or the edge of the framed area. The layout's sizes are untouched, so 6.3b's guarantee holds for what is drawn; where the layout leaves no room (the Input pill under the input coins at the opening) the label keeps its size, and its values are read in the coins' own pills, the sentence line and Output.
 - **Digits (D).**
   - Place values (`2⁰ 2¹ …`, `3ᵏ`, `eᵏ`, opacity .55) form one column left of the active node's leftmost tower.
   - The digit glyph sits right of each column bulb; T is a barred 1. Lane bulbs have no glyphs.
@@ -943,10 +944,11 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
 - **Framing:** the union of the active node, its towers and pills at the beat's start and end, and its parent socket, padded by 24 px.
   - The scale lies between **18/74 CSS px per unit** (bulbs at least 18 px across) and 1.2.
   - `view.inset` (recording mode, 5.1) shrinks the usable viewport.
-  - The opening frames IO, the inputs and the machine as built. When that just misses at the minimum scale (on a landscape phone the root hangs as far below IO as the tallest tower it will hold), it is framed without its margins, centred, rather than leaving only a wire running off the stage.
+  - The opening frames IO, the inputs and the machine as built. When that just misses at the minimum scale (on a phone the root hangs as far below IO as the tallest tower it will hold), it is framed without its margins, centred. When it misses even so (a machine of two rows, (5 + 3) × 7), it is framed from IO down: IO and the inputs keep their margins at the top and the stage reaches as far into the machine as it can, with IO and the root block framed tight if that alone leaves the block out. Never only a wire running off the stage while IO and the root block fit together.
 - **Panning when the frame does not fit.** If the box does not fit at the minimum scale, the camera stays at the minimum scale and pans along the tower during the beat:
   - it follows the motion front: the carry being resolved (level pace), the climbing ripple from bottom to top (together pace), A's top (shift), the donor (borrow), or the light (UNFOLD);
-  - the pan is eased like the beat, so every moving bulb passes through the frame at ≥ 18 px.
+  - the pan is eased like the beat, so every moving bulb passes through the frame at ≥ 18 px;
+  - **the pan settles**: when the beat's moving bulbs fit the stage at the minimum scale (their towers' pills may not), the beat ends with every one of them on it, 3 px clear of the edge, with their towers whole if those fit, else as much of the pill as that leaves; the next beat starts there. Only bulbs taller than the stage end at the motion front (at 844 × 390 a 15-level tower settles; the 16-level 65025 cannot).
 - **Coins far away.** Towers **outside** the active node collapse to coins when their bulbs would draw under 12 px across. The active node's towers never collapse, even in the overview (O).
 - **Overrides:** a manual pan or zoom suspends following until T or the next Step.
 - The camera is a pure function of t (`cameraAt`), so videos and tests are exact.
@@ -993,11 +995,13 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
 - **Phone portrait:**
   - the bar wraps to two rows;
   - the stage fills the height, which suits vertical trees and towers;
-  - below it come the sentence and caption, a 56 px palette strip that scrolls sideways, and a control row (Step 64 px wide, AUTO, −/+, Back, Rebuild, Pause, Steps, Centre, Overview), with every target ≥ 44 px. It wraps (two rows from 360 to 414 px) rather than scrolling any of them out of sight; the options (carries, Digits, Read along, Reduced motion) scroll sideways in a strip of their own below it;
-  - **during a run** (playing, or paused mid-plan) the palette strip and the bar's second row collapse, giving the stage about 100 px more (≈ 530 px tall at 390×844, room for a 21-level tower at the minimum scale);
+  - below it come the sentence and caption, a 56 px palette strip that scrolls sideways, and a control row (Step 64 px wide, AUTO, −/+, Back, Rebuild, Pause, Steps, Centre, Overview), with every target ≥ 44 px. It wraps (two rows from 360 to 414 px, in both styles) rather than scrolling any of them out of sight;
+  - the options (carries, Digits, Read along, Reduced motion) are at the foot of the Steps sheet, under both tabs, on phones in either orientation: a strip of their own under the control row cost the stage 52 px at the opening, when the camera needs the height most;
+  - the HUD is one line along the top of the stage from 375 px wide (two below), and the stage is ≈ 480 px tall at 390×844 and ≈ 300 px at 375×667 at the opening;
+  - **during a run** (playing, or paused mid-plan) the palette strip and the bar's second row collapse, giving the stage about 110 px more (≈ 590 px tall at 390×844, room for a 27-level tower at the minimum scale);
   - Steps and Parts open in a bottom sheet;
   - Input is never auto-focused (4.2).
-- **Phone landscape** (height < 520 px): the palette (one row that scrolls sideways and folds away during a run), the controls and the options form a right rail, like the dock, so Step, Back, AUTO and Pause are on screen from the opening. Tall towers use the camera pan (4.5).
+- **Phone landscape** (height < 520 px): the palette (one row that scrolls sideways and folds away during a run) and the controls form a 280 px right rail, like the dock, so Step, Back, AUTO and Pause are on screen from the opening; Take off, while a block is selected, leads the controls, under the palette. The base switch's buttons are 44 px wide like every touch target, and the rail is wide enough for Input beside them. The brand's motto folds away in the mode, so the stage has the height (≈ 330 px at 844×390). Tall towers use the camera pan (4.5).
 - **All devices:** safe areas are respected. A `ResizeObserver` recomputes only the camera, because the layout does not depend on the viewport.
 - **A header with six buttons.** The browser test asserts no wrap or overflow at 360 × 740. The CSS fallback at ≤ 420 px hides the brand motto, sets nav padding to 4 px, and shows "Equation" as "Eq." through a long/short span pair.
 
@@ -1863,7 +1867,7 @@ Unit and property tests run with `node --test tests/*.test.js`.
 
 **Past a limit:**
 - **Typed input:** refused at Enter. The pill shakes and the status names the limit.
-- **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`. The pre-check still works the exact answer out far past every tower (binary and balanced ternary up to 2¹⁴ bits, base e up to e^±2048), so `cmp(shl(1, 5000), 3)` is `tooBig` with the answer [1]; only a value past that budget is `tooBig` with no answer, and its message says why.
+- **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`. The pre-check still works the exact answer out far past every tower (binary and balanced ternary up to 2¹⁴ bits, base e up to e^±2048), so `cmp(shl(1, 5000), 3)` is `tooBig` with the answer [1]; only a value past that budget is `tooBig` with no answer, and its message says why: "That number is too long to work out: it would need more than 16 384 bits (2¹⁴)." The budget is a size in bits in both bases (a decimal digit count would be wrong both ways: 2¹⁶³⁸⁴ and 10⁴⁹³³ − 1 both have 4 933 digits), and a ternary shift is measured, not bounded at 2 bits a trit.
 - **While planning:** the planner checks every tower as it is built. When a tower would exceed its cap, or the node or beat cap is passed, it returns `{ok:false, reason:'tooBig', result}`.
 - **Level pace:** the planner first retries in together pace. The mode also plays carries together when a level-pace plan would pass 1000 beats ((2³² − 1)² is 1649): laying that out froze the page for over a second, for a run that takes minutes even at 4×. Between 400 and 1000 beats the soft limit asks at Enter.
 - The app then shows the exact answer statically in Output, with "Too big to animate step by step; here is the exact answer." Nothing is ever truncated or rounded silently.
