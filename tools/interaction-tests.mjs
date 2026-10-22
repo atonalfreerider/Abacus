@@ -133,11 +133,22 @@ try{
   const text=await page.eval(`document.getElementById('area-result').innerText`);if(!/Strips add up to\s+−8\.5/.test(text)||!/−20\/3/.test(text))throw Error(text);
   expect(await page.eval(`!!document.querySelector('#graph-svg .exact-mark')`),true,'exact integral marked on the gathered stack');
  });
- await check('tutor graph lesson: example, then the learner drags to the crossing',async()=>{
+ // The system lesson's worked example, then the learner's turn: drag the point to the crossing.
+ const systemTurn=async()=>{
   await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`[...document.querySelectorAll('#lessons button')].find(b=>b.textContent.includes('Solve a system by graphing')).click()`);await wait(1200);
   await page.eval(`document.getElementById('tutor-step').click()`);await wait(600);await page.eval(`document.getElementById('tutor-turn').click()`);await wait(900);
-  const from=await graphRect('#graph-svg .tracer circle'),to=await graphRect('#graph-svg .special.solution circle');await drag(from,to,40);await wait(500);
-  const text=await page.eval(`document.getElementById('tutor-prompt').textContent`);if(!/^Found it/.test(text))throw Error(text);
+  const from=await graphRect('#graph-svg .tracer circle'),box=await page.eval(`(()=>{const r=document.getElementById('graph-svg').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};})()`);
+  if(!(from.x>box.x&&from.x<box.x+box.w&&from.y>box.y&&from.y<box.y+box.h))throw Error(`the point starts off the graph at (${Math.round(from.x)}, ${Math.round(from.y)})`);
+  await drag(from,await graphRect('#graph-svg .special.solution circle'),40);await wait(500);
+  return page.eval(`document.getElementById('tutor-prompt').textContent`);
+ };
+ await check('tutor graph lesson: example, then the learner drags to the crossing',async()=>{
+  const text=await systemTurn();if(!/^Found it/.test(text))throw Error(text);
+ });
+ await check('tutor graph lesson: crowded points (a crossing between intercepts) still start the point on the graph',async()=>{
+  // The draw that failed on 2026-10-22: the clear whole numbers ran off the graph, and the point started below it.
+  await page.eval(`import('./src/mvc/tutor.js').then(m=>{m.lessons.find(l=>l.id==='graph-system').make=()=>['y = -3x - 5','y = 3x + 13'];})`);
+  const text=await systemTurn();if(!/^Found it: \(−3, 4\)/.test(text))throw Error(text);
  });
  await check('style: the cyber look restyles cards, stacks and the graph live, and switches back',async()=>{
   await load('345 - 1208 = 2x');

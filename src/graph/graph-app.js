@@ -6,7 +6,7 @@
 // the system holds.
 // Advanced: an area sweep drops columns of card strips that gather into one stack.
 import { parseCurves, parseExpression, specialPoints, intersections, show, degree, evaluateExact, riemann, integral, curveText } from './polynomial.js';
-import { renderStatic, renderDynamic, textureDefs, toX, toY, fromX, fromY, snapStep, fx, groupSpecials, COLORS } from './graph-view.js';
+import { renderStatic, renderDynamic, textureDefs, toX, toY, fromX, fromY, snapStep, fx, fitView, startX, groupSpecials, COLORS } from './graph-view.js';
 import { spring } from '../mvc/physics.js';
 import { frac, numeric, add, mul, sub, parseScalar, abs } from '../engine.js';
 import { interceptSteps, interceptSentence } from './intercepts.js';
@@ -85,9 +85,9 @@ export class Graph extends EventTarget {
     this.parse();
     this.tracer = null; this.setArea({ phase: 'static' });
     if (fit) this.fit();
-    // The point starts on a whole number clear of the interesting points, so finding them is the learner's move.
+    // The point starts on screen and clear of the interesting points, so finding them is the learner's move (graph-view.js).
     const first = this.curves.findIndex(c => c.kind === 'function');
-    if (first >= 0) { const base = Math.round(this.view.cx), shift = [0, 1, -1, 2, -2, 3, -3, 4].find(d => this.groups.every(g => Math.abs(g.x - (base + d)) > .75)) ?? 0; this.place(first, base + shift, { instant: true, snapRadius: 0 }); }
+    if (first >= 0) { const x = startX(this.view, this.curves[first], this.groups); this.place(first, x, { instant: true, snapRadius: 0, at: frac(Math.round(x * 2), 2) }); }
     this.update();
   }
   renderInputs() {
@@ -116,21 +116,8 @@ export class Graph extends EventTarget {
     this.dirty = true;
   }
   keepTracer() { if (this.tracer && this.curves[this.tracer.curve]) this.place(this.tracer.curve, this.tracer.target.x); }
-  // Frame the interesting points (roots, vertices, crossings) with the origin, sampling
-  // curves only between them so a parabola's steep arms do not shrink the picture.
-  fit() {
-    const v = this.view, xs = this.groups.map(g => g.x);
-    let x0 = Math.min(0, ...xs), x1 = Math.max(0, ...xs);
-    if (x1 - x0 < 4) { const c = (x0 + x1) / 2; x0 = c - 2; x1 = c + 2; }
-    const ys = [0, ...this.groups.map(g => g.y)];
-    for (const c of this.curves) if (c.kind === 'function') for (let k = 0; k <= 40; k++) { const y = fx(c, x0 + (x1 - x0) * k / 40); if (Number.isFinite(y)) ys.push(y); }
-    let y0 = Math.min(...ys), y1 = Math.max(...ys);
-    const xpad = Math.max(1, (x1 - x0) * .25), ypad = Math.max(1, (y1 - y0) * .15);
-    x0 -= xpad; x1 += xpad; y0 -= ypad; y1 += ypad;
-    v.unit = Math.max(3, Math.min(90, Math.min(v.width / (x1 - x0), v.height / (y1 - y0))));
-    v.cx = (x0 + x1) / 2; v.cy = (y0 + y1) / 2;
-    this.dirty = true;
-  }
+  // Frame the interesting points with the origin (graph-view.js).
+  fit() { fitView(this.view, this.groups, this.curves); this.dirty = true; }
   // ---------- tracer ----------
   // Target a point on curve i nearest to the raw coordinate (x for a function, y for a vertical line).
   place(i, raw, { instant = false, snapRadius = 14, at = null } = {}) {

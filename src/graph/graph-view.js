@@ -21,6 +21,34 @@ export function niceStep(raw) { const p = 10 ** Math.floor(Math.log10(raw)), m =
 // Snapping steps the tracer can land on: friendly fractions of a card.
 export function snapStep(unit) { for (const s of [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100]) if (s * unit >= 9) return s; return 100; }
 export const fx = (curve, x) => curve.poly.reduceRight((a, c) => a * x + numeric(c), 0);
+// Frame the interesting points (roots, vertices, crossings) with the origin, sampling
+// curves only between them so a parabola's steep arms do not shrink the picture.
+export function fitView(v, groups, curves) {
+  const xs = groups.map(g => g.x);
+  let x0 = Math.min(0, ...xs), x1 = Math.max(0, ...xs);
+  if (x1 - x0 < 4) { const c = (x0 + x1) / 2; x0 = c - 2; x1 = c + 2; }
+  const ys = [0, ...groups.map(g => g.y)];
+  for (const c of curves) if (c.kind === 'function') for (let k = 0; k <= 40; k++) { const y = fx(c, x0 + (x1 - x0) * k / 40); if (Number.isFinite(y)) ys.push(y); }
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const xpad = Math.max(1, (x1 - x0) * .25), ypad = Math.max(1, (y1 - y0) * .15);
+  x0 -= xpad; x1 += xpad; y0 -= ypad; y1 += ypad;
+  v.unit = Math.max(3, Math.min(90, Math.min(v.width / (x1 - x0), v.height / (y1 - y0))));
+  v.cx = (x0 + x1) / 2; v.cy = (y0 + y1) / 2;
+}
+// Where the point starts on a curve: on screen, where it can be grabbed, and clear of the
+// interesting points (at least ¾ of a card and 16 px), so finding them is the learner's
+// move. A whole number near the middle; when the interesting points crowd those, the
+// clearest on-screen whole number or half, whole numbers and the middle first.
+export function startX(v, curve, groups, margin = 24) {
+  const base = Math.round(v.cx), room = Math.max(.75, 16 / v.unit);
+  const gap = x => Math.min(...groups.map(g => Math.abs(g.x - x))), clear = x => Math.min(room, gap(x));
+  const onScreen = x => { const X = toX(v, x), Y = toY(v, fx(curve, x)); return X >= margin && X <= v.width - margin && Y >= margin && Y <= v.height - margin; };
+  const near = [0, 1, -1, 2, -2, 3, -3, 4].map(d => base + d).find(x => gap(x) > room && onScreen(x));
+  if (near !== undefined) return near;
+  const halves = [];
+  for (let k = Math.ceil(fromX(v, margin) * 2); k / 2 <= fromX(v, v.width - margin); k++) if (onScreen(k / 2)) halves.push(k / 2);
+  return halves.sort((a, b) => clear(b) - clear(a) || Number.isInteger(b) - Number.isInteger(a) || Math.abs(a - base) - Math.abs(b - base))[0] ?? base;
+}
 
 export function textureDefs() {
   return patternDefs('g-');

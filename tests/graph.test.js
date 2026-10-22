@@ -80,3 +80,19 @@ test('at an axis crossing the zero is substituted and the equation solved step b
  for(let i=0;i<200;i++){const [text]=i?tutor.practice():lesson.example,curves=parseCurves(text),points=specialPoints(curves);
   for(const kind of ['y-intercept','root']){const p=points.find(p=>p.kind===kind);assert.ok(p?.exact,`${text}: exact ${kind}`);const w=interceptSteps(text,kind==='root'?'x':'y',p.exact);assert.ok(eq(w.value,kind==='root'?p.exact.x:p.exact.y),`${text} ${kind}: ${w.steps.join(' → ')}`);assert.ok(w.value.d===1,'whole-number intercepts');}}
 });
+test('every graph lesson starts the point on screen, off the interesting points, with the system lesson\'s crossing in view',async()=>{
+ const {fitView,startX,toX,toY,fx}=await import('../src/graph/graph-view.js');
+ const {lessons,Tutor}=await import('../src/mvc/tutor.js');
+ // The graph's size on a desktop, a phone upright and a phone on its side.
+ for(const [width,height] of [[954,568],[372,420],[518,172]])for(const lesson of lessons.filter(l=>l.graph)){
+  const tutor=new Tutor(lesson,7);
+  for(let i=0;i<300;i++){
+   const texts=[i?tutor.practice():lesson.example].flat(),curves=texts.flatMap(parseCurves).slice(0,4),groups=groupSpecials(specialPoints(curves)).filter(g=>Number.isFinite(g.x)&&Number.isFinite(g.y));
+   const view={cx:0,cy:0,unit:40,width,height},curve=curves.find(c=>c.kind==='function');fitView(view,groups,curves);
+   const x=startX(view,curve,groups),X=toX(view,x),Y=toY(view,fx(curve,x)),what=`${texts.join(' and ')} at ${width}×${height}: start x = ${x}`;
+   assert.ok(X>=24&&X<=width-24&&Y>=24&&Y<=height-24,`${what} is off screen at (${Math.round(X)}, ${Math.round(Y)})`);
+   assert.ok(groups.every(g=>Math.abs(g.x-x)>=.5),`${what} is on an interesting point`);
+   if(lesson.id==='graph-system'){const s=groups.find(g=>g.kinds.includes('solution')),SX=toX(view,s.x),SY=toY(view,s.y);assert.ok(SX>=0&&SX<=width&&SY>=0&&SY<=height,`${what}: the crossing is out of view`);}
+  }
+ }
+});
