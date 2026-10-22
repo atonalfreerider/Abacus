@@ -32,13 +32,13 @@ function parseValue(text) {
   return {ok: true, value: String(negative ? -v : v)};
 }
 // The registry's evaluate. MOD answers [q, r] like DIV, so it asks the oracle's DIV. These
-// bases have no reach to lift ({limits: false} changes nothing): an absurd shift count is
-// tooBig either way.
+// bases have no reach to lift ({limits: false} changes nothing): the oracle computes any value
+// up to its size budget, and past it a shift count or a product is tooBig either way.
 function evaluate(base) {
   return (op, args) => {
     const r = oracle(op === 'mod' ? 'div' : op, base, args.map(BigInt));
     if (r.error === 'zeroDivision') return {ok: false, reason: 'zeroDivision', message: 'Nothing fits into zero.'};
-    if (r.error === 'tooBig') return {ok: false, reason: 'tooBig', message: 'That shift is too long for a tower.'};
+    if (r.error === 'tooBig') return {ok: false, reason: 'tooBig', message: op === 'shl' ? 'That shift is too long to work out: its answer would run past 4 933 digits.' : 'That number is too long to work out: it would run past 4 933 digits.'};
     if (r.error) return {ok: false, reason: 'domain', message: OPS[base].includes(op) ? 'A shift needs a whole number of levels: the count is negative.' : `${NAMES[base]} has no ${op} block.`};
     if (op === 'div' || op === 'mod' || op === 'shr') return {ok: true, values: [String(r.value), String(r.remainder)]};
     return {ok: true, values: [String(r.value)]};

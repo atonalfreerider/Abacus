@@ -50,9 +50,13 @@ export function planMachine({tree, inputs, base, pace = 'together'}) {
   const pre = evaluateNodes(tree, values, base);
   const answer = r => ({values: r.values, text: r.text, ...QUOTIENT_OPS.includes(tree[root].op) ? {label: `q ${fmt(r.values[0])} · r ${fmt(r.values[1])}`} : {}});
   if (!pre.ok) {
+    // Past the reach the base computes on, so a small answer still shows (cmp(5e⁻⁴⁰⁰, 3) is
+    // −1); what it finds out there is the truer refusal: a domain error further up, or the
+    // size it could not work out at all.
     const exact = pre.reason === 'tooBig' ? evaluateNodes(tree, values, base, {limits: false}) : null;
     if (exact?.ok) return fail('tooBig', TOO_BIG, {node: pre.node, result: answer(exact)});
-    return fail(pre.reason, pre.message, pre.node ? {node: pre.node} : {});
+    const why = exact ?? pre;
+    return fail(why.reason, why.message, why.node ? {node: why.node} : {});
   }
   const result = answer(pre);
   // 3. limits on the machine and on computed values
@@ -72,11 +76,14 @@ function tooTall(tree, pre, base) {
   const [lo, hi] = LIMITS.e.mule;
   if (base === 'e' && Object.entries(pre.nodes).some(([id, {args}]) => tree[id].op === 'mule' && (Number(args[1]) < lo || Number(args[1]) > hi))) return true;
   const cap = LIMITS[base]?.levels; if (!cap) return false;
+  // more than cap digits: |v| ≥ 2^cap, or past (3^cap − 1)/2 in balanced ternary. A size test,
+  // because a value far past the tower (still computed, for the answer) has thousands of digits.
+  const most = base === 'binary' ? (1n << BigInt(cap)) - 1n : (3n ** BigInt(cap) - 1n) / 2n;
   for (const [id, {args, values}] of Object.entries(pre.nodes)) {
     const op = tree[id].op;
     if (op === 'shl' && Number(args[1]) + 1 > cap) return true;
     if (op === 'shr' && Number(args[1]) > LIMITS[base].shr) return true;
-    if ([...args, ...values].some(v => digits(v, base).length > cap)) return true;
+    if ([...args, ...values].some(v => abs(BigInt(v)) > most)) return true;
   }
   return false;
 }

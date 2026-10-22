@@ -80,7 +80,12 @@ test('a = q·b + r with each convention\'s bounds, and SHR(a, k) = DIV(a, b^k)',
   assert.deepEqual(evaluate('div', 'binary', [1n, 0n]), {error: 'zeroDivision'});
   assert.deepEqual(evaluate('shl', 'binary', [1n, -1n]), {error: 'domain'});
   assert.deepEqual(evaluate('min', 'binary', [1n, 2n]), {error: 'domain'});
-  assert.deepEqual(evaluate('shl', 'binary', [1n, 5000n]), {error: 'tooBig'}, 'a count no tower could hold (6.10)');
+  // far past any tower the answer is still exact (6.10 shows it); only a size past the
+  // oracle's budget is refused, before anything is multiplied out
+  assert.deepEqual(evaluate('shl', 'binary', [1n, 5000n]), {value: 1n << 5000n}, 'a count no tower could hold, computed');
+  assert.deepEqual(evaluate('shl', 'binary', [1n, 20000n]), {error: 'tooBig'}, 'a count past the size budget');
+  assert.deepEqual(evaluate('shl', 'ternary', [1n, 1n << 62n]), {error: 'tooBig'}, 'an absurd count costs nothing');
+  assert.deepEqual(evaluate('mul', 'binary', [1n << 9000n, 1n << 9000n]), {error: 'tooBig'});
   assert.equal(evaluate('mod', 'ternary', [19n, 5n]).value, -1n, '19 mod 5 = −1');
   assert.equal(evaluate('mod', 'ternary', [14n, 4n]).value, 2n, '14 mod 4 = 2');
   for (const base of ['binary', 'ternary']) for (const a of span(-300, 300)) for (let k = 0n; k <= 8n; k++) {

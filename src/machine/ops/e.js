@@ -88,19 +88,24 @@ const NO = {
   shl: 'Base e shifts by powers of e: use ×eᵏ.', shr: 'Base e shifts by powers of e: use ×eᵏ.',
 };
 // evaluate gives the exact answer whatever its size: computing in Q[e, 1/e] is cheap, and the
-// caps of 6.10 belong to the planner, which then reports tooBig with this very answer. Only a
-// value with a power of e past e^±300 is refused outright (like the whole-number bases'
-// longest shift), because its certified signs, heights and ≈ readouts would no longer be
-// cheap or fit a float; that is a ×eᵏ count far past anything a tower can show.
-const SPAN = 300;
-export function evaluate(op, args) {
+// caps of 6.10 belong to the planner, which then reports tooBig with this very answer. A
+// value with a power of e past e^±300 is tooBig, because its heights and ≈ readouts no longer
+// fit a float; that is a ×eᵏ count far past anything a tower can show. With {limits: false}
+// (planMachine's answer, once a run is tooBig anyway) values reach e^±2048: sums, products
+// and the certified signs of COMP and LN stay cheap there, and the answer itself may be
+// small (cmp(5e⁻⁴⁰⁰, 3) is −1); an Output past e^±300 is written without its ≈.
+const SPAN = 300, WIDE = 2048;
+export function evaluate(op, args, { limits = true } = {}) {
   if (args.some(a => readingOf(a))) return { ok: false, reason: 'domain', message: 'ln gives a reading, not a number: it can only go to Output.' };
   if (!E_OPS[op]) return { ok: false, reason: 'domain', message: NO[op] ?? 'Logic needs whole-number levels; base e has none.' };
   // evaluateScene may hand over an operand it could not read (a node half way through its
   // work): that is an answer of no kind, never a crash.
   let a, b;
   try { [a, b] = args.map(v => E.parse(v)); } catch { return { ok: false, reason: 'domain', message: `Not a base-e number: ${args.join(', ')}` }; }
-  const value = x => x.t.some(([k]) => Math.abs(k) > SPAN) ? { ok: false, reason: 'tooBig', message: 'That number is too big for a tower.' } : { ok: true, values: [x.key()] };
+  const span = limits ? SPAN : WIDE, value = x => {
+    const far = x.t.find(([k]) => Math.abs(k) > span);
+    return far ? { ok: false, reason: 'tooBig', message: `That number is too ${far[0] > 0 ? 'big' : 'small'} for a tower.` } : { ok: true, values: [x.key()] };
+  };
   try {
     switch (op) {
       case 'add': return value(a.add(b));
@@ -115,8 +120,12 @@ export function evaluate(op, args) {
       }
       case 'cmp': return { ok: true, values: [String(compare(a, b))] };
       case 'measure': return value(a);
-      case 'ln': return sign(a) > 0 ? { ok: true, values: [`ln(${a.key()})`] }
-        : { ok: false, reason: 'domain', message: `ln needs a positive number: ${a.text()} has no logarithm; its light would fall forever.` };
+      case 'ln': {
+        if (sign(a) <= 0) return { ok: false, reason: 'domain', message: `ln needs a positive number: ${a.text()} has no logarithm; its light would fall forever.` };
+        // a reading is a float, even an unlimited one: past e^±300 it would not fit
+        const far = a.t.find(([k]) => Math.abs(k) > SPAN);
+        return far ? { ok: false, reason: 'tooBig', message: `That number is too ${far[0] > 0 ? 'big' : 'small'} for the ruler to read.` } : { ok: true, values: [`ln(${a.key()})`] };
+      }
     }
   } catch (error) {
     if (error instanceof PrecisionError) return { ok: false, reason: 'tooBig', message: error.message };
@@ -130,7 +139,7 @@ export const power = k => E.e(Number(k)).key();
 export function display(value, { form = 'tower' } = {}) {
   const r = readingOf(value);
   if (r) return { text: lnText(r) };
-  const x = E.parse(value), out = { text: x.text() }, approx = approxText(x);
+  const x = E.parse(value), out = { text: x.text() }, approx = x.t.every(([k]) => Math.abs(k) <= SPAN) ? approxText(x) : undefined;
   if (approx) out.approx = approx;
   if (form === 'light') { if (!x.isZero()) out.reading = lnText(x); }
   else out.digits = digitsText(x);

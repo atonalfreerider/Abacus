@@ -263,6 +263,17 @@ else {
     assert.equal(planMachine({tree: tree('add'), inputs: ['1'], base: 'binary'}).message, 'This machine takes 2 numbers');
     assert.equal(planMachine({tree: tree('min'), inputs: ['1', '2'], base: 'binary'}).reason, 'input');
     assert.equal(planMachine({tree: tree('add'), inputs: '[16,7]', base: 'binary'}).plan.result.text, '[23]');
+    // a shift far past every tower still has an exact answer, often a small one (6.10)
+    const far = (text, base, values) => {
+      const e = parseExpression(text, base), r = planMachine({tree: e.tree, inputs: e.inputs, base});
+      assert.equal(r.reason, 'tooBig', text); assert.deepEqual(r.result?.values, values, text);
+    };
+    far('shl(1, 5000) <=> 3', 'binary', ['1']);
+    far('shl(1, 5000) - shl(1, 5000) + 7', 'binary', ['7']);
+    far('shl(6051414, 4691) * 9777658288', 'ternary', [String(6051414n * 3n ** 4691n * 9777658288n)]);
+    // past the oracle's size budget there is no answer to give, and the refusal says so
+    const huge = planMachine({tree: tree('shl'), inputs: ['1', String(2n ** 62n)], base: 'binary'});
+    assert.equal(huge.reason, 'tooBig'); assert.equal(huge.result, undefined); assert.match(huge.message, /too long to work out/);
   });
   test(`machine-plan.test.js runs in under ${BUDGET / 1000} s`, () => {
     assert.ok(performance.now() - started < BUDGET, `${Math.round(performance.now() - started)} ms`);

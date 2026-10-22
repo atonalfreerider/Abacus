@@ -93,9 +93,11 @@ test('evaluateTree is exact, and a domain error names its block and its cause', 
   const shift = run('shl(5, 1-3)');
   assert.equal(shift.reason, 'domain'); assert.equal(shift.node, 'n1'); assert.match(shift.message, /1 − 3 = −2/);
   assert.deepEqual(evaluateTree(defaultMachine(), ['16'], 'binary'), {ok: false, reason: 'arity', node: null, message: 'This machine takes 2 numbers'});
-  // beside 6.6's zeroDivision and domain: arity (above) and tooBig, a count no tower could hold
-  assert.deepEqual(evaluateTree({n1: {op: 'shl', parent: 'io', socket: 'C'}}, ['5', '5000'], 'binary'),
-    {ok: false, reason: 'tooBig', node: 'n1', message: 'That shift is too long for a tower.'});
+  // beside 6.6's zeroDivision and domain: arity (above) and tooBig, a count past even the
+  // exact answer's size budget (a count past the tower alone is still worked out)
+  assert.deepEqual(evaluateTree({n1: {op: 'shl', parent: 'io', socket: 'C'}}, ['5', '20000'], 'binary'),
+    {ok: false, reason: 'tooBig', node: 'n1', message: 'That shift is too long to work out: its answer would run past 4 933 digits.'});
+  assert.equal(evaluateTree({n1: {op: 'shl', parent: 'io', socket: 'C'}}, ['5', '5000'], 'binary').values[0], String(5n << 5000n));
 });
 test('the sentence line reads the tree as algebra after every beat of [16,7]', () => {
   const p = planMachine({tree: defaultMachine(), inputs: ['16', '7'], base: 'binary'}).plan;

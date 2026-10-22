@@ -1860,7 +1860,7 @@ Unit and property tests run with `node --test tests/*.test.js`.
 
 **Past a limit:**
 - **Typed input:** refused at Enter. The pill shakes and the status names the limit.
-- **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`.
+- **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`. The pre-check still works the exact answer out far past every tower (binary and balanced ternary up to 2¹⁴ bits, base e up to e^±2048), so `cmp(shl(1, 5000), 3)` is `tooBig` with the answer [1]; only a value past that budget is `tooBig` with no answer, and its message says why.
 - **While planning:** the planner checks every tower as it is built. When a tower would exceed its cap, or the node or beat cap is passed, it returns `{ok:false, reason:'tooBig', result}`.
 - **Level pace:** the planner first retries in together pace.
 - The app then shows the exact answer statically in Output, with "Too big to animate step by step; here is the exact answer." Nothing is ever truncated or rounded silently.
