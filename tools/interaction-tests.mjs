@@ -486,6 +486,42 @@ try{
   await mload({op:'mul',input:'[16,7]',pace:'together'});
   expect((await page.eval(`window.__machine.beats()`))[0].end,2,'the next machine plays at the chosen 2 s');
  });
+ await mcheck('machine 19: a run too big to animate shows its exact answer in Output, by load(), the expression field or Enter',async()=>{
+  const shown=()=>page.eval(`[document.getElementById('machine-output').textContent,getComputedStyle(document.querySelector('.machine-result')).display!=='none'].join('|')`),want=`[${5n<<70n}]|true`;
+  await mload({machine:'5<<70'});await wait(100);expect(await shown(),want,'after load()');
+  await mload({machine:'mul',input:'16,7'});await wait(100);
+  await page.eval(`(()=>{const e=document.getElementById('machine-expr');e.focus();e.value='5<<70';})()`);await press('Enter');await wait(200);
+  expect(await shown(),want,'after the expression field');
+  await mload({op:'shl',input:'[5,3]'});await wait(100);
+  await page.eval(`(()=>{const i=document.getElementById('machine-input');i.focus();i.value='[5,70]';})()`);await press('Enter');await wait(200);
+  expect(await shown(),want,'after Enter in Input');
+  expect(await page.eval(`document.getElementById('machine-status').textContent`),'Too big to animate step by step; here is the exact answer.','the status');
+ });
+ // Phones in both orientations and styles: every touch control is a 44 px target (the landscape
+ // base switch was 30 px wide), the options are in the Steps sheet, Take off shows inside the
+ // visible rail, and the opening of (5 + 3) × 7 shows its root block under the triangle.
+ for(const [w,h] of [[390,844],[844,390]]){
+  await mcheck(`machine 20: phone ${w}×${h}, both styles: 44 px targets, options in the sheet, Take off in view, the root block at the opening`,async()=>{
+   await touch();await reopen();
+   const small=()=>page.eval(`[...document.querySelectorAll('#machine-mode button,#machine-mode select,#machine-mode .machine-check,#machine-mode [role=tab]')].filter(e=>!e.closest('#machine-hud')&&e.getClientRects().length).map(e=>{const r=e.getBoundingClientRect();return [e.id||e.dataset.op||e.dataset.beat||e.textContent.trim().slice(0,14),Math.round(r.width),Math.round(r.height)];}).filter(([,a,b])=>a<43.5||b<43.5)`);
+   for(const style of ['sketchpad','cyber']){
+    await page.eval(`(()=>{const s=document.getElementById('style');s.value='${style}';s.dispatchEvent(new Event('change'));})()`);await wait(300);
+    let bad=await small();if(bad.length)throw Error(`${style}: controls under 44 px: ${JSON.stringify(bad)}`);
+    await page.eval(`document.getElementById('machine-steps-toggle').click()`);await wait(200);
+    expect(await page.eval(`!!document.querySelector('#machine-side.open .machine-extras #machine-digits')&&getComputedStyle(document.querySelector('.machine-extras')).display`),'flex','the options are in the open sheet');
+    bad=await small();if(bad.length)throw Error(`${style}: controls in the sheet under 44 px: ${JSON.stringify(bad)}`);
+    await page.eval(`document.getElementById('machine-sheet-close').click()`);await wait(200);
+    const p=await box('#machine-svg .m-hit-node[data-node="n1"]');await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:p.x,y:p.y}]});await wait(40);await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await wait(200);
+    const r=await box('#machine-remove');
+    expect(await page.eval(`document.elementFromPoint(${r.x},${r.y})?.id`),'machine-remove','Take off is on screen, not scrolled out of the rail');
+    await page.eval(`document.getElementById('machine-remove').click()`);await wait(100);
+    await mload({machine:'(5+3)*7'});await wait(300);
+    const at=await page.eval(`(()=>{const st=document.getElementById('machine-stage').getBoundingClientRect(),hud=document.getElementById('machine-hud').getBoundingClientRect(),b=document.querySelector('#machine-svg .m-hit-node[data-node="n1"]').getBoundingClientRect();return b.top>=hud.bottom-1&&b.bottom<=st.bottom+1&&b.left>=st.left-1&&b.right<=st.right+1;})()`);
+    expect(at,true,`${style}: the root block of (5 + 3) × 7 is on the stage at the opening`);
+    await mload({machine:'mul',input:'16,7'});await wait(200);
+   }
+  },{width:w,height:h});
+ }
 }finally{server.kill();}
 for(const [name,error] of results)console.log(`${error?'FAIL':'ok  '} ${name}${error?`\n     ${error}`:''}`);
 const failed=results.filter(r=>r[1]).length;

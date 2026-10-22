@@ -4,6 +4,7 @@ import { layoutPlan, scenesOf, cameraAt, parsePlace, intersects, bulbOffset, FUR
 import { renderMachine } from '../src/machine/render.js';
 import { machineScenes } from '../src/machine/scenes.js';
 import { planMachine } from '../src/machine/plan.js';
+import { parseExpression } from '../src/machine/tree.js';
 
 const { scenes } = await machineScenes();
 const planned = (op, inputs, base = 'binary', tree = {n1: {op, parent: 'io', socket: 'C'}}) => planMachine({tree, inputs, base}).plan;
@@ -217,6 +218,47 @@ test('the opening on a landscape phone shows the block under the triangle', () =
     assert.ok(box.y >= cam.y + 24 / s - 1e-6 && box.y + box.h <= cam.y + cam.h + 1e-6, `${viewport.width}×${viewport.height}: the × block at ${box.y}..${box.y + box.h}, the stage ${cam.y + 24 / s}..${cam.y + cam.h}`);
     for (const id of Object.keys(plan.start.towers)) { const t = L.towerBox(plan.start, id); assert.ok(t.y >= cam.y + 24 / s - 1e-6, `${viewport.width}×${viewport.height}: input ${id} under the band`); }
   }
+});
+// The stages the app gives the camera on phones (measured in headless Chrome, both styles):
+// 390×844, 375×667, 844×390, 667×375 and 740×360, each below its HUD band.
+const PHONE_STAGES = [[{width: 372, height: 480}, 20], [{width: 357, height: 303}, 20], [{width: 536, height: 332}, 20], [{width: 359, height: 319}, 20], [{width: 432, height: 302}, 20]];
+// The opening of every README machine shows its root block under the triangle, and the inputs
+// below the band, on every one of them: a machine of two rows ((5 + 3) × 7) misses the
+// smallest scale even unpadded, and is framed from IO down rather than centred on IO.
+test('the opening on a phone shows the root block of every README machine', () => {
+  for (const text of ['16*7', '(5+3)*7', '45/6', '45%6', '12&10', '~5', '7<=>9', '5<<3', 'shr(45,2)', '-(3+4)', '((1+2)*(3+4))*5']) {
+    const parsed = parseExpression(text, 'binary'), plan = planMachine({tree: parsed.tree, inputs: parsed.inputs, base: 'binary'}).plan, L = layoutPlan(plan);
+    const root = Object.keys(plan.tree).find(id => plan.tree[id].parent === 'io'), box = L.nodeBox(root);
+    for (const [viewport, top] of PHONE_STAGES) {
+      if (text.startsWith('((') && viewport.height < 310) continue;   // three rows: 390×844 and 844×390 only
+      const cam = cameraAt(plan, L, 0, viewport, {inset: {top}}), s = viewport.width / cam.w, y0 = cam.y + top / s, where = `${text} at ${viewport.width}×${viewport.height}`;
+      assert.ok(box.y >= y0 - 1e-6 && box.y + box.h <= cam.y + cam.h + 1e-6, `${where}: the root block at ${box.y}..${box.y + box.h}, the stage ${y0}..${cam.y + cam.h}`);
+      for (const id of Object.keys(plan.start.towers)) { const t = L.towerBox(plan.start, id); assert.ok(t.y >= y0 - 1e-6 && t.x >= cam.x - 1e-6 && t.x + t.w <= cam.x + cam.w + 1e-6, `${where}: input ${id} off the stage`); }
+    }
+  }
+});
+// The end of a pan (4.5): a beat whose moving bulbs fit the stage at the smallest scale ends
+// with every one of them on it, the dark bulbs a shift slides in under a 15-level tower
+// included; only bulbs taller than the stage (the 16-level 65025) end at the motion front.
+test('a tall tower settles whole at the end of its beat whenever its bulbs fit (844×390)', () => {
+  const [viewport, top] = PHONE_STAGES[2], plan = planned('mul', ['255', '255']), L = layoutPlan(plan), list = scenesOf(plan);
+  const at = (scene, b) => { const t = scene.towers[b.t]; if (!t) return null; const p = L.place(t.at, b.slot); return {x: p.x, y: p.y - (t.form === 'coin' ? 6 : 84) * b.l, tower: t.form !== 'coin'}; };
+  let settled = 0, tall = 0;
+  plan.beats.forEach((beat, i) => {
+    const a = list[i], z = list[i + 1], m = beat.motion || {}, ends = [];
+    for (const id of new Set([...Object.keys(a.bulbs), ...Object.keys(z.bulbs)])) {
+      const A = a.bulbs[id], B = z.bulbs[id]; let p0 = null, p1 = null;
+      if (A && B) { p0 = at(a, A); p1 = at(z, B); } else if (A && m[id]?.to) { p0 = at(a, A); p1 = at(z, m[id].to); } else if (B && m[id]?.from) { p0 = at(a, m[id].from); p1 = at(z, B); }
+      if (p0 && p1 && p1.tower && Math.hypot(p1.x - p0.x, p1.y - p0.y) >= 1) ends.push(p1);
+    }
+    if (!ends.length) return;
+    const cam = cameraAt(plan, L, i + 1, viewport, {inset: {top}}), s = viewport.width / cam.w, y0 = cam.y + top / s, R = UNITS.bulbR;
+    const lo = Math.min(...ends.map(p => p.y)) - R, hi = Math.max(...ends.map(p => p.y)) + R;
+    if (hi - lo > cam.y + cam.h - y0) { tall++; return; }
+    for (const p of ends) assert.ok(p.y - R >= y0 - 1e-6 && p.y + R <= cam.y + cam.h + 1e-6 && p.x - R >= cam.x - 1e-6 && p.x + R <= cam.x + cam.w + 1e-6, `beat ${i} (${beat.kind}): a bulb ends at ${p.y}, the stage ${y0}..${cam.y + cam.h}`);
+    settled++;
+  });
+  assert.ok(settled >= 30 && tall <= 2, `${settled} beats settled, ${tall} taller than the stage`);
 });
 // A machine still being built has no towers to widen its blocks: siblings are kept apart by
 // their socket rings (r 44) and a selected socket's mark (r 52), so a tap on one socket's

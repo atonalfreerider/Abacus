@@ -472,6 +472,9 @@ function beatMovers(plan, layout, k) {
     // between their box eases from one to the other with the bulbs (a light falling down a
     // tower that stays put keeps the whole tower in view)
     const whole = (u, scene, towers) => { let box = moversBox(out, u); for (const t of towers) if (scene.towers[t]) box = union(box, layout.towerBox(scene, t)); return box; };
+    // the bulbs alone, where they start and end: a beat whose towers (pills included) miss
+    // the smallest scale still settles with every bulb in view when the bulbs fit (4.5)
+    out.b0 = moversBox(out, 0); out.b1 = moversBox(out, 1);
     out.towers = [whole(0, a, from), whole(1, z, to)];
     out.s0 = moversBox(out, 0); out.s1 = moversBox(out, 1);
   }
@@ -502,9 +505,9 @@ function contextOf(plan, layout, k) {
     let box = null;
     for (const b of layout.ioFrame) box = union(box, b);
     for (const id of Object.keys(plan.start.towers)) box = union(box, layout.towerBox(plan.start, id));
-    let all = box;
-    for (const id of Object.keys(plan.start.nodes)) if (layout.nodeAt(id)) all = union(all, layout.nodeBox(id));
-    return {core: box, box: all, want: null};
+    let all = box, root = null;
+    for (const [id, n] of Object.entries(plan.start.nodes)) if (layout.nodeAt(id)) { all = union(all, layout.nodeBox(id)); if (n.parent === 'io') root = union(box, layout.nodeBox(id)); }
+    return {core: box, root, box: all, want: null};
   }
   const beat = plan.beats[k], node = beat.node, before = scenes[k], after = scenes[k + 1];
   const mine = at => { const p = parsePlace(at); return node === 'io' ? !!p.io : p.node === node; };
@@ -548,21 +551,52 @@ function chainOf(plan, layout, viewport, inset) {
   // framed as close to `want` as it allows, and that sets ρ against the first box. When the
   // first box does not fit, ρ is the pan's end: the far end if the beat started too big to
   // show as well (so the sweep crosses all of it), else the end the movers head for.
+  // A first box that misses even so, but whose bulbs (`bulbs`, the movers alone) fit, settles
+  // with every bulb in view instead: its towers whole when they fit without margins, else as
+  // much of them (the pill over a tall tower) as the view leaves with every bulb still in it
+  // (3 px clear of the edge).
+  // A tall tower used to end its pan at the motion front with its foot below the stage, the
+  // dark bulbs of a shift included, though it fitted.
   // tight (the opening only): a last box that misses with its margins but fits without them
-  // is still framed whole, centred, the margin it has shared by both ends.
-  const solve = (boxes, want, top, start, dir, tight = false) => {
+  // is still framed whole, centred, the margin it has shared by both ends; one that misses
+  // even so keeps the first box (IO and the inputs) in view with its margins and reaches as
+  // far into the machine as that allows, so the root block shows below IO wherever the two
+  // fit together (a machine of two rows, (5 + 3) × 7, hung its root off a phone's stage when
+  // IO was centred instead).
+  const solve = (boxes, want, top, start, dir, tight = false, bulbs = null) => {
     const lam = clampLam(need(boxes.at(-1), top)), {v, p} = sizes(lam, top), first = boxes[0];
     const out = {lam, top, c: [0, 0], rho: [0, 0], slide: [false, false]};
     for (const axis of [0, 1]) {
       const [l, h] = ext(first, axis), over = !!start?.over[axis];
       out.slide[axis] = over;
-      if (!fits(l, h, v[axis], p)) { out.rho[axis] = over ? (start.rho[axis] <= .5 ? 1 : 0) : dir[axis] < 0 ? 0 : 1; out.slide[axis] = true; }
+      if (!fits(l, h, v[axis], p)) {
+        out.slide[axis] = true;
+        const [ql, qh] = bulbs ? ext(bulbs, axis) : [l, h];
+        if (fits(ql, qh, v[axis], 0)) {
+          const e = Math.min(p / 8, (v[axis] - (qh - ql)) / 2), c = fits(l, h, v[axis], 0) ? (l + h) / 2 : Math.min(ql - e + v[axis] / 2, Math.max(qh + e - v[axis] / 2, (l + h) / 2));
+          out.rho[axis] = clamp01(rhoOf(c, l, h, v[axis], p)); out.c[axis] = inBounds(c, axis); continue;
+        }
+        out.rho[axis] = over ? (start.rho[axis] <= .5 ? 1 : 0) : dir[axis] < 0 ? 0 : 1;
+      }
       else {
         let c = null, whole = false;
         for (let j = boxes.length - 1; j >= 0 && c === null; j--) {
           const [bl, bh] = ext(boxes[j], axis);
           if (fits(bl, bh, v[axis], p)) c = Math.min(bl - p + v[axis] / 2, Math.max(bh + p - v[axis] / 2, want ? (axis ? want.y : want.x) : (bl + bh) / 2));
-          else if (tight && j === boxes.length - 1 && fits(bl, bh, v[axis], 0)) { c = (bl + bh) / 2; whole = true; }
+          else if (tight && j === boxes.length - 1) {
+            whole = true;
+            if (fits(bl, bh, v[axis], 0)) c = (bl + bh) / 2;
+            else {
+              c = Math.min(l - p + v[axis] / 2, Math.max(h + p - v[axis] / 2, (bl + bh) / 2));
+              // a box between them (IO with the root block) that this leaves partly outside,
+              // but that fits without its margins, is framed whole instead
+              for (let i = boxes.length - 2; i > 0; i--) {
+                const [il, ih] = ext(boxes[i], axis);
+                if (il >= c - v[axis] / 2 - 1e-9 && ih <= c + v[axis] / 2 + 1e-9) break;
+                if (fits(il, ih, v[axis], 0)) { c = (il + ih) / 2; break; }
+              }
+            }
+          }
         }
         out.rho[axis] = clamp01(rhoOf(c, l, h, v[axis], p));
         if (whole) { out.c[axis] = inBounds(c, axis); continue; }
@@ -577,17 +611,19 @@ function chainOf(plan, layout, viewport, inset) {
     const H = G.H(cam.top), X = G.left + G.W / 2 + (box.x - cam.c[0]) / cam.lam, Y = cam.top + H / 2 + (box.y - cam.c[1]) / cam.lam;
     return X < hud.width && Y < hud.height && X + box.w / cam.lam > 0 && Y + box.h / cam.lam > 0;
   };
-  const end = (boxes, want, start, dir, tight) => {
-    let out = solve(boxes, want, G.top, start, dir, tight);
-    if (underHud(boxes[0], out) && hud.height > G.top) out = solve(boxes, want, hud.height, start, dir, tight);
+  const end = (boxes, want, start, dir, tight, bulbs) => {
+    let out = solve(boxes, want, G.top, start, dir, tight, bulbs);
+    if (underHud(boxes[0], out) && hud.height > G.top) out = solve(boxes, want, hud.height, start, dir, tight, bulbs);
     return out;
   };
   // the opening frame: IO, the inputs, the machine as built (too wide to show: the Input end).
-  // On a landscape phone the root block hangs as far below IO as the tallest tower it will
-  // hold, so the machine as built may miss the smallest scale by a margin's width: it is
-  // framed tight rather than left with only a wire running off the stage.
+  // On a phone the root block hangs as far below IO as the tallest tower it will hold, so the
+  // machine as built may miss the smallest scale: it is framed tight when only its margins
+  // miss, and otherwise from IO down, as far as the stage reaches (with IO and the root block
+  // framed tight when that leaves the block out), rather than with only a wire running off
+  // the stage.
   const open = contextOf(plan, layout, -1), first = plan.beats.length ? beatMovers(plan, layout, 0) : null;
-  const opening = end([open.core, ...(first?.s0 ? [union(open.core, first.s0)] : []), open.box], open.want, null, [-1, 1], true);
+  const opening = end([open.core, ...(first?.s0 ? [union(open.core, first.s0)] : []), ...(open.root ? [open.root] : []), open.box], open.want, null, [-1, 1], true);
   const keys = [{lam: opening.lam, top: opening.top, c: opening.c}], beats = [];
   for (let k = 0; k < plan.beats.length; k++) {
     const prev = keys[k], mv = beatMovers(plan, layout, k), ctx = contextOf(plan, layout, k);
@@ -599,7 +635,10 @@ function chainOf(plan, layout, viewport, inset) {
     const A = {lam: lamA, top: prev.top, c: [0, 0], rho: [0, 0], over: [false, false]}, sa = sizes(lamA, prev.top);
     for (const axis of [0, 1]) {
       const [l, h] = ext(s0, axis), rel = rhoOf(prev.c[axis], l, h, sa.v[axis], sa.p);
-      A.over[axis] = !fits(l, h, sa.v[axis], sa.p);
+      // movers whose bulbs the last beat settled whole in view start where it ended
+      const [ql, qh] = mv.b0 ? ext(mv.b0, axis) : [l, h], half = sa.v[axis] / 2;
+      const settled = fits(ql, qh, sa.v[axis], 0) && ql >= prev.c[axis] - half - 1e-6 && qh <= prev.c[axis] + half + 1e-6;
+      A.over[axis] = !fits(l, h, sa.v[axis], sa.p) && !settled;
       A.rho[axis] = A.over[axis] ? (clamp01(rel) <= .5 ? 0 : 1) : clamp01(rel);
       A.c[axis] = inBounds(centre(l, h, sa.v[axis], sa.p, A.rho[axis]), axis);
     }
@@ -610,7 +649,7 @@ function chainOf(plan, layout, viewport, inset) {
     if (next) boxes.push(union(boxes.at(-1), next));
     if (ctx.core) boxes.push(union(boxes.at(-1), ctx.core));
     boxes.push(union(boxes.at(-1), ctx.box));
-    const K = end(boxes, ctx.want, A, [mv.dx, mv.dy]);
+    const K = end(boxes, ctx.want, A, [mv.dx, mv.dy], false, mv.b1);
     keys.push({lam: K.lam, top: K.top, c: K.c});
     beats.push({A, K, swoop, mv, focus: ctx.box});
   }

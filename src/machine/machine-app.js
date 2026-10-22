@@ -632,7 +632,14 @@ export class MachineView extends EventTarget {
     this.wireOutline(); this.wireStage(); this.wirePalette();
     this.mode.addEventListener('keydown', e => this.key(e));
     this.tab('steps'); this.hud();
-    matchMedia(SHEET_QUERY).addEventListener?.('change', () => this.inertOutline());
+    // On phones the options (carries, Digits, Read along, Reduced motion) sit at the foot of
+    // the Steps sheet: a strip of their own under the control row cost a portrait stage 52 px
+    // at the opening, when the camera most needs the height (design 4.5, 4.8). Elsewhere they
+    // flow in the control row, before Centre.
+    const extras = this.mode.querySelector('.machine-extras'), side = $('machine-side'), centre = $('machine-centre');
+    const placeExtras = () => { if (media(SHEET_QUERY)) { if (extras.parentNode !== side) side.append(extras); } else if (extras.nextElementSibling !== centre) centre.before(extras); };
+    placeExtras();
+    matchMedia(SHEET_QUERY).addEventListener?.('change', () => { placeExtras(); this.inertOutline(); });
   }
   rebuild() { this.clock.seek(0); this.clock.started = false; this.manual = null; this.rewound(); }
   cycleBase() { this.setBase(BASES[(BASES.indexOf(this.base) + 1) % BASES.length]); }

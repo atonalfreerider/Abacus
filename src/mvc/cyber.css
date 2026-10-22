@@ -231,8 +231,13 @@
 [data-style=cyber] #machine-steps button[aria-current],[data-style=cyber] #machine-outline [aria-selected=true]>span{background:#36e6ff14;box-shadow:inset 2px 0 var(--cyan)}
 [data-style=cyber] #machine-outline [role=treeitem]:focus>span{box-shadow:0 0 0 1px var(--cyan)}
 [data-style=cyber] .machine-help{color:var(--dim)}
+[data-style=cyber] #machine-side .machine-extras{border-top-color:var(--line-bright)}[data-style=cyber] #machine-side .machine-extras::before{color:var(--dim);font-family:var(--mono)}
 /* A phone's Steps/Parts sheet is solid glass: the palette and controls must not show through. */
 @media(max-width:699px),(max-height:520px) and (min-aspect-ratio:3/2){[data-style=cyber] #machine-side{background:var(--glass-solid)}}
+/* Phones: the monospace HUD keeps to one line and the control row to two rows at 390 px, as
+   in sketchpad, so the stage keeps its height. */
+@media(max-width:699px),(max-height:520px){[data-style=cyber] .hud-title{letter-spacing:.08em}}
+@media(max-width:699px){[data-style=cyber] .machine-controls button{letter-spacing:0;padding-left:7px;padding-right:7px}}
 @media(max-width:420px){[data-style=cyber] nav{gap:2px}[data-style=cyber] nav button{padding:5px 3px}}
 /* Six header buttons in monospace capitals run long on tablets and small phones: tighter
    letters and padding there (style.css lets the brand give way past that). */
