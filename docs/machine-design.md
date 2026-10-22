@@ -1885,7 +1885,7 @@ Unit and property tests run with `node --test tests/*.test.js`.
 - **Not modified in v1:** `bases.js`, `units.js`, `operations.js`, `animation.js`, `place-value.js`, `tutor.js`, `drag.js`. Any `bases.js` base-e float disagreement found by the cross-check is reported as a `todo`, for a separate change.
 - **Tutor:** the existing lessons and their 200-problem tests, and "lessons count in tens".
 - **Narrated videos:** the three videos, the ElevenLabs path, and `npm run videos` with no arguments. The audio-less mux runs only when there are no clips.
-- **App start:** Machine is lazy-loaded, makes no network requests, adds no dependencies, and adds ≤ 120 KB raw to `dist-app` (measured in `docs/verification.md`). `e-base.js` is loaded only on first use of base e. The global key handler changes only to ignore `machine-active`.
+- **App start:** Machine is lazy-loaded, makes no network requests and adds no dependencies. Budget (restated 2026-10-22 from the measured build, `docs/verification.md`; the first draft's 120 KB raw for the whole mode could not hold the specified module set): what every app start loads may grow by at most 40 KB raw / 10 KB gzip; the lazily loaded `src/machine` may weigh at most 350 KB raw / 120 KB gzip. `e-base.js` is loaded only on first use of base e. The global key handler changes only to ignore `machine-active`.
 
 **Phase 5 (owner D, after v1), the files it will touch:**
 - Lessons: `src/machine/lessons.js` and `tests/machine-lessons.test.js` (new); `src/machine/machine-app.js` (lesson mode); `src/mvc/app.js` (dialog entries, `startMachineLesson`).

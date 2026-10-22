@@ -14,6 +14,7 @@ npm run test:visual:machine  # the Machine's SVG snapshots
 npm run test:browser      # real pointer/keyboard/tutor/machine checks in headless Chrome
 npm run perf              # frame times of heavy animations in headless Chrome
 npm run videos            # narrated tutorial videos (see Tutorial videos)
+npm run videos:machine    # the ten silent, captioned Machine explainers
 npm run build && npm run preview
 ```
 
@@ -113,6 +114,31 @@ npm run videos -- carry-borrow --draft           # quick 1× render for review
 - Touches are real DevTools touch events; an overlay draws the fingertip, press ripples, captions, title cards and place-value labels.
 - Narration uses ElevenLabs (`tools/video/voice.mjs`) with the voice named by `ELEVENLABS_VOICE` (default `JohnV4`). The key comes from `ELEVENLABS_API_KEY` or the file in `ELEVENLABS_KEY_FILE` (default `~/Desktop/eleven-key.txt`). Lines are cached by content in the Git-ignored `.cache/voice`, so re-rendering costs nothing; only edited lines are synthesized again.
 - Scripts live in `tools/video/tutorials.mjs`. Card positions are read live, so one script serves both formats. Requires Chrome and ffmpeg.
+
+### Machine explainers (silent)
+
+`npm run videos:machine` records ten silent explainers of the Machine, with captions and no narration or audio track, in the same two formats, to `videos/machine/<name>-<format>.mp4` with a matching `.srt`. Captions are held for their reading time, and the machine waits for them.
+
+| Video | Shows |
+|---|---|
+| `machine-multiply` | building the machine, then 16 × 7 split into shifts and reassembled by additions, as PRIME did |
+| `binary-carry` | 13 + 9, 6 + 3 and 7 + 1 one level at a time: what stays is XOR, what climbs is AND |
+| `binary-negative` | red bulbs; 12 − 5 with an owed bulb and a borrow; 5 − 12 |
+| `binary-shift-divide` | ×2³ and ÷2² as slides; 45 ÷ 6 round by round to 7 r 3 |
+| `binary-logic` | AND, OR, XOR; a half adder built from them; NOT with the sign lamp; AND of a negative |
+| `ternary-basics` | 1TT = 5; negation as a colour swap; 5 + 7; comparison |
+| `ternary-multiply-divide` | 16 × 7 in balanced ternary; 19 ÷ 5 = 4 r −1; a tie |
+| `ternary-logic` | MIN, MAX, SUM, CONS, and SUM + 3·CONS = a + b |
+| `e-towers` | what a base-e tower is: two sockets and a sliver per level; e² + 2 = 102ₑ; MEASURE 3; ×e² and ×e³ as slides |
+| `e-logarithms` | folds that land at ln of what they hold; why no carry ever lands in base e; 16 × 7 as a slide of logarithms; LN 112 |
+
+```sh
+npm run videos:machine                                  # all ten, both formats
+npm run videos:machine -- e-towers --format portrait    # one video, one format
+npm run videos:machine -- --draft                       # quick renders for review
+```
+
+The scripts are in `tools/video/machine-tutorials.mjs`; they drive the mode through its automation hook (`?machine&automation&recording`).
 
 ## Architecture and mathematics
 
