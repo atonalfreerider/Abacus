@@ -1,0 +1,17 @@
+{"v":1,"base":"e","pace":"together","tree":{"n1":{"op":"measure","parent":"io","socket":"C"}},"inputs":["3"],
+ "start":{"nodes":{"n1":{"op":"measure","parent":"io","socket":"C"}},
+  "towers":{"t1":{"at":"in:0","form":"light","value":"3","text":"3","reading":"ln 3 ≈ 1.0986"}},
+  "bulbs":{"b1":{"t":"t1","l":1.0986,"s":1,"k":"light"}}},
+ "beats":[
+ {"i":0,"kind":"input","node":"io","caption":"[3] goes in.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"io:0"}}}},
+ {"i":1,"kind":"deliver","node":"n1","caption":"3 rides down the wire to the ruler.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C:0"}}}},
+ {"i":2,"kind":"fanout","node":"n1","caption":"3 arrives as one light at height ln 3 ≈ 1.0986.","ledger":{"law":"move"},"set":{"towers":{"t1":{"at":"n1.C"}}}},
+ {"i":3,"kind":"unfold","node":"n1","caption":"The light falls and leaves the bulbs that fit: 3 = 10.020…ₑ.","ledger":{"law":"unfold","value":"3"},
+  "set":{"nodes":{"n1":{"glyph":0}},"towers":{"t1":{"form":"tower","dust":true,"digits":"10.020…ₑ","reading":null}},
+         "bulbs":{"b1":null,"b2":{"t":"t1","l":1,"s":1,"slot":0},"b3":{"t":"t1","l":-2,"s":1,"slot":0},"b4":{"t":"t1","l":-2,"s":1,"slot":1}}},
+  "motion":{"b1":{"path":[[0,1.0986],[0.45,-1.2668],[0.9,-4.5055]],"fade":[0.9,1]},
+            "b2":{"in":[0.0095,0.0905],"grow":true},"b3":{"in":[0.5042,0.5852],"grow":true},"b4":{"in":[0.5042,0.5852],"grow":true}}},
+ {"i":4,"kind":"return","node":"n1","caption":"3 rides up into the triangle.","ledger":{"law":"move","value":"3"},"set":{"nodes":{"n1":null},"towers":{"t1":{"at":"io:0"}}}},
+ {"i":5,"kind":"output","node":"io","caption":"Output [3].","ledger":{"law":"move","value":"3"},"set":{"towers":{"t1":{"at":"out:0","form":"coin"}}}}],
+ "result":{"values":["3"],"text":"[3]"},
+ "stats":{"beats":6,"nodes":1,"maxLevels":5,"maxBulbs":3}}
