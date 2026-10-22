@@ -17,6 +17,7 @@ const R = UNITS.bulbR, PITCH = UNITS.pitch;
 const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹', sup = k => String(k).replace(/\d/g, d => SUP[d]).replace('-', '⁻');
 const natural = (a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
 const RADIX = {binary: '2', ternary: '3', e: 'e'};
+const HORIZON = 1e6;
 const attr = (name, v) => { const x = r(v); return x === 1 ? '' : ` ${name}="${x}"`; };
 
 // ---- symbols ----
@@ -46,7 +47,8 @@ export function machineDefs(palette = ink, prefix = 'm-') {
 // ---- block glyphs (PRIME's pin-and-tray vocabulary, 1.5) ----
 const UNARY = new Set(['not', 'neg', 'measure', 'ln']);
 function glyphBody(op, palette, base, tilt = 0) {
-  const g = palette.machine.glyph, stroke = `stroke="${g}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+  // one stroke-width per element: a repeated attribute is an XML error (and HTML keeps the first)
+  const g = palette.machine.glyph, pen = (w = 3.5) => `stroke="${g}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" fill="none"`, stroke = pen();
   const pin = side => `<path d="M${side * 46} -12L${side * 20} 0L${side * 46} 12Z" fill="${g}" stroke="${g}" stroke-width="2" stroke-linejoin="round"/>`;
   const pins = pin(-1) + pin(1);
   const text = (s, x, y, size = 22, extra = '') => `<text x="${x}" y="${y}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${g}"${extra}>${esc(s)}</text>`;
@@ -55,10 +57,10 @@ function glyphBody(op, palette, base, tilt = 0) {
   // unary blocks have one centred socket, so their glyph sits either side of it
   const flank = (left, right) => `<g transform="translate(-66 0)">${left}</g><g transform="translate(66 0)">${right}</g>`;
   switch (op) {
-    case 'add': return pins + `<path d="M-13 0H13M0 -13V13" ${stroke} stroke-width="6"/>`;
-    case 'sub': return pins + `<path d="M-13 0H13" ${stroke} stroke-width="6"/>`;
+    case 'add': return pins + `<path d="M-13 0H13M0 -13V13" ${pen(6)}/>`;
+    case 'sub': return pins + `<path d="M-13 0H13" ${pen(6)}/>`;
     case 'mul': return pin(1) + `<path d="M-22 -16H-42V16H-22" ${stroke}/><path d="M-36 -16L-18 -28" ${stroke}/><circle r="6" fill="${g}"/>`;
-    case 'div': case 'mod': return pins + `<path d="M-11 0H11" ${stroke} stroke-width="5"/><circle cy="-10" r="3.6" fill="${g}"/><circle cy="10" r="3.6" fill="${g}"/>` + (op === 'mod' ? text('r', 0, -27, 18, ' font-style="italic"') : '');
+    case 'div': case 'mod': return pins + `<path d="M-11 0H11" ${pen(5)}/><circle cy="-10" r="3.6" fill="${g}"/><circle cy="10" r="3.6" fill="${g}"/>` + (op === 'mod' ? text('r', 0, -27, 18, ' font-style="italic"') : '');
     case 'cmp': {
       const a = tilt * 18;
       return `<path d="M0 -25L25 0L0 25L-25 0Z" fill="${palette.machine.block}" ${stroke.replace('fill="none"', '')}/><path d="M-50 -10L-36 0L-50 10M50 -10L36 0L50 10" ${stroke}/><g transform="rotate(${a})"><path d="M-9 -5H9M-9 5H9" ${stroke}/></g>`;
@@ -72,9 +74,9 @@ function glyphBody(op, palette, base, tilt = 0) {
     case 'xor': case 'sum': return pins + `<circle r="12" ${stroke}/><path d="M-12 0H12M0 -12V12" ${stroke}/>` + (op === 'sum' ? text('3', 17, 12, 13) + name('SUM') : '');
     case 'cons': return pins + `<path d="M-11 -8H11M-11 0H11M-11 8H11" ${stroke}/>` + name('CONS');
     case 'not': return flank(`<path d="M-14 -6H12V8" ${stroke}/>`, text('NOT', 0, 0, 13, ' letter-spacing="1.5"'));
-    case 'neg': return flank(`<path d="M-12 0H12" ${stroke} stroke-width="6"/>`, text('NEG', 0, 0, 13, ' letter-spacing="1.5"'));
+    case 'neg': return flank(`<path d="M-12 0H12" ${pen(6)}/>`, text('NEG', 0, 0, 13, ' letter-spacing="1.5"'));
     case 'measure': case 'ln': {
-      const ruler = `<rect x="-14" y="-24" width="28" height="48" rx="3" ${stroke} stroke-width="2.5"/><path d="M-14 -12h9M-14 0h14M-14 12h9" ${stroke} stroke-width="2.5"/>`;
+      const ruler = `<rect x="-14" y="-24" width="28" height="48" rx="3" ${pen(2.5)}/><path d="M-14 -12h9M-14 0h14M-14 12h9" ${pen(2.5)}/>`;
       return flank(ruler, op === 'ln' ? text('ln', 0, 0, 24, ' font-style="italic"') : text('≈', 0, 0, 30));
     }
     default: return text('?', 0, 0, 30);
@@ -214,8 +216,9 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
   };
   const withGlyphs = list => list.map(item => item.glyph ? item.svg(!covered(item, item.x + (R + UNITS.gutter / 2) * item.scale, item.y)) : item.svg(false));
   // the digit glyph right of a column bulb (T is a barred 1)
+  const glyphsBeside = t => digits && !!t && t.form === 'tower' && !collapsedT(t) && !t.pending && base !== 'e';
   const glyphFor = (t, b, s) => {
-    if (!digits || !t || t.form !== 'tower' || collapsedT(t) || t.pending || base === 'e' || (b.slot ?? 0) !== 0) return '';
+    if (!glyphsBeside(t) || (b.slot ?? 0) !== 0) return '';
     const g = m.glyph, x = R + UNITS.gutter / 2, ch = b.k === 'lamp' ? `…${s ? 1 : 0}` : s ? '1' : '0';
     return `<text class="digit" x="${x}" y="2" font-size="${b.k === 'lamp' ? 30 : 40}" text-anchor="middle" dominant-baseline="central" fill="${g}">${ch}</text>` + (base === 'ternary' && s < 0 ? `<path d="M${x - 11} -24h22" stroke="${g}" stroke-width="5" stroke-linecap="round"/>` : '');
   };
@@ -304,8 +307,12 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
   const fadeBoth = (inA, inZ, winIn, winOut) => inA && inZ ? 1 : inZ ? (reduced ? v : E(u, winIn)) : inA ? (reduced ? 1 - v : 1 - E(u, winOut)) : 0;
   for (const tid of tids) {
     const ta = a.towers[tid], tz = z.towers[tid], o = originOf(tid), lt = labelScene.towers[tid];
-    const bulbsA = ta ? Object.values(a.bulbs).filter(b => b.t === tid) : [], bulbsZ = tz ? Object.values(z.bulbs).filter(b => b.t === tid) : [];
-    if (cull && !(o.x + 400 > cull.x && o.x - 400 < cull.x + cull.w)) continue;
+    const bulbsA = ta ? bulbsOf(a, tid) : [], bulbsZ = tz ? bulbsOf(z, tid) : [];
+    // off camera: the tower's bulbs and furniture, and its pill however wide it is
+    if (cull) {
+      const reach = Math.max(400, ...[ta, tz].filter(Boolean).map(t => { const w = pillWidth(pillLines(t, digits)); return Math.abs(layout.pillCentre(t.at, w) - o.x) + w / 2 + (t.note ? 6 + textWidth(t.note) : 0); }));
+      if (!(o.x + reach > cull.x && o.x - reach < cull.x + cull.w)) continue;
+    }
     // base-e furniture: two sockets and the sliver per level, the radix line, the floor
     const fa = ta && !collapsedT(ta) ? furnitureOf(base, ta, bulbsA) : null, fz = tz && !collapsedT(tz) ? furnitureOf(base, tz, bulbsZ) : null;
     if (fa || fz) {
@@ -450,8 +457,9 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
 
   // -- IO: the horizon, the Input and Output pills on their wires, the triangle and its eye --
   {
-    const b = layout.bounds, pills = layout.ioPills;
-    parts.io.push(`<rect x="${r(b.x - 1000)}" y="${IO.horizon - 3}" width="${r(b.w + 2000)}" height="6" fill="${m.rail}" opacity=".12"/><rect x="${r(b.x - 1000)}" y="${IO.horizon - .75}" width="${r(b.w + 2000)}" height="1.5" fill="${m.rail}" opacity=".35"/>`);
+    const pills = layout.ioPills;
+    // the horizon runs past any camera, the overview's included
+    parts.io.push(`<rect x="${-HORIZON}" y="${IO.horizon - 3}" width="${2 * HORIZON}" height="6" fill="${m.rail}" opacity=".12"/><rect x="${-HORIZON}" y="${IO.horizon - .75}" width="${2 * HORIZON}" height="1.5" fill="${m.rail}" opacity=".35"/>`);
     parts.wires.unshift(`<path d="M${pills.in.x} ${IO.pillY}L0 0M${pills.out.x} ${IO.pillY}L0 0" stroke="${m.wire}" stroke-width="${UNITS.wire}"/>`);
     parts.io.push(`<path d="M${-IO.half} ${IO.top}H${IO.half}L0 ${IO.tip}ZM${IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${-IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${IO.eye} 0Z" fill="${m.block}" fill-rule="evenodd" stroke="${m.blockEdge}" stroke-width="2.5" stroke-linejoin="round"/><circle r="${IO.eye}" fill="${palette.bulb.off.fill}" stroke="${m.blockEdge}" stroke-width="1.5" data-socket="io"/>`);
     if (view.selected === 'io') parts.io.push(`<circle r="52" fill="none" stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"/>`);
@@ -472,7 +480,9 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       if (mk.k === 'ring') {
         const o = originOf(mk.t); if (!o) continue;
         const t = z.towers[mk.t] || a.towers[mk.t], pitch = t && collapsedT(t) ? UNITS.coin : PITCH;
-        parts.marks.push(`<g class="mark-ring"${attr('opacity', markOpacity)}><circle cx="${r(o.x + R + 16)}" cy="${r(o.y - pitch * mk.l)}" r="13" fill="${m.scan}" opacity=".18"/><circle cx="${r(o.x + R + 16)}" cy="${r(o.y - pitch * mk.l)}" r="6" fill="none" stroke="${m.scan}" stroke-width="4"/></g>`);
+        // beside the bulb, or past its digit glyph in the Digits view
+        const x = o.x + R + 16 + (glyphsBeside(t) ? UNITS.gutter : 0);
+        parts.marks.push(`<g class="mark-ring"${attr('opacity', markOpacity)}><circle cx="${r(x)}" cy="${r(o.y - pitch * mk.l)}" r="13" fill="${m.scan}" opacity=".18"/><circle cx="${r(x)}" cy="${r(o.y - pitch * mk.l)}" r="6" fill="none" stroke="${m.scan}" stroke-width="4"/></g>`);
       } else if (mk.k === 'scan') {
         const c = layout.nodeAt(mk.node); if (!c) continue;
         const level = reduced ? mk.stop ?? 0 : lerp(mk.from, mk.stop ?? 0, E(u, [.3, .8])), half = layout.socketX + 60;
@@ -481,7 +491,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
         const c = layout.nodeAt(mk.node), op = Math.min(E(u, [.8, .85]), 1 - E(u, [.9, 1]));
         if (!c || r(op) === 0) continue;
         const col = mk.s > 0 ? palette.bulb.blue.body : mk.s < 0 ? palette.bulb.red.body : palette.bulb.off.stroke;
-        parts.marks.push(`<path class="mark-verdict" d="M${r(c.x - 62)} ${r(c.y - 18)}L${r(c.x - 36)} ${c.y}L${r(c.x - 62)} ${r(c.y + 18)}M${r(c.x + 62)} ${r(c.y - 18)}L${r(c.x + 36)} ${c.y}L${r(c.x + 62)} ${r(c.y + 18)}" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"${attr('opacity', op)}/>`);
+        parts.marks.push(`<path class="mark-verdict" d="M${r(c.x - 62)} ${r(c.y - 18)}L${r(c.x - 36)} ${r(c.y)}L${r(c.x - 62)} ${r(c.y + 18)}M${r(c.x + 62)} ${r(c.y - 18)}L${r(c.x + 36)} ${r(c.y)}L${r(c.x + 62)} ${r(c.y + 18)}" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"${attr('opacity', op)}/>`);
       }
     }
     if (!reduced) {

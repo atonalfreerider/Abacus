@@ -83,6 +83,15 @@ const plans = [...scenes.map(s => [s.name, s.plan]), ...Object.entries(SYNTHETIC
 const light = new Set(scenes.filter(s => s.source === 'planner' || s.source === 'e-fixture').map(s => s.name));
 const fixture = name => scenes.find(s => s.name === name).plan;
 const VIEWS = [{}, {digits: true}, {motion: 'reduced'}, {digits: true, motion: 'reduced'}];
+// The first element that names an attribute twice: HTML keeps the first, XML (an <img>, a
+// standalone frame) refuses the whole picture.
+const repeated = svg => {
+  for (const [tag, attrs] of svg.matchAll(/<[\w-]+((?:\s+[\w:-]+="[^"]*")*)\s*\/?>/g)) {
+    const names = [...attrs.matchAll(/\s([\w:-]+)=/g)].map(m => m[1]);
+    if (new Set(names).size !== names.length) return tag;
+  }
+  return null;
+};
 // Every <g data-b> in a frame: id, state shown, level, position and opacity.
 const bulbsIn = svg => [...svg.matchAll(/<g class="mb" data-b="([^"]+)" data-s="(-?\d)" data-l="([^"]+)" data-t="[^"]*" transform="translate\(([^ ]+) ([^)]+)\)[^"]*"(?: opacity="([^"]+)")?>/g)]
   .map(m => ({id: m[1], s: +m[2], l: +m[3], x: +m[4], y: +m[5], o: m[6] === undefined ? 1 : +m[6]}));
@@ -95,6 +104,7 @@ test('frames are pure and finite, in both styles, at every eighth of every beat 
       const t = k / steps, a = renderMachine(plan, t, layout, palette, view);
       assert.deepEqual(renderMachine(plan, t, layout, palette, view), a, `${name} t ${t}: pure`);
       assert.doesNotMatch(a.svg, /NaN|undefined|Infinity|\[object/, `${name} t ${t} ${JSON.stringify(view)}`);
+      assert.equal(repeated(a.svg), null, `${name} t ${t}: an attribute twice`);
       assert.match(a.viewBox, /^-?[\d.]+ -?[\d.]+ [\d.]+ [\d.]+$/);
     }
   }
@@ -277,11 +287,13 @@ test('machineDefs symbols use bulb() and socket() geometry; block glyphs for eve
     assert.ok(defs.includes(bulb(-21.5, -21.5, 'amber', 1, p)));
     assert.ok(defs.includes(`<symbol id="x-socket" overflow="visible">${socket(-21.5, -21.5, p)}</symbol>`));
     for (const id of ['lamp', 'sliver', 'halo', 'burst', 'overhang', 'owed']) assert.ok(defs.includes(`id="x-${id}"`), id);
+    assert.equal(repeated(defs), null);
   }
   for (const op of ['add', 'sub', 'mul', 'div', 'mod', 'cmp', 'shl', 'shr', 'and', 'or', 'xor', 'not', 'min', 'max', 'sum', 'cons', 'neg', 'mule', 'measure', 'ln']) {
     const svg = blockGlyphSVG(op, ink, 'ternary');
     assert.match(svg, /^<svg [^>]*viewBox="[^"]+"[^>]*>.*<\/svg>$/s, op);
     assert.doesNotMatch(svg, /undefined|NaN|>\?</, op);
+    assert.equal(repeated(svg), null, `${op}: an attribute twice`);
   }
   assert.match(blockGlyphSVG('shl', ink, 'ternary'), /×3ᵏ/);
   assert.match(blockGlyphSVG('shr', ink, 'binary'), /÷2ᵏ/);
@@ -346,5 +358,33 @@ test('frames are fast enough to animate', () => {
   for (let k = 0; k < 400; k++) renderMachine(plan, (k % 160) / 10, L, ink, {viewport: {width: 1280, height: 720}, digits: true, active: 'n1'});
   const ms = (performance.now() - start) / 400;
   assert.ok(ms < 4, `${ms.toFixed(2)} ms a frame`);
+});
+
+// The perf scene of 6.9: (2³² − 1)², 161 beats, its widest ADD with 1489 bulbs on stage. The
+// browser has 16.7 ms a frame for this and the DOM together.
+test('a 64-level product lays out and draws its widest ADD fast enough', () => {
+  const {plan} = planMachine({tree: {n1: {op: 'mul', parent: 'io', socket: 'C'}}, inputs: ['4294967295', '4294967295'], base: 'binary'});
+  const t0 = performance.now(), L = layoutPlan(plan), layoutMs = performance.now() - t0;
+  assert.ok(layoutMs < 1500, `layoutPlan took ${layoutMs.toFixed(0)} ms`);
+  const beat = plan.beats.reduce((best, b, i) => b.kind === 'collide' && Object.keys(sceneAt(plan, i + 1).bulbs).length > Object.keys(sceneAt(plan, best + 1).bulbs).length ? i : best, plan.beats.findIndex(b => b.kind === 'collide'));
+  assert.ok(Object.keys(sceneAt(plan, beat + 1).bulbs).length > 1400, 'the widest ADD');
+  for (const [style, digits] of [['sketchpad', false], ['cyber', true]]) {
+    // the best of three rounds' medians, so a burst of load on a shared machine does not count
+    const view = {viewport: {width: 1280, height: 720}, digits, active: plan.beats[beat].node};
+    renderMachine(plan, beat + .5, L, styles[style], view);
+    const round = () => { const times = []; for (let k = 1; k <= 15; k++) { const s = performance.now(); renderMachine(plan, beat + k / 15, L, styles[style], view); times.push(performance.now() - s); } return times.sort((a, b) => a - b)[7]; };
+    const median = Math.min(round(), round(), round());
+    assert.ok(median < 10, `${style}: ${median.toFixed(2)} ms a frame`);
+  }
+});
+
+test('the browser bench lists every base-e fixture', () => {
+  const files = fs.readdirSync(new URL('./fixtures/machine/', import.meta.url)).filter(f => f.startsWith('e-') && f.endsWith('.json')).map(f => f.slice(0, -5));
+  assert.deepEqual([...E_FIXTURES].sort(), files.filter(f => !FIXTURES.includes(f)).sort());
+  assert.ok(scenes.filter(s => s.source === 'e-fixture').length === E_FIXTURES.length);
+});
+
+test('machine-render.test.js runs in under 15 s', () => {
+  assert.ok(performance.now() - started < 15000, `${Math.round(performance.now() - started)} ms`);
 });
 
