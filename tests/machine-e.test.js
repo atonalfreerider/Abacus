@@ -2,174 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { E, sign, compare, greedy, isLegalNumeral, approx, height, lnText, digitsText, top, ln, foldHeight, meetHeight, PrecisionError } from '../src/machine/e-exact.js';
-import { eSpec, unfoldPlan, readingOf, validateTower, evaluate, parseValue, display, checkLimits } from '../src/machine/ops/e.js';
+import { eSpec, unfoldPlan, validateTower, evaluate, parseValue, display, checkLimits } from '../src/machine/ops/e.js';
 import { digitsOf } from '../src/mvc/bases.js';
+import '../src/machine/e-base.js';
+import { PlanBuilder } from '../src/machine/builder.js';
+import { planMachine, validatePlan } from '../src/machine/plan.js';
+import { applyDiff } from '../src/machine/scene.js';
+import { evaluateTree, openSockets, ARITY } from '../src/machine/tree.js';
 
 const here = p => new URL(p, import.meta.url);
 const fixtures = here('fixtures/machine/');
-let seed = 20261021; const rand = k => (seed = (seed * 1103515245 + 12345) % 2147483648) % k;
+// mulberry32: a seeded generator whose low bits are as random as its high ones (an LCG in
+// float arithmetic loses them past 2^53, so rand(2) would always be 0).
+let seed = 20261021;
+const rand = k => { seed = (seed + 0x6D2B79F5) >>> 0; let t = Math.imul(seed ^ (seed >>> 15), seed | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return Math.floor(((t ^ (t >>> 14)) >>> 0) / 4294967296 * k); };
 const digitString = (g, from) => [...g.digits.keys()].sort((a, b) => b - a).filter(k => k <= from).map(k => g.digits.get(k)).join('');
 
-// ---------------------------------------------------------------------------------------
-// The planner around the base-e ops is engineer A's (registry.js, builder.js, plan.js). When
-// those files are present they are used; until they merge, a stand-in written to the 6.2 and
-// 6.6 contracts (and to A's fill-at-end() semantics) drives the very same ops.
-const hasA = existsSync(here('../src/machine/builder.js')) && existsSync(here('../src/machine/registry.js'));
-const hasPlan = hasA && existsSync(here('../src/machine/plan.js'));
-let Builder, planMachine, validatePlan, applyDiff;
-if (hasA) {
-  await import('../src/machine/e-base.js');
-  ({ PlanBuilder: Builder } = await import('../src/machine/builder.js'));
-  ({ applyDiff } = await import('../src/machine/scene.js'));
-}
-if (hasPlan) ({ planMachine, validatePlan } = await import('../src/machine/plan.js'));
-
-const clone = x => structuredClone(x);
-const merge = (old, props) => { const next = { ...(old ?? {}) }; for (const f in props) if (props[f] === null || props[f] === undefined) delete next[f]; else next[f] = props[f]; return next; };
-function diffScenes(a, b) {
-  const out = {};
-  for (const key of ['nodes', 'towers', 'bulbs']) {
-    const d = {};
-    for (const id of new Set([...Object.keys(a[key]), ...Object.keys(b[key])])) {
-      const x = a[key][id], y = b[key][id];
-      if (!y) { d[id] = null; continue; }
-      if (!x) { d[id] = clone(y); continue; }
-      const p = {};
-      for (const f of new Set([...Object.keys(x), ...Object.keys(y)])) if (!(f in y)) p[f] = null; else if (JSON.stringify(x[f]) !== JSON.stringify(y[f])) p[f] = clone(y[f]);
-      if (Object.keys(p).length) d[id] = p;
-    }
-    if (Object.keys(d).length) out[key] = d;
-  }
-  return out;
-}
-applyDiff ??= (scene, diff) => {
-  const out = { ...scene };
-  for (const key of ['nodes', 'towers', 'bulbs']) {
-    const p = diff[key]; if (!p) continue;
-    const next = { ...scene[key] };
-    for (const [id, q] of Object.entries(p)) { if (q === null) { delete next[id]; continue; } next[id] = merge(next[id], q); }
-    out[key] = next;
-  }
-  return out;
-};
-const DISPLAY = ['text', 'approx', 'digits', 'reading'];
-class StandIn {
-  constructor({ base, tree, inputs, pace = 'together' }) {
-    Object.assign(this, { tree: clone(tree), inputs: inputs.map(String), _base: base, _pace: pace, beats: [], open: null });
-    this.n = { b: 0, t: 0, n: Math.max(0, ...Object.keys(tree).map(k => +k.slice(1))) };
-    this.cur = { nodes: clone(tree), towers: {}, bulbs: {} };
-    this.inputs.forEach((v, i) => { const t = this.id('t'); this.tower(t, { at: `in:${i}`, form: 'coin', value: v }); eSpec.place(this, t, v, { asLight: true }); });
-    for (const t in this.cur.towers) this.fill(t);
-    this.start = clone(this.cur);
-  }
-  get scene() { return this.cur; } get base() { return this._base; } get pace() { return this._pace; }
-  id(kind) { return kind + ++this.n[kind]; }
-  fill(id) { const t = this.cur.towers[id], d = eSpec.display(t.value, { form: t.form }); this.cur.towers[id] = merge(t, Object.fromEntries(DISPLAY.map(f => [f, d[f] ?? null]))); }
-  begin(kind, node, { caption, ledger, dur = 1 }) {
-    assert.equal(this.open, null, 'a beat is still open');
-    this.open = { beat: { i: this.beats.length, kind, node, ...(dur !== 1 ? { dur } : {}), caption, ledger }, before: clone(this.cur), motion: {}, marks: [], touched: new Set(), texts: new Set() };
-  }
-  touch(t) { this.open?.touched.add(t); }
-  move(id, motion) { if (motion && this.open) this.open.motion[id] = { ...this.open.motion[id], ...motion }; }
-  bulb(id, props = {}, motion) { const old = this.cur.bulbs[id]; if (old) this.touch(old.t); this.cur.bulbs[id] = merge(old, props); this.touch(this.cur.bulbs[id].t); this.move(id, motion); return id; }
-  drop(id, motion) { const q = this.cur.bulbs[id]; assert.ok(q, `no bulb ${id}`); this.touch(q.t); delete this.cur.bulbs[id]; this.move(id, motion); }
-  tower(id, props = {}) { this.cur.towers[id] = merge(this.cur.towers[id], props); this.touch(id); if ('text' in props) this.open?.texts.add(id); return id; }
-  dropTower(id) { for (const [bid] of this.bulbsOf(id)) this.drop(bid); this.touch(id); delete this.cur.towers[id]; }
-  node(id, props = {}) { this.cur.nodes[id] = merge(this.cur.nodes[id], props); }
-  dropNode(id) { delete this.cur.nodes[id]; }
-  mark(m) { this.open.marks.push(m); }
-  bulbsOf(t) { return Object.entries(this.cur.bulbs).filter(([, q]) => q.t === t).sort((a, b) => a[1].l - b[1].l || (a[1].slot ?? 0) - (b[1].slot ?? 0)); }
-  end() {
-    const { beat, before, motion, marks, touched, texts } = this.open;
-    for (const id of touched) {
-      const now = this.cur.towers[id], was = before.towers[id];
-      if (now && !now.pending && !texts.has(id) && (!was || was.value !== now.value || was.form !== now.form || was.pending)) this.fill(id);
-    }
-    const errors = [...touched].filter(t => this.cur.towers[t]).flatMap(t => validateTower(this.cur, t));
-    if (errors.length) throw Error(`beat ${beat.i} (${beat.kind} at ${beat.node}): ${errors.join('; ')}`);
-    beat.set = diffScenes(before, this.cur);
-    if (Object.keys(motion).length) beat.motion = motion;
-    if (marks.length) beat.marks = marks;
-    this.beats.push(beat); this.open = null; return beat;
-  }
-  finish(result) {
-    let scene = this.start, maxBulbs = 0, maxLevels = 0;
-    for (const s of [this.start, ...this.beats.map(bt => (scene = applyDiff(scene, bt.set)))]) {
-      maxBulbs = Math.max(maxBulbs, Object.keys(s.bulbs).length);
-      for (const [id, t] of Object.entries(s.towers)) if (t.form === 'tower') maxLevels = Math.max(maxLevels, Math.max(0, ...Object.values(s.bulbs).filter(q => q.t === id && !q.k).map(q => q.l)) + 4);
-    }
-    const nodes = new Set(Object.keys(this.tree)); for (const bt of this.beats) for (const id in bt.set.nodes ?? {}) nodes.add(id);
-    return { v: 1, base: this._base, pace: this._pace, tree: this.tree, inputs: this.inputs, start: this.start, beats: this.beats, result, stats: { beats: this.beats.length, nodes: nodes.size, maxLevels, maxBulbs } };
-  }
-}
-Builder ??= StandIn;
-// The flow beats (input, deliver, fanout, return, output) the way A's plan.js plays them:
-// FANOUT re-places each number (a light only where MEASURE or LN reads it) and expands
-// ×eᵏ's count into e^k; a node answering {result: null} is solved again; RETURN clears notes.
-const ARITY = { add: 2, sub: 2, mul: 2, mule: 2, cmp: 2, measure: 1, ln: 1 };
-const NAMES = { add: '+ block', sub: '− block', mul: '× block', mule: '×eᵏ block', cmp: 'comparator', measure: 'ruler', ln: 'ruler' };
-const socketsOf = (nodes, id) => ARITY[nodes[id].op] === 1 ? ['C'] : ['L', 'R'];
-const childAt = (nodes, id, s) => Object.keys(nodes).find(k => nodes[k].parent === id && nodes[k].socket === s);
-const openSockets = (tree, id) => socketsOf(tree, id).flatMap(s => childAt(tree, id, s) ? openSockets(tree, childAt(tree, id, s)) : [`${id}.${s}`]);
-const SUPS = '⁰¹²³⁴⁵⁶⁷⁸⁹', sup = k => String(k).replace(/\d/g, d => SUPS[d]).replace('-', '⁻');
-const listed = xs => xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
-function standInPlan({ tree, inputs, pace = 'together' }) {
-  const root = Object.keys(tree).find(k => tree[k].parent === 'io'), open = openSockets(tree, root);
-  const b = new Builder({ base: 'e', tree, inputs, pace }), T = id => b.scene.towers[id];
-  const ids = Object.keys(b.scene.towers), texts = ids.map(t => T(t).text);
-  b.begin('input', 'io', { caption: `[${texts.join(', ')}] goes in.`, ledger: { law: 'move' } }); ids.forEach((t, i) => b.tower(t, { at: `io:${i}` })); b.end();
-  b.begin('deliver', root, { caption: ids.length === 1 ? `${texts[0]} rides down the wire to the ${NAMES[tree[root].op]}.` : `The numbers ride down the wire to the ${NAMES[tree[root].op]}.`, ledger: { law: 'move' } });
-  ids.forEach((t, i) => b.tower(t, { at: `${root}.C:${i}` })); b.end();
-  // what FANOUT will do, worked out first so the beat opens with its caption
-  const plan = ids.map((t, i) => { const [node, s] = open[i].split('.'), op = tree[node].op; return { t, node, op, count: op === 'mule' && s === 'R', light: ['measure', 'ln'].includes(op) && T(t).value !== '0' }; });
-  const counts = plan.filter(x => x.count).map(x => ({ x, k: Number(T(x.t).value) }));
-  const items = plan.map(x => ({ text: T(x.t).text, reading: x.light ? eSpec.display(T(x.t).value, { form: 'light' }).reading : undefined, note: x.count ? `×e${sup(T(x.t).value)}` : undefined }));
-  const powers = items.filter(x => x.note).map(x => `; ${x.text} becomes ${x.note}`).join('');
-  b.begin('fanout', root, {
-    caption: items.length === 1 && items[0].reading ? `${items[0].text} arrives as one light at height ${items[0].reading}.`
-      : items.length === 1 ? `${items[0].text} drops into the socket and stands up${powers}.` : `${listed(items.map(x => x.text))} drop into the sockets and stand up${powers}.`,
-    ledger: counts.length ? { law: 'power', k: counts[0].k, out: eSpec.power(counts[0].k) } : { law: 'move' },
-  });
-  plan.forEach(({ t, node, count, light }, i) => {
-    b.tower(t, T(t).form === 'coin' ? { at: open[i], form: 'tower' } : { at: open[i] });
-    if (!count) { eSpec.place(b, t, T(t).value, { asLight: light }); return; }
-    const k = Number(T(t).value), power = eSpec.power(k);
-    for (const [id] of b.bulbsOf(t)) b.drop(id);
-    b.tower(t, { value: power, note: `×e${sup(k)}` });
-    eSpec.place(b, t, power, {});
-    b.node(node, { arg: power });
-  });
-  b.end();
-  const solve = id => {
-    for (;;) {
-      const sockets = socketsOf(b.scene.nodes, id);
-      for (const s of sockets) { const child = childAt(b.scene.nodes, id, s); if (child) solve(child); }
-      const towers = sockets.map(s => Object.keys(b.scene.towers).find(t => b.scene.towers[t].at === `${id}.${s}`));
-      const out = eSpec.ops[b.scene.nodes[id].op](b, id, towers);
-      if (out?.result) return finish(id, out.result);
-    }
-  };
-  const finish = (id, r) => {
-    const { parent, socket } = b.scene.nodes[id], top = parent === 'io', t = T(r);
-    b.begin('return', id, { caption: top ? `${t.reading ?? t.text} rides up into the triangle.` : `${t.reading ?? t.text} rides up.`, ledger: { law: 'move', value: t.value } });
-    b.dropNode(id);
-    b.tower(r, { at: top ? 'io:0' : `${parent}.${socket}`, note: null });
-    for (const x of Object.keys(b.scene.towers)) if (T(x).at.startsWith(`${id}.`)) b.dropTower(x);
-    b.end();
-  };
-  solve(root);
-  const outs = Object.keys(b.scene.towers).filter(t => /^io:\d+$/.test(T(t).at)), text = `[${outs.map(t => T(t).reading ?? T(t).text).join(', ')}]`;
-  const result = { values: outs.map(t => T(t).value), text };
-  b.begin('output', 'io', { caption: `Output ${text}.`, ledger: { law: 'move', value: result.values[0] } });
-  outs.forEach((t, i) => b.tower(t, { at: `out:${i}`, form: 'coin' }));
-  b.end();
-  return b.finish(result);
-}
+// The planner around the base-e ops is engineer A's: base e registers itself with A's
+// registry, and every plan here comes from A's planMachine and is checked by validatePlan.
 const one = op => ({ n1: { op, parent: 'io', socket: 'C' } });
 function plan(op, inputs, pace = 'together') {
-  const params = { tree: typeof op === 'string' ? one(op) : op, inputs, base: 'e', pace };
-  if (!hasPlan) return standInPlan(params);
-  const r = planMachine(params);
+  const r = planMachine({ tree: typeof op === 'string' ? one(op) : op, inputs, base: 'e', pace });
   assert.ok(r.ok, `${JSON.stringify(inputs)}: ${r.message}`);
   return r.plan;
 }
@@ -178,37 +31,12 @@ const last = p => scenesOf(p).at(-1);
 const kinds = p => p.beats.map(bt => bt.kind);
 const opBeats = p => p.beats.filter(bt => !['input', 'deliver', 'fanout', 'return', 'output'].includes(bt.kind));
 const towerBulbs = (scene, t) => Object.values(scene.bulbs).filter(q => q.t === t);
-// The checks every base-e plan must pass at every beat boundary: validatePlan when A's
-// plan.js is present; otherwise this base's I2/I3 on every tower, a constant tree value from
-// FANOUT to the root's RETURN (I1, with the fold-to-reading exemption), and I8.
-function sceneValue(scene) {
-  const towers = Object.values(scene.towers).filter(t => !t.ghost), at = p => towers.find(t => t.at === p);
-  const root = Object.keys(scene.nodes).find(id => scene.nodes[id].parent === 'io');
-  if (!root) return towers.find(t => /^(io|out):0$/.test(t.at))?.value;
-  const value = id => {
-    const node = scene.nodes[id], arg = s => childAt(scene.nodes, id, s) ? value(childAt(scene.nodes, id, s)) : at(`${id}.${s}`)?.value;
-    // a unary node's tower at .C is its operand until the glyph fades, then its result
-    if (ARITY[node.op] === 1) { const v = at(`${id}.C`).value; return node.glyph === 0 ? v : evaluate(node.op, [v]).values[0]; }
-    const [l, r] = [arg('L'), arg('R')];
-    if (l === undefined && r === undefined) return at(`${id}.C`).value;
-    if (node.op === 'mule' && at(`${id}.R`)?.note) return E.parse(l).mul(E.parse(r)).key();
-    return evaluate(node.op, [l, r]).values[0];
-  };
-  return value(root);
-}
+// Every base-e plan passes validatePlan (6.9), survives a JSON round trip, and writes its
+// captions with U+2212, never an ASCII hyphen (6.2).
 function check(p) {
-  if (hasPlan) { assert.deepEqual(validatePlan(p), [], 'validatePlan'); return; }
-  const scenes = scenesOf(p), fan = p.beats.findIndex(bt => bt.kind === 'fanout') + 1;
-  scenes.forEach((s, i) => { for (const t in s.towers) assert.deepEqual(validateTower(s, t), [], `boundary ${i}`); });
-  let want = sceneValue(scenes[fan]);
-  for (let i = fan + 1; i < scenes.length; i++) {
-    const v = sceneValue(scenes[i]);
-    if (p.beats[i - 1].ledger.law !== 'read') assert.equal(v, want, `beat ${i - 1} (${p.beats[i - 1].kind}) changed the tree value`);
-    want = v;
-  }
-  for (const bt of p.beats) { assert.ok(bt.caption && bt.caption.length <= 110, `caption of beat ${bt.i}: ${bt.caption}`); assert.ok([undefined, 0.5, 1].includes(bt.dur)); }
-  for (const t of Object.keys(scenes.at(-1).towers)) assert.match(scenes.at(-1).towers[t].at, /^out:/, 'only Output remains at the end');
+  assert.deepEqual(validatePlan(p), [], 'validatePlan');
   assert.deepEqual(JSON.parse(JSON.stringify(p)), p, 'a plan survives a JSON round trip');
+  for (const bt of p.beats) assert.ok(!bt.caption.includes('-'), `beat ${bt.i} writes a hyphen for a minus: ${bt.caption}`);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -398,7 +226,7 @@ test('UNFOLD keyframes and deposits follow 6.3, and deposit the greedy digits', 
   assert.deepEqual(u.events.map(e => [e.k, e.d, e.h]), [[4, 2, 4.7185], [1, 1, 1.0309], [-3, 1, -2.4602]]);
 });
 
-test('MEASURE 3 reproduces the normative UNFOLD beat (and the whole fixture when present)', () => {
+test('MEASURE 3 reproduces the normative UNFOLD beat and the whole fixture of 6.5', () => {
   const p = plan('measure', ['3']);
   assert.deepEqual(p.beats[3], { i: 3, kind: 'unfold', node: 'n1', caption: 'The light falls and leaves the bulbs that fit: 3 = 10.020…ₑ.', ledger: { law: 'unfold', value: '3' },
     set: { nodes: { n1: { glyph: 0 } }, towers: { t1: { form: 'tower', dust: true, digits: '10.020…ₑ', reading: null } },
@@ -406,8 +234,7 @@ test('MEASURE 3 reproduces the normative UNFOLD beat (and the whole fixture when
     motion: { b1: { path: [[0, 1.0986], [0.45, -1.2668], [0.9, -4.5055]], fade: [0.9, 1] },
       b2: { in: [0.0095, 0.0905], grow: true }, b3: { in: [0.5042, 0.5852], grow: true }, b4: { in: [0.5042, 0.5852], grow: true } } });
   assert.deepEqual(p.start, { nodes: { n1: { op: 'measure', parent: 'io', socket: 'C' } }, towers: { t1: { at: 'in:0', form: 'light', value: '3', text: '3', reading: 'ln 3 ≈ 1.0986' } }, bulbs: { b1: { t: 't1', l: 1.0986, s: 1, k: 'light' } } });
-  const file = new URL('e-measure-3.json', fixtures);
-  if (existsSync(file)) assert.deepEqual(p, JSON.parse(readFileSync(file, 'utf8')));
+  assert.deepEqual(p, JSON.parse(readFileSync(new URL('e-measure-3.json', fixtures), 'utf8')), 'the whole plan is the fixture of 6.5');
   check(p);
 });
 
@@ -541,10 +368,8 @@ test('LN folds and reads the height; ln e^k = k exactly; ln of 0 is a domain err
   assert.deepEqual(evaluate('ln', ['0']), { ok: false, reason: 'domain', message: 'ln needs a positive number: 0 has no logarithm; its light would fall forever.' });
   assert.equal(evaluate('ln', ['-3']).reason, 'domain');
   assert.equal(evaluate('add', ['ln(112)', '1']).reason, 'domain', 'a reading can only go to Output');
-  if (hasPlan) {
-    const r = planMachine({ tree: { n1: { op: 'ln', parent: 'io', socket: 'C' }, n2: { op: 'sub', parent: 'n1', socket: 'C' } }, inputs: ['2', '2'], base: 'e' });
-    assert.equal(r.ok, false); assert.equal(r.reason, 'domain'); assert.equal(r.node, 'n1');
-  }
+  const r = planMachine({ tree: { n1: { op: 'ln', parent: 'io', socket: 'C' }, n2: { op: 'sub', parent: 'n1', socket: 'C' } }, inputs: ['2', '2'], base: 'e' });
+  assert.equal(r.ok, false); assert.equal(r.reason, 'domain'); assert.equal(r.node, 'n1');
 });
 
 test('top(ab) − top(a) − top(b) is 0 or 1: the heights carry', () => {
@@ -569,16 +394,26 @@ test('the base entry: typed limits, refusals with reasons, display strings', () 
   assert.equal(parseValue('16 7').ok, false, 'a space between numbers makes a list, as in [16 7]');
   assert.equal(parseValue('2 e').ok, false);
   assert.equal(parseValue('e^2 + 2').value, 'e^2+2', 'spaces beside an operator are fine');
-  assert.deepEqual(evaluate('mul', ['e^12', 'e^10']), { ok: false, reason: 'tooBig', message: 'e²² is past e²⁰, the top of a base-e tower' }, 'a computed value past the tower is refused before planning');
-  assert.equal(evaluate('mul', ['1/1000000', 'e^-6']).reason, 'tooBig');
+  // evaluate is exact whatever the size: the caps belong to the planner (6.10), which then
+  // answers tooBig with this very value
+  assert.deepEqual(evaluate('mul', ['e^12', 'e^10']), { ok: true, values: ['e^22'] });
+  assert.deepEqual(evaluate('mul', ['1/1000000', 'e^-6']), { ok: true, values: ['e^-6/1000000'] });
+  assert.equal(evaluate('mule', ['3', '400']).reason, 'tooBig', 'only a power past e^±300 is refused outright');
+  // an operand evaluateScene could not read is no answer, never a crash
+  assert.equal(evaluate('add', ['mul(1/1000000, e^-3)', '1']).reason, 'domain');
+  assert.equal(evaluate('mul', ['3', undefined]).reason, 'domain');
   assert.equal(checkLimits('e^-15'), 'e⁻¹⁵ is below e⁻¹⁴, past the end of the rail');
   assert.equal(checkLimits('0'), null);
   for (const op of ['div', 'mod', 'and', 'xor', 'not', 'shl']) assert.equal(evaluate(op, ['3', '2']).ok, false, op);
   assert.equal(evaluate('div', ['3', '2']).message, 'A quotient of e-numerals is usually not an e-numeral.');
   assert.equal(evaluate('and', ['3', '2']).message, 'Logic needs whole-number levels; base e has none.');
+  // ×eᵏ takes only a count: '1' is ×e¹, and a power (the expanded socket) is no count
   assert.deepEqual(evaluate('mule', ['3', '2']), { ok: true, values: ['3e^2'] });
-  assert.equal(evaluate('mule', ['3', '13']).ok, false);
-  assert.equal(evaluate('mule', ['3', '1/2']).ok, false);
+  assert.deepEqual(evaluate('mule', ['3', '1']), { ok: true, values: ['3e'] });
+  assert.deepEqual(evaluate('mule', ['3', '0']), { ok: true, values: ['3'] });
+  assert.deepEqual(evaluate('mule', ['3', '-2']), { ok: true, values: ['3e^-2'] });
+  assert.deepEqual(evaluate('mule', ['3', '13']), { ok: true, values: ['3e^13'] }, 'a count past 12 is the planner\'s tooBig');
+  for (const k of ['1/2', 'e', 'e^2', 'e^-1', '-e^-6']) assert.equal(evaluate('mule', ['3', k]).reason, 'domain', k);
   assert.deepEqual(evaluate('cmp', ['-16', '-7']), { ok: true, values: ['-1'] });
   assert.deepEqual(eSpec.palette, ['add', 'sub', 'mul', 'mule', 'cmp', 'measure', 'ln']);
   assert.deepEqual(display('e^2+2'), { text: 'e² + 2', approx: '≈ 9.389', digits: '102ₑ' });
@@ -588,7 +423,7 @@ test('the base entry: typed limits, refusals with reasons, display strings', () 
 });
 
 test('place writes a value once, as a light or a tower, and replaces only what differs', () => {
-  const b = new Builder({ base: 'e', tree: one('measure'), inputs: ['3'] }), ids = () => b.bulbsOf('t1').map(([id]) => id);
+  const b = new PlanBuilder({ base: 'e', tree: one('measure'), inputs: ['3'] }), ids = () => b.bulbsOf('t1').map(([id]) => id);
   assert.equal(b.scene.towers.t1.form, 'light', 'an input in the Input pill is a light');
   b.begin('fanout', 'n1', { caption: 'Placing.', ledger: { law: 'move' } });
   const light = ids(); eSpec.place(b, 't1', '3', { asLight: true });
@@ -637,6 +472,93 @@ test('planning is deterministic, and random base-e machines give the exact answe
   const p = plan(tree, ['16', '7', 'e']);
   assert.equal(p.result.values[0], '23e');
   check(p);
+});
+
+const chain = (...ops) => Object.fromEntries(ops.map((op, i) => [`n${i + 1}`, i ? { op, parent: `n${i}`, socket: ARITY[ops[i - 1]] === 1 ? 'C' : 'R' } : { op, parent: 'io', socket: 'C' }]));
+test('past a cap the run is tooBig, and the exact answer comes with it (6.10)', () => {
+  const big = (tree, inputs, values) => {
+    for (const pace of ['together', 'level']) {
+      const r = planMachine({ tree: typeof tree === 'string' ? one(tree) : tree, inputs, base: 'e', pace });
+      assert.equal(r.ok, false, `${inputs} planned`); assert.equal(r.reason, 'tooBig', `${inputs}: ${r.message}`);
+      assert.deepEqual(r.result.values, values, `${inputs}`);
+    }
+  };
+  // a tower past level 20, as binary's shl(3, 70)
+  big('mul', ['e^12', 'e^12'], ['e^24']);
+  big('mule', ['e^12', '12'], ['e^24']);
+  big(chain('add', 'add'), ['2980e^12', '2980e^12', '2980e^12'], ['8940e^12']);
+  // ×eᵏ counts past −6..12, typed or computed
+  big('mule', ['3', '13'], ['3e^13']);
+  big('mule', ['3', '-8'], ['3e^-8']);
+  big(chain('mule', 'mul'), ['1', '4', '4'], ['e^16']);
+  // a light below the rail's reach: 10⁻¹² is a slide-rule light at −27.6, and the fall of
+  // 1 + e⁻⁶/10⁶ to its dust ends at −19.8
+  big(chain('measure', 'mul'), ['1/1000000', '1/1000000'], ['1/1000000000000']);
+  big('measure', ['1+e^-6/1000000'], ['1+e^-6/1000000']);
+  assert.equal(planMachine({ tree: one('mul'), inputs: ['e^12', 'e^12'], base: 'e' }).result.text, '[e²⁴]');
+});
+
+test('dust-only split leaves validate, and dust alone never hangs a light below the rail', () => {
+  // the leaves 10⁻⁶·e⁻³ and 10⁻⁵·e⁻³ are dust below e⁻¹⁴: legitimate towers on the way
+  for (const inputs of [['1/1000000', 'e+e^-3'], ['1/100000', 'e^2+e^-3'], ['1/1000000', '-e-e^-3']]) {
+    const p = plan('mul', inputs);
+    assert.equal(p.result.values[0], evaluate('mul', inputs).values[0]);
+    check(p);
+  }
+  // 5 − e⁻⁶/10⁶ and −3 share their digits' fractional part, so the pile leaves blue bulbs
+  // and a red dust of e⁻⁶/10⁶ alone: it joins the blue light instead of hanging at −19.8
+  for (const pace of ['together', 'level']) {
+    const p = plan('add', ['5-e^-6/1000000', '-3'], pace);
+    assert.equal(p.result.values[0], '2-e^-6/1000000');
+    for (const s of scenesOf(p)) for (const q of Object.values(s.bulbs)) if (q.k === 'light') assert.ok(Math.floor(q.l) >= -14, `a light at ${q.l}`);
+    assert.ok(!kinds(p).includes('meet'), 'one colour of light, so no MEET');
+    check(p);
+  }
+  // a pile of dust alone is still one light, condensing out of the haze
+  const d = plan('add', ['1/30', '-1/60']);
+  assert.ok(opBeats(d).some(bt => bt.kind === 'fold' && Object.values(bt.motion ?? {}).some(m => m.grow)));
+  check(d);
+});
+
+test('the fill readout shows where a light rests before it unfolds (3.3)', () => {
+  // together pace: the light the FOLD (or MEET, or SLIDE) leaves at rest carries the fill
+  // f = x / e^k as its note; the UNFOLD clears it
+  for (const [op, inputs, fill] of [['add', ['16', '7'], '≈ 1.15 bulbs’ worth at e³'], ['mul', ['16', '7'], '≈ 2.05 bulbs’ worth at e⁴'], ['sub', ['7', '16'], '≈ 1.22 bulbs’ worth at e²'], ['add', ['e^2', '0'], undefined]]) {
+    const p = plan(op, inputs), scenes = scenesOf(p), i = p.beats.findIndex(bt => bt.kind === 'unfold');
+    if (fill === undefined) { assert.equal(i, -1, 'a legal pile never unfolds'); continue; }
+    const t = Object.keys(scenes[i].towers).find(id => scenes[i].towers[id].form === 'light');
+    assert.equal(scenes[i].towers[t].note, fill, `${op} ${inputs}`);
+    assert.equal(scenes[i].towers[t].reading, lnText(E.parse(p.result.values[0])), 'the ln reading keeps its line');
+    assert.equal(scenes[i + 1].towers[t].note, undefined);
+  }
+  assert.equal(scenesOf(plan('measure', ['e^3'])).find(s => s.towers.t1?.note), undefined, 'a typed light comes from FANOUT, which 6.5 pins without one');
+  // level pace: at every boundary between deposits, the fill of what is left
+  const lv = plan('measure', ['112'], 'level'), notes = scenesOf(lv).map(s => s.towers.t1?.note).filter(Boolean);
+  assert.deepEqual(notes, ['≈ 1.03 bulbs’ worth at e¹', '≈ 1.72 bulbs’ worth at e⁻³']);
+});
+
+// planMachine over random base-e machines: it never throws, a tooBig run brings its exact
+// answer, and every plan it accepts passes validatePlan and gives evaluateTree's answer.
+test('random base-e machines plan or refuse cleanly, and every accepted plan validates', () => {
+  const pool = ['0', '1', '2', '3', '7', '16', '-5', 'e', 'e+1', 'e^2+2', '1/3', '-1/2', '2e+2', '30', '112', '1/30', '1/1000000', '-1/1000000',
+    'e^12', 'e^-6', 'e^12+e^11', '999999/1000000', '5-e^-6/1000000', '1+e^-6/1000000', 'e+e^-3', '-e-e^-3', '2721/1001', '3e^2', '-e^2-2', 'e^-3', '13', '-7'];
+  const ops = eSpec.palette, seen = {};
+  for (let i = 0; i < 120; i++) {
+    const tree = { n1: { op: ops[rand(ops.length)], parent: 'io', socket: 'C' } };
+    const grow = (id, depth) => { for (const s of ARITY[tree[id].op] === 1 ? ['C'] : ['L', 'R']) if (depth < 3 && Object.keys(tree).length < 5 && rand(2)) {
+      const op = ops.filter(o => o !== 'ln')[rand(ops.length - 1)], child = `n${Object.keys(tree).length + 1}`;
+      tree[child] = { op, parent: id, socket: s }; grow(child, depth + 1);
+    } };
+    grow('n1', 1);
+    const inputs = openSockets(tree).map(s => tree[s.split('.')[0]].op === 'mule' && s.endsWith('.R') ? String(rand(23) - 8) : pool[rand(pool.length)]);
+    const pace = rand(3) ? 'together' : 'level', r = planMachine({ tree, inputs, base: 'e', pace }), what = `${JSON.stringify(tree)} ${inputs} ${pace}`;
+    seen[r.ok ? 'ok' : r.reason] = (seen[r.ok ? 'ok' : r.reason] ?? 0) + 1;
+    if (!r.ok) { if (r.reason === 'tooBig') assert.ok(r.result, `${what}: tooBig without the answer`); continue; }
+    assert.deepEqual(validatePlan(r.plan), [], what);
+    assert.deepEqual(r.plan.result.values, evaluateTree(tree, inputs, 'e').values, what);
+    for (const bt of r.plan.beats) assert.ok(!bt.caption.includes('-'), `${what}: ${bt.caption}`);
+  }
+  assert.ok(seen.ok > 60 && seen.tooBig > 5, JSON.stringify(seen));
 });
 
 // The base-e scenes for the snapshots (C's scenes.js renders every e-*.json). Regenerate
