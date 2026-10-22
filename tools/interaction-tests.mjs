@@ -568,6 +568,24 @@ try{
    }
   }
  },{width:667,height:375});
+ // The long run's ask on every phone: Play at 4× and Show the answer whole on the screen, 44 px
+ // tall (in cyber at 568 × 320 they took two rows and Show the answer fell below the screen).
+ await mcheck('machine 25: the long run\'s Play at 4× and Show the answer are whole on screen on every phone, both styles',async()=>{
+  await touch();
+  for(const [w,h] of [[568,320],[640,360],[667,375],[844,390],[360,640],[390,844]]){
+   await resize(w,h);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await mload({op:'mul',input:'[65535,65535]',pace:'level',auto:1});await wait(200);
+    await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');await wait(200);
+    for(const id of ['machine-ask-play','machine-ask-answer']){
+     const r=await page.eval(`(()=>{const r=document.getElementById('${id}').getBoundingClientRect();return {l:r.left,t:r.top,r:r.right,b:r.bottom,h:r.height};})()`);
+     if(!(r.h>=43.5&&r.l>=0&&r.t>=0&&r.r<=w&&r.b<=h))throw Error(`${w}×${h} ${style}: ${id} at ${JSON.stringify(r)}`);
+    }
+    await page.eval(`document.getElementById('machine-ask-answer').click()`);await wait(100);
+   }
+  }
+ },{width:568,height:320});
  // The opening on phones: the HUD keeps to one line (at 360 px it took two, and the default
  // [16,7] opened with only the triangle and a wire running off the stage), and the × block
  // stands on the stage below it, in both styles.
