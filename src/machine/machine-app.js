@@ -440,7 +440,9 @@ export class MachineView extends EventTarget {
   // viewport the smaller share (the top on a portrait phone, the left in landscape).
   inset() {
     const { width, height } = this.viewport(), band = this.recording ? (height > width ? 170 : 120) : 0;
-    const p = $('machine-palette').getBoundingClientRect(), st = this.stage.getBoundingClientRect(), hud = $('machine-hud').getBoundingClientRect();
+    // st is the stage's client box, the one viewport() measures (its border is not framed)
+    const p = $('machine-palette').getBoundingClientRect(), b = this.stage.getBoundingClientRect(), hud = $('machine-hud').getBoundingClientRect();
+    const st = { top: b.top + this.stage.clientTop, left: b.left + this.stage.clientLeft, bottom: b.top + this.stage.clientTop + height, right: b.left + this.stage.clientLeft + width };
     // The palette counts only where it lies over the stage: in the phone landscape rail it is
     // beside the stage, level with it, and covers none of it.
     const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 && p.left < st.right && p.right > st.left ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0, inset = {};
@@ -511,7 +513,9 @@ export class MachineView extends EventTarget {
     const c = this.clock, n = c.n, boundary = Math.max(0, Math.min(n, Math.floor(t + 1e-9))), running = c.started && !c.done;
     const s = this.stage.dataset, put = (key, v) => { if (s[key] !== v) s[key] = v; };
     put('beat', String(c.beat)); put('beats', String(n)); put('playing', String(c.playing)); put('t', String(Math.round(t * 1000) / 1000));
-    if (this.mode.classList.contains('running') !== running) this.mode.classList.toggle('running', running);
+    // (on a phone the HUD folds away during a run: the camera's inset changes with it, though
+    // the stage's size may not, so the frame is drawn again)
+    if (this.mode.classList.contains('running') !== running) { this.mode.classList.toggle('running', running); this.dirty = true; }
     const pause = $('machine-pause'); if (pause.getAttribute('aria-pressed') !== String(c.paused)) { pause.setAttribute('aria-pressed', String(c.paused)); pause.textContent = c.paused ? 'Resume' : 'Pause'; }
     const shown = c.run ? c.run.i : c.beat;
     if (!force && boundary === this.lastBoundary && shown === this.lastShown) return;
