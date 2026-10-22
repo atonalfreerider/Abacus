@@ -101,8 +101,8 @@ export const machineTutorials = {
       await M.load({});
       // From here on the captions sit at the bottom, over the palette: the numbers come in at
       // the top, where the top band would cover them.
-      ctx.caption('Press Enter.', 1.4);
-      await ctx.hold(1);
+      ctx.caption('Press Enter.', 1.6);
+      await ctx.hold(1.4);
       await M.start({field: '#machine-input'});
       ctx.caption('The numbers drop down the wire.', 2.6);
       await M.until(1);
