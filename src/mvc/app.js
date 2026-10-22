@@ -277,7 +277,7 @@ async function showMachine(on,preset){
    if(!machine){machine=new MachineView();
     machine.addEventListener('cards',event=>{showMachine(false);chooseBase(event.detail.base);safe(()=>controller.load(String(event.detail.value)));});
     machine.addEventListener('leave',()=>showMachine(false));}
-   await machine.show(preset instanceof URLSearchParams?presetFromQuery(preset):preset);
+   await machine.show(typeof preset==='string'||preset instanceof URLSearchParams?presetFromQuery(preset):preset);
   }catch(error){console.error(error);showMachine(false);message(`The machine could not open: ${error.message}`);}
  }
  else{machine?.hide();controller.render();}
@@ -291,9 +291,16 @@ let watch=null,watchTimer=0;
 function hideWatch(){clearTimeout(watchTimer);watchTimer=0;watch=null;$('watch-machine').hidden=true;}
 const wholeTerm=t=>!t.expr&&t.kind==='constant'&&t.value.d===1;
 const watchable=t=>t?.expr?.ops.length&&t.expr.ops.every(op=>op==='×'||op==='÷')&&t.expr.operands.every(o=>!o.base&&o.value.d===1&&(!o.group||o.group.every(wholeTerm)));
+// The machine's expression is written from the operands' exact values, not from the card
+// text, whose thousands commas (1,024) and decimal notation (2.0) its grammar refuses. A
+// minus written before parentheses is carried into them, −(4 + 3) = (−4 − 3), because base
+// 2 has no NEG block.
+const signed=(n,first)=>first?String(n):n<0?`-${-n}`:`+${n}`;
+const operandMachineText=(o,first)=>o.group?`(${o.group.map((t,i)=>signed(o.negated?-t.value.n:t.value.n,!i)).join('')})`:first||o.value.n>=0?String(o.value.n):`(${o.value.n})`;
+const machineText=t=>t.expr.operands.map((o,i)=>(i?(t.expr.ops[i-1]==='×'?'*':'/'):'')+operandMachineText(o,!i)).join('');
 async function offerWatch(t){
  hideWatch();const base=numeral.id;if(!['binary','ternary'].includes(base)||!watchable(t))return;
- const shown=math.termText(t),text=shown.replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-'),token=watch={text,shown,base};
+ const shown=math.termText(t),text=machineText(t),token=watch={text,shown,base};
  try{const [{parseExpression},{planMachine}]=await Promise.all([import('../machine/tree.js'),import('../machine/plan.js')]);
   const parsed=parseExpression(text,base);if(!parsed.ok||!planMachine({tree:parsed.tree,inputs:parsed.inputs,base}).ok)return;}
  catch(error){console.error(error);return;}
@@ -350,4 +357,5 @@ $('fingerprints').onchange=event=>{controller.options.fingerprints=event.target.
 {let on=false;try{on=new URLSearchParams(location.search).has('fingerprints')||localStorage.getItem('abacus-fingerprints')==='1';}catch{}if(on){$('fingerprints').checked=true;controller.options.fingerprints=true;controller.render();}}
 // Opened at ?machine, ?machine=empty or ?machine=<op or expression>&mbase=&input=&sp=&pace=&auto=
 // (design 4.1): the machine, preloaded from the URL.
-{const q=new URLSearchParams(location.search);if(q.has('machine'))showMachine(true,q);}
+// The raw query goes to the machine, so a '+' in ?machine=(5+3)*7 stays a plus.
+if(new URLSearchParams(location.search).has('machine'))showMachine(true,location.search);

@@ -35,7 +35,11 @@ const E_MISSING = { div: 'A quotient of e-numerals is usually not an e-numeral.'
 const EMPTY = 'Hang a block under the triangle first: drag one from the palette, or tap the triangle\'s socket and then a block';
 const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
 const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
-const AUTO_KEY = 'abacus-machine-auto';
+const AUTO_KEY = 'abacus-machine-auto', REDUCED_KEY = 'abacus-machine-reduced', REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
+// When Steps and Parts are a sheet: exactly style.css's phone portrait and phone landscape
+// queries (elsewhere the side panel is always on screen).
+const SHEET_QUERY = '(max-width: 699px), (max-height: 520px) and (min-aspect-ratio: 3/2)';
+const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
 const arity = op => ARITY?.[op] ?? 2;
 const socketsOf = op => arity(op) === 1 ? ['C'] : ['L', 'R'];
 const SIDE = { L: 'left', R: 'right', C: 'centre' };
@@ -85,12 +89,29 @@ export function ordered(tree) {
   const out = {}, visit = parent => { for (const side of ['L', 'R', 'C']) for (const id of Object.keys(tree)) if (tree[id].parent === parent && (parent === 'io' || tree[id].socket === side) && !(id in out)) { out[id] = tree[id]; visit(id); } };
   visit('io'); return out;
 }
-// ?machine… → a load() preset (design 4.1): an op id or an expression, plus base, input, speed, pace, AUTO.
-export function presetFromQuery(query) {
-  const q = query instanceof URLSearchParams ? query : new URLSearchParams(query), m = q.get('machine'), p = {};
-  if (m === 'empty') p.tree = {}; else if (m && OPS[m]) p.op = m; else if (m) p.expression = m;
-  for (const [key, name] of [['mbase', 'base'], ['input', 'input'], ['sp', 'sp'], ['pace', 'pace'], ['auto', 'auto']]) if (q.has(key)) p[name] = q.get(key);
+// URL-style parameters → a load() preset (design 4.1, 6.7): machine is an op id, an
+// expression or 'empty'; mbase is the machine's base (?base= belongs to the equation space).
+// The automation hook takes the same names, so B's videos can say {mbase: 'e', …}, and
+// also load()'s own (base, op, expression, tree).
+const URL_NAMES = { mbase: 'base', input: 'input', sp: 'sp', pace: 'pace', auto: 'auto' };
+export function presetOf(params = {}, { names = { ...URL_NAMES, base: 'base', op: 'op', expression: 'expression', tree: 'tree' } } = {}) {
+  const p = {}, m = params.machine;
+  if (m === 'empty') p.tree = {}; else if (m && OPS[m]) p.op = m; else if (m) p.expression = String(m);
+  for (const [key, name] of Object.entries(names)) if (params[key] != null && !(name in p)) p[name] = params[key];
   return p;
+}
+// ?machine… from location.search. A '+' stays a plus: the URL carries expressions such as
+// (5+3)*7 and base-e sums such as e^2+2, which URLSearchParams would read as spaces. (Inputs
+// never need a space: 16,7 separates them.)
+export function presetFromQuery(query) {
+  if (query instanceof URLSearchParams) return presetOf(Object.fromEntries(query), { names: URL_NAMES });
+  const decode = s => { try { return decodeURIComponent(s); } catch { return s; } }, raw = {};
+  for (const part of String(query ?? '').replace(/^\?/, '').split('&')) {
+    if (!part) continue;
+    const k = part.indexOf('='), key = decode(k < 0 ? part : part.slice(0, k));
+    if (!(key in raw)) raw[key] = k < 0 ? '' : decode(part.slice(k + 1));
+  }
+  return presetOf(raw, { names: URL_NAMES });
 }
 
 export class MachineView extends EventTarget {
@@ -98,9 +119,13 @@ export class MachineView extends EventTarget {
     super();
     this.mode = $('machine-mode'); this.stage = $('machine-stage'); this.$input = $('machine-input'); this.$expr = $('machine-expr');
     const q = new URLSearchParams(location.search);
-    this.recording = q.has('recording'); this.reduced = media('(prefers-reduced-motion: reduce)');
+    // Reduced motion: the system setting, or the option (#machine-reduced), remembered once chosen.
+    let chosen = null; try { chosen = localStorage.getItem(REDUCED_KEY); } catch {}
+    this.recording = q.has('recording'); this.reducedChosen = chosen === '1' || chosen === '0'; this.reduced = this.reducedChosen ? chosen === '1' : media(REDUCED_QUERY);
     this.base = 'binary'; this.pace = 'together'; this.tree = defaultMachine(); this.planText = this.$input.value = '[16,7]'; this.inputs = ['16', '7'];
     this.sp = this.reduced ? 1.5 : 1; this.readAlong = this.reduced; this.digits = false; this.selected = null; this.manual = null; this.cam = null;
+    // A long run the user chose to play at 4× plays at sp / 4; the chosen speed itself is kept.
+    this.boost = 1;
     this.auto = true; try { this.auto = localStorage.getItem(AUTO_KEY) !== '0'; } catch {}
     this.stepMode = !this.auto; this.visible = false; this.dirty = true; this.lastT = -1; this.lastDone = 0; this.lastStarted = -1; this.lastBoundary = -1;
     this.stage.insertAdjacentHTML('afterbegin', `<svg id="machine-svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet" viewBox="-400 -200 800 600"><defs class="m-defs"></defs><g class="m-scene"></g><g class="m-hits"></g></svg>`);
@@ -171,7 +196,19 @@ export class MachineView extends EventTarget {
   }
   setSpeed(sp) {
     this.sp = SPEEDS.reduce((best, s) => Math.abs(s - sp) < Math.abs(best - sp) ? s : best, SPEEDS[0]);
-    this.clock?.setSpeed(this.sp, performance.now()); this.hud();
+    this.clock?.setSpeed(this.sp / this.boost, performance.now()); this.hud();
+  }
+  // Reduced motion (design 4.9): beats crossfade, carries and falls become ghost arrows and
+  // the camera cuts; its defaults are 1.5 s beats and Read along on. The speed and Read
+  // along follow the switch only while they still hold the other setting's defaults.
+  setReduced(on, { remember = false } = {}) {
+    on = !!on;
+    if (remember) { this.reducedChosen = true; try { localStorage.setItem(REDUCED_KEY, on ? '1' : '0'); } catch {} }
+    $('machine-reduced').checked = on;
+    if (on === this.reduced) return;
+    this.reduced = on; this.dirty = true; this.mode.classList.toggle('reduced', on);
+    if (this.sp === (on ? 1 : 1.5)) this.setSpeed(on ? 1.5 : 1);
+    if (this.readAlong === !on) { this.readAlong = on; $('machine-readalong').checked = on; this.clock.setReadAlong(on, performance.now()); }
   }
   async setBase(base, { force = false, plan = true } = {}) {
     if (!BASES.includes(base)) return { ok: false, message: `Unknown base ${base}` };
@@ -199,7 +236,7 @@ export class MachineView extends EventTarget {
   // ---------- planning ----------
   // Re-plan the current tree, base, pace and committed inputs, and rewind to beat 0.
   plan() {
-    this.refusal = null; this.highlight = null; this.answer = null; this.longOK = false;
+    this.refusal = null; this.highlight = null; this.answer = null; this.longOK = false; this.boost = 1;
     const k = openSockets(this.tree).length;
     let r;
     if (!Object.keys(this.tree).length) r = { ok: false, reason: 'empty', message: EMPTY };
@@ -223,8 +260,8 @@ export class MachineView extends EventTarget {
   }
   use(plan) {
     this.planned = plan; this.planId = (this.planId ?? 0) + 1; this.layout = layoutPlan(plan);
-    this.clock = new BeatClock(plan, { sp: this.sp, auto: this.auto, readAlong: this.readAlong });
-    this.manual = null; this.steps(); this.rewound();
+    this.clock = new BeatClock(plan, { sp: this.sp / this.boost, auto: this.auto, readAlong: this.readAlong });
+    this.manual = null; this.steps(); this.rewound(); this.hud();
   }
   rewound() { const t = this.clock.t(performance.now()); this.lastDone = Math.floor(t + 1e-9); this.lastStarted = -1; this.lastBoundary = -1; this.dirty = true; this.hidePeek(); this.sync(t, true); }
   start(text, now, { step = false } = {}) {
@@ -235,7 +272,7 @@ export class MachineView extends EventTarget {
     if (this.refusal) return this.refuse(this.refusal.reason === 'tooBig' ? TOO_BIG : this.refusal.message, this.refusal);
     if (this.planned.beats.length > SOFT_BEATS && !this.longOK) { this.ask(true); return { ok: false, message: 'long' }; }
     this.stepMode = step || !this.auto; this.manual = null;
-    this.clock.start(now); this.rewound(); return { ok: true };
+    this.clock.setSpeed(this.sp / this.boost, now); this.clock.start(now); this.rewound(); return { ok: true };
   }
   refuse(message, r = {}) {
     this.status(message, 'refuse'); this.announce(message);
@@ -346,11 +383,15 @@ export class MachineView extends EventTarget {
   viewport() { return { width: Math.max(1, this.stage.clientWidth), height: Math.max(1, this.stage.clientHeight) }; }
   // The camera frames what is left of the stage: above the burned-in caption band in
   // recording mode, and above the palette where it lies over the stage (desktop, tablets).
+  // It also keeps clear of the HUD in the top-left corner, insetting whichever side costs the
+  // viewport the smaller share (the top on a portrait phone, the left in landscape).
   inset() {
     const { width, height } = this.viewport(), band = this.recording ? (height > width ? 170 : 120) : 0;
-    const p = $('machine-palette').getBoundingClientRect(), st = this.stage.getBoundingClientRect();
-    const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0;
-    return band || over ? { bottom: Math.max(band, Math.round(over)) } : {};
+    const p = $('machine-palette').getBoundingClientRect(), st = this.stage.getBoundingClientRect(), hud = $('machine-hud').getBoundingClientRect();
+    const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0, inset = {};
+    if (band || over) inset.bottom = Math.max(band, Math.round(over));
+    if (hud.width && hud.height) { const top = Math.round(hud.bottom - st.top), left = Math.round(hud.right - st.left); if (top / height <= left / width) inset.top = top; else inset.left = left; }
+    return inset;
   }
   draw(t) {
     const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset(), active: this.active(t) };
@@ -430,9 +471,10 @@ export class MachineView extends EventTarget {
   announce(text) { if (!text) return; const el = $('machine-live'); el.textContent = ''; requestAnimationFrame(() => { el.textContent = text; }); }
   hud() {
     $('machine-hud-base').textContent = BASE_SHORT[this.base];
-    for (const b of this.mode.querySelectorAll('#machine-base [data-base]')) b.setAttribute('aria-checked', String(b.dataset.base === this.base));
+    for (const b of this.mode.querySelectorAll('#machine-base [data-base]')) { const on = b.dataset.base === this.base; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; }
     $('machine-hud-auto').classList.toggle('lit', this.auto); $('machine-auto').setAttribute('aria-pressed', String(this.auto));
-    const lit = SPEEDS.indexOf(this.sp) + 1, label = `${this.sp} s`;
+    // The SPEED bulbs fill up as beats get shorter; a long run played at 4× says so.
+    const lit = SPEEDS.length - SPEEDS.indexOf(this.sp), label = `${this.sp} s${this.boost > 1 ? ` ÷ ${this.boost}` : ''}`;
     $('machine-hud-speed').innerHTML = SPEEDS.map((_, i) => `<i class="${i < lit ? 'lit' : ''}"></i>`).join(''); $('machine-hud-sp').textContent = label;
     $('machine-speed').textContent = label; $('machine-slower').disabled = this.sp >= SPEEDS.at(-1); $('machine-faster').disabled = this.sp <= SPEEDS[0];
   }
@@ -474,13 +516,13 @@ export class MachineView extends EventTarget {
     if (open) side.querySelector('[role=tab][aria-selected=true]')?.focus({ preventScroll: true });
   }
   tab(name) {
-    for (const t of this.mode.querySelectorAll('#machine-side [role=tab]')) t.setAttribute('aria-selected', String(t.dataset.tab === name));
+    for (const t of this.mode.querySelectorAll('#machine-side [role=tab]')) { t.setAttribute('aria-selected', String(t.dataset.tab === name)); t.tabIndex = t.dataset.tab === name ? 0 : -1; }
     $('machine-steps-panel').hidden = name !== 'steps'; $('machine-parts-panel').hidden = name !== 'parts';
     this.inertOutline();
   }
   // The outline is reachable only while it can be seen (design 4.9).
   inertOutline() {
-    const sheet = media('(max-width: 699px), (max-height: 520px)'), shown = !$('machine-parts-panel').hidden && (!sheet || $('machine-side').classList.contains('open'));
+    const sheet = media(SHEET_QUERY), shown = !$('machine-parts-panel').hidden && (!sheet || $('machine-side').classList.contains('open'));
     $('machine-outline').inert = !shown;
   }
   peek(id, at) {
@@ -505,7 +547,9 @@ export class MachineView extends EventTarget {
     $('machine-faster').onclick = () => this.setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(this.sp) - 1)]);
     $('machine-pace').onchange = e => this.setPace(e.target.value);
     $('machine-digits').onchange = e => { this.digits = e.target.checked; this.dirty = true; };
-    $('machine-readalong').checked = this.readAlong;
+    $('machine-readalong').checked = this.readAlong; $('machine-reduced').checked = this.reduced; this.mode.classList.toggle('reduced', this.reduced);
+    $('machine-reduced').onchange = e => this.setReduced(e.target.checked, { remember: true });
+    if (typeof matchMedia === 'function') matchMedia(REDUCED_QUERY).addEventListener?.('change', e => { if (!this.reducedChosen) this.setReduced(e.matches); });
     $('machine-readalong').onchange = e => { this.readAlong = e.target.checked; this.clock.setReadAlong(this.readAlong, performance.now()); };
     $('machine-centre').onclick = () => this.centre();
     $('machine-overview').onclick = () => this.overview();
@@ -514,19 +558,23 @@ export class MachineView extends EventTarget {
     $('machine-steps-toggle').onclick = () => this.sheet(!$('machine-side').classList.contains('open'));
     $('machine-sheet-close').onclick = () => { this.sheet(false); $('machine-steps-toggle').focus(); };
     for (const t of this.mode.querySelectorAll('#machine-side [role=tab]')) t.onclick = () => this.tab(t.dataset.tab);
-    $('machine-ask-play').onclick = () => { this.longOK = true; this.setSpeed(SPEEDS[0]); this.ask(false); this.start(this.$input.value.trim(), performance.now()); };
-    $('machine-ask-answer').onclick = () => { this.longOK = true; this.ask(false); this.clock.seek(this.clock.n); this.clock.started = true; this.rewound(); };
+    // Play at 4×: this plan plays at a quarter of the chosen beat length, which is kept for
+    // every other run. Show the answer jumps to OUTPUT; a later run asks again.
+    $('machine-ask-play').onclick = () => { this.longOK = true; this.boost = 4; this.ask(false); this.start(this.$input.value.trim(), performance.now()); this.hud(); };
+    $('machine-ask-answer').onclick = () => { this.ask(false); this.clock.seek(this.clock.n); this.clock.started = true; this.rewound(); };
     for (const b of this.mode.querySelectorAll('#machine-base [data-base]')) b.onclick = () => this.setBase(b.dataset.base);
     $('machine-steps').onclick = e => { const b = e.target.closest('[data-beat]'); if (!b) return; this.clock.seek(Number(b.dataset.beat)); this.stepMode = true; this.clock.step(performance.now(), { once: true }); this.rewound(); };
     this.wireOutline(); this.wireStage(); this.wirePalette();
     this.mode.addEventListener('keydown', e => this.key(e));
     this.tab('steps'); this.hud();
-    matchMedia('(max-width: 699px), (max-height: 520px)').addEventListener?.('change', () => this.inertOutline());
+    matchMedia(SHEET_QUERY).addEventListener?.('change', () => this.inertOutline());
   }
   rebuild() { this.clock.seek(0); this.clock.started = false; this.manual = null; this.rewound(); }
   cycleBase() { this.setBase(BASES[(BASES.indexOf(this.base) + 1) % BASES.length]); }
   key(e) {
     if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+    // Esc closes the Steps/Parts sheet first, and gives focus back to its toggle.
+    if (e.key === 'Escape' && $('machine-side').classList.contains('open') && media(SHEET_QUERY)) { e.preventDefault(); this.sheet(false); $('machine-steps-toggle').focus({ preventScroll: true }); return; }
     const field = e.target.closest('input,select,textarea');
     if (field) {
       if (e.key === 'Enter' && field === this.$input) { e.preventDefault(); this.enter(); }
@@ -535,8 +583,10 @@ export class MachineView extends EventTarget {
       return;
     }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('button,[role=treeitem]')) return;
-    if (e.target.closest('#machine-palette') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return this.paletteKey(e);
-    if (e.target.closest('#machine-outline') && ['ArrowUp', 'ArrowDown', 'Home', 'End', 'Backspace', 'Delete'].includes(e.key)) return;
+    // The shortcuts belong to the stage (design 4.4). Widgets that own their arrow keys keep
+    // them: the base radios, the Steps/Parts tabs, the palette, the Steps list and the outline.
+    if (NAV_KEYS.includes(e.key)) { const group = e.target.closest('#machine-base,#machine-palette,[role=tablist],#machine-steps,#machine-outline'); if (group) return this.groupKey(e, group); }
+    if (e.target.closest('#machine-outline') && ['Backspace', 'Delete'].includes(e.key)) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, now = performance.now();
     const act = {
       Enter: () => this.enter(), ArrowRight: () => this.enter(), ArrowDown: () => this.enter(), ArrowLeft: () => this.back(), ArrowUp: () => this.back(),
@@ -544,16 +594,24 @@ export class MachineView extends EventTarget {
       Home: () => { this.clock.start(now); this.rewound(); }, End: () => { this.clock.seek(this.clock.n); this.clock.started = true; this.rewound(); },
       r: () => this.rebuild(), t: () => this.centre(), o: () => this.overview(), d: () => $('machine-digits').click(),
       p: () => this.setPace(this.pace === 'together' ? 'level' : 'together'), b: () => this.cycleBase(),
-      Escape: () => this.dispatchEvent(new Event('leave')),
+      // Esc on a control returns to the stage; Esc on the stage leaves the mode.
+      Escape: () => this.stage.contains(e.target) ? this.dispatchEvent(new Event('leave')) : this.stage.focus({ preventScroll: true }),
       Backspace: () => { if (this.tree[this.selected]) this.remove(this.selected); }, Delete: () => { if (this.tree[this.selected]) this.remove(this.selected); },
     }[k];
     if (!act) return;
     e.preventDefault(); act();
   }
-  paletteKey(e) {
-    const items = [...$('machine-palette').querySelectorAll('button:not(:disabled)')], i = items.indexOf(e.target.closest('button'));
-    const next = { ArrowLeft: i - 1, ArrowUp: i - 1, ArrowRight: i + 1, ArrowDown: i + 1, Home: 0, End: items.length - 1 }[e.key];
-    e.preventDefault(); items[(next + items.length) % items.length]?.focus();
+  // Arrow keys inside a composite widget move between its items, wrapping round. Radios and
+  // tabs select as focus moves (ARIA's automatic activation); the outline has its own handler.
+  groupKey(e, group) {
+    if (group.id === 'machine-outline') return;
+    const items = [...group.querySelectorAll(group.id === 'machine-base' ? '[data-base]' : group.id === 'machine-palette' ? 'button:not(:disabled)' : group.id === 'machine-steps' ? 'button' : '[role=tab]')];
+    const i = items.indexOf(e.target.closest('button')); if (i < 0) return;
+    const next = { ArrowLeft: i - 1, ArrowUp: i - 1, ArrowRight: i + 1, ArrowDown: i + 1, Home: 0, End: items.length - 1 }[e.key], to = items[(next + items.length) % items.length];
+    e.preventDefault(); if (!to) return;
+    to.focus({ preventScroll: group.id !== 'machine-steps' });
+    if (group.id === 'machine-base') this.setBase(to.dataset.base);
+    else if (to.getAttribute('role') === 'tab') this.tab(to.dataset.tab);
   }
   wireOutline() {
     const el = $('machine-outline');
@@ -660,9 +718,11 @@ export class MachineView extends EventTarget {
   hook() {
     window.__machine = {
       state: () => this.state,
-      beats: () => { const s = schedule(this.planned, this.sp, { readAlong: this.readAlong }); return this.planned.beats.map((b, i) => ({ i, kind: b.kind, node: b.node, caption: b.caption, start: s.starts[i], end: s.ends[i] })); },
+      // seconds at the speed the clock plays (a long run played at 4× included)
+      beats: () => { const s = schedule(this.planned, this.clock.sp, { readAlong: this.readAlong }); return this.planned.beats.map((b, i) => ({ i, kind: b.kind, node: b.node, caption: b.caption, start: s.starts[i], end: s.ends[i] })); },
       plan: () => JSON.parse(JSON.stringify(this.planned)),
-      load: async params => { await this.load(params); },
+      // the URL's names (mbase, machine) or load()'s own (base, op, expression, tree)
+      load: async params => { await this.load(presetOf(params)); },
       seek: t => this.seek(t),
       chrome: mode => this.chrome(mode),
     };
