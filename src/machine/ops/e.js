@@ -5,11 +5,25 @@
 // exactly anything in base e, so addition piles, and a pile that is not already a numeral
 // folds into a light and unfolds again, greedily (section 3 of docs/machine-design.md).
 // Planners write through the PlanBuilder they are given (6.6) and read only its scene.
-import { E, sign, compare, greedy, isLegalNumeral, approx, height, lnText, approxText, digitsText, parseTerms, sup, top as topOf, ln } from '../e-exact.js';
+import { E, sign, compare, greedy, isLegalNumeral, approx, height, lnText, approxText, digitsText, parseTerms, sup, top as topOf, ln, PrecisionError } from '../e-exact.js';
+import { LimitError } from '../builder.js';
 
-export const FLOOR = -3, CEILING = 20, MAX_EXP = 12, MIN_EXP = -6;
+// 6.10: a tower stands from the floor up to level 20, a light's rail reaches down to level
+// −14, and ×eᵏ counts run from −6 to 12.
+export const FLOOR = -3, CEILING = 20, RAIL = -14, MAX_EXP = 12, MIN_EXP = -6;
 const MINUS = '−', r4 = v => Math.round(v * 1e4) / 1e4, s2 = v => String(v).replace('-', MINUS);
 const ZERO = E.of(0);
+// The planner checks every tower as it is built (6.10): a bulb above level 20, or a light (at
+// rest or on its way) below the rail's reach, makes the run too big to animate. LimitError
+// tells planMachine to show the exact answer instead.
+function reach(h) {
+  const k = Math.floor(h);
+  if (k > CEILING) throw new LimitError(`a base-e tower stands at most up to level ${CEILING}`);
+  if (k < RAIL) throw new LimitError(`a light's rail reaches down to level ${s2(RAIL)}`);
+  return h;
+}
+// Every base-e beat closes here: what the scene holds is checked against the caps first.
+const close = b => { for (const id in b.scene.bulbs) reach(b.scene.bulbs[id].l); b.end(); };
 const val = (b, t) => E.parse(b.scene.towers[t].value);
 const bulbsOf = (b, t) => b.bulbsOf(t);
 const isLight = q => q.k === 'light';
@@ -73,35 +87,44 @@ const NO = {
   div: 'A quotient of e-numerals is usually not an e-numeral.', mod: 'A quotient of e-numerals is usually not an e-numeral.',
   shl: 'Base e shifts by powers of e: use ×eᵏ.', shr: 'Base e shifts by powers of e: use ×eᵏ.',
 };
+// evaluate gives the exact answer whatever its size: computing in Q[e, 1/e] is cheap, and the
+// caps of 6.10 belong to the planner, which then reports tooBig with this very answer. Only a
+// value with a power of e past e^±300 is refused outright (like the whole-number bases'
+// longest shift), because its certified signs, heights and ≈ readouts would no longer be
+// cheap or fit a float; that is a ×eᵏ count far past anything a tower can show.
+const SPAN = 300;
 export function evaluate(op, args) {
   if (args.some(a => readingOf(a))) return { ok: false, reason: 'domain', message: 'ln gives a reading, not a number: it can only go to Output.' };
   if (!E_OPS[op]) return { ok: false, reason: 'domain', message: NO[op] ?? 'Logic needs whole-number levels; base e has none.' };
-  const [a, b] = args.map(v => E.parse(v));
-  // A value past the tower's reach cannot be planned: the pre-check refuses it as too big
-  // (the whole-number bases' tower cap does the same through their level count).
-  const value = x => { const limit = checkLimits(x.key()); return limit ? { ok: false, reason: 'tooBig', message: limit } : { ok: true, values: [x.key()] }; };
-  switch (op) {
-    case 'add': return value(a.add(b));
-    case 'sub': return value(a.sub(b));
-    case 'mul': return value(a.mul(b));
-    case 'mule': {
-      // The count k, as typed. After FANOUT the socket holds the power e^k instead (like
-      // SHL's 2^k), and a scene evaluates that by multiplying; a power that cannot be a
-      // count (e, e², e⁻¹, …) is accepted here as that multiplier too.
-      if (!b.isInteger() && b.abs().isPower()) return value(a.mul(b));
-      const k = shiftOf(b);
-      if (k === null) return { ok: false, reason: 'domain', message: `×eᵏ needs a whole k from ${s2(MIN_EXP)} to ${MAX_EXP}: ${b.text()} is not one` };
-      return value(a.shift(k));
+  // evaluateScene may hand over an operand it could not read (a node half way through its
+  // work): that is an answer of no kind, never a crash.
+  let a, b;
+  try { [a, b] = args.map(v => E.parse(v)); } catch { return { ok: false, reason: 'domain', message: `Not a base-e number: ${args.join(', ')}` }; }
+  const value = x => x.t.some(([k]) => Math.abs(k) > SPAN) ? { ok: false, reason: 'tooBig', message: 'That number is too big for a tower.' } : { ok: true, values: [x.key()] };
+  try {
+    switch (op) {
+      case 'add': return value(a.add(b));
+      case 'sub': return value(a.sub(b));
+      case 'mul': return value(a.mul(b));
+      case 'mule': {
+        // Only the count k, typed or computed. Once FANOUT has expanded it into the power e^k
+        // (like SHL's 2^k), plan.js reads that socket as 'mul' by node.arg, so a power never
+        // comes here and '1' always means ×e¹. A whole k past −6..12 is the planner's tooBig.
+        if (!b.isInteger()) return { ok: false, reason: 'domain', message: `×eᵏ needs a whole k from ${s2(MIN_EXP)} to ${MAX_EXP}: ${b.text()} is not a whole number` };
+        return value(a.shift(Number(b.coeff(0).n)));
+      }
+      case 'cmp': return { ok: true, values: [String(compare(a, b))] };
+      case 'measure': return value(a);
+      case 'ln': return sign(a) > 0 ? { ok: true, values: [`ln(${a.key()})`] }
+        : { ok: false, reason: 'domain', message: `ln needs a positive number: ${a.text()} has no logarithm; its light would fall forever.` };
     }
-    case 'cmp': return { ok: true, values: [String(compare(a, b))] };
-    case 'measure': return value(a);
-    case 'ln': return sign(a) > 0 ? { ok: true, values: [`ln(${a.key()})`] }
-      : { ok: false, reason: 'domain', message: `ln needs a positive number: ${a.text()} has no logarithm; its light would fall forever.` };
+  } catch (error) {
+    if (error instanceof PrecisionError) return { ok: false, reason: 'tooBig', message: error.message };
+    throw error;
   }
 }
-// ×eᵏ's count: a whole k in range.
-const shiftOf = x => { if (!x.isInteger()) return null; const k = Number(x.coeff(0).n); return k >= MIN_EXP && k <= MAX_EXP ? k : null; };
-// The power a count stands for: ×eᵏ's right socket holds e^k once it has fanned out.
+// e^k for any whole k. plan.js spells a count's power through parseValue, which keeps the
+// typed limits; this is the spelling without them.
 export const power = k => E.e(Number(k)).key();
 
 export function display(value, { form = 'tower' } = {}) {
@@ -129,6 +152,7 @@ export function validateTower(scene, id, given) {
     return errors;
   }
   const x = E.parse(t.value), s = sign(x);
+  for (const [bid, q] of lights) if (Math.floor(q.l) > CEILING || Math.floor(q.l) < RAIL) say3(`has light ${bid} at ${q.l}, past the rail's reach`);
   for (const [bid, q] of digits) {
     if (!Number.isInteger(q.l) || q.l < FLOOR || q.l > CEILING) say3(`has bulb ${bid} at level ${q.l}, off the tower`);
     if (!Number.isInteger(q.slot) || q.slot < 0) say3(`has bulb ${bid} in no socket`);
@@ -171,8 +195,12 @@ export function validateTower(scene, id, given) {
 // never a light). Like the other bases' place, it may be called again on a tower: bulbs
 // that already show the value stay, anything else is replaced.
 export function place(b, t, value, { asLight = false } = {}) {
+  // plan.js spells a ×eᵏ count's power through parseValue, which keeps the typed limits, so a
+  // count past −6..12 arrives here as no value at all: that count is past its limit.
+  if (typeof value !== 'string') throw new LimitError(`×eᵏ counts run from ${s2(MIN_EXP)} to ${MAX_EXP}`);
   const x = E.parse(value), tower = b.scene.towers[t], light = asLight && !x.isZero();
   const want = light ? [{ l: height(x), s: sign(x), k: 'light' }] : digitBulbs(x), have = b.bulbsOf(t);
+  for (const q of want) reach(q.l);
   const same = have.length === want.length && have.every(([, q], i) => q.l === want[i].l && q.s === want[i].s && q.k === want[i].k && q.slot === want[i].slot);
   if (!same) { for (const [id] of have) b.drop(id); for (const q of want) b.bulb(b.id('b'), { t, ...q }); }
   const props = {};
@@ -225,7 +253,7 @@ function pile(b, node, left, right) {
   // builder would otherwise fill in the greedy digits of the sum).
   const left2 = bulbsOf(b, rec), dust = !sum.sub(sumOf(left2)).isZero(), shown = display(sum.key());
   b.tower(rec, { at: `${node}.C`, value: sum.key(), pile: true, dust: dust || null, text: shown.text, approx: shown.approx ?? null, digits: pileDigits(left2, dust), reading: null });
-  b.end();
+  close(b);
   return rec;
 }
 
@@ -238,30 +266,39 @@ function legal(b, node, t, caption) {
   if (x.isZero() && !list.length) b.bulb(b.id('b'), { t, l: 0, s: 0, slot: 0 });
   b.tower(t, { pile: null, dust: null, digits: display(x.key()).digits });
   b.mark({ k: 'scan', node, from: Math.min(0, ...levels), stop: Math.max(0, ...levels) });
-  b.end();
+  close(b);
 }
 const isNumeral = (b, t) => {
   const x = val(b, t), list = bulbsOf(b, t);
   return x.sub(sumOf(list)).isZero() && isLegalNumeral(x) && new Set(list.map(([, q]) => q.s).filter(Boolean)).size <= 1;
 };
 
+// The lights a fold makes: each colour's bulbs, and the pile's exact dust, which joins the
+// light of its own colour. When no bulb of that colour is left and a light of the dust alone
+// would hang below the rail's reach, the dust joins the other colour's light instead: it is
+// smaller than e⁻¹⁴, far less than any bulb, so that light keeps its colour. A pile of dust
+// alone is one light. `dust` is the dust's share in the light's own colour (negative when
+// it joined the other colour), so the lights' values still add up exactly: blue − red = x.
+function foldGroups(b, t) {
+  const x = val(b, t), list = bulbsOf(b, t).filter(([, q]) => q.s && !isLight(q)), dust = x.sub(sumOf(list)), ds = sign(dust);
+  const items = s => list.filter(([, q]) => q.s === s);
+  const home = ds && !items(ds).length && items(-ds).length && topOf(dust) < RAIL ? -ds : ds;
+  return [1, -1].map(s => ({ s, items: items(s), dust: ds && home === s ? dust.mul(s) : null })).filter(g => g.items.length || g.dust);
+}
 // FOLD (inside the current beat): each colour's bulbs merge bottom-up into one light, the
 // dust first. The light passes through height(partial sum) at each merge: merging a light
 // at h₂ into one at h₁ lifts it by ln(1 + e^−(h₁−h₂)), Gauss's addition logarithm.
 function foldInto(b, t) {
-  const x = val(b, t), list = bulbsOf(b, t).filter(([, q]) => q.s && !isLight(q)), dust = x.sub(sumOf(list));
   const groups = [];
-  for (const s of [1, -1]) {
-    const items = list.filter(([, q]) => q.s === s), d = sign(dust) === s ? dust.abs() : null;
-    if (!items.length && !d) continue;
-    if (!items.length) {   // only dust of this colour: the light condenses out of the haze
-      const id = b.id('b'), h = height(d);
+  for (const { s, items, dust } of foldGroups(b, t)) {
+    if (!items.length) {   // only dust: the light condenses out of the haze
+      const id = b.id('b'), h = height(dust);
       b.bulb(id, { t, l: h, s, k: 'light' }, { in: [0, 0.9], grow: true });
-      groups.push({ s, id, value: d, h }); continue;
+      groups.push({ s, id, value: dust, h }); continue;
     }
     const [[first, q0], ...rest] = items;
     let S = E.e(q0.l); const events = [];
-    if (d) { S = S.add(d); events.push({ h: height(S) }); }
+    if (dust) { S = S.add(dust); events.push({ h: height(S) }); }
     for (const [id, q] of rest) { S = S.add(E.e(q.l)); events.push({ id, h: height(S) }); }
     const n = events.length, path = [[0, q0.l]];
     events.forEach((ev, j) => {
@@ -277,27 +314,36 @@ function foldInto(b, t) {
   if (groups.length > 1) b.tower(t, { pending: true, digits: null, reading: groups.map(g => `${g.s > 0 ? 'blue' : 'red'} ≈ ${s2(g.h.toFixed(4))}`).join(' · ') });
   return groups;
 }
+// 3.3's fill readout, shown where a light rests before it unfolds: f = |x| / e^k at the
+// light's level k, how many bulbs' worth it holds there. It rides as the tower's note, so the
+// light's ln reading keeps its line; UNFOLD and RETURN clear it.
+function fillText(x) {
+  const a = x.abs(), k = topOf(a);
+  return a.isPower() ? `1 bulb’s worth at e${sup(k)}` : `≈ ${approx(a.shift(-k)).toFixed(2)} bulbs’ worth at e${sup(k)}`;
+}
+const rest = (b, t) => b.tower(t, { note: fillText(val(b, t)) });
 // Towers that are already lights (a base-e number can arrive as one) are not folded again.
 const lit = (b, t) => bulbsOf(b, t).some(([, q]) => isLight(q));
 const lightGroups = (b, t) => bulbsOf(b, t).filter(([, q]) => isLight(q)).map(([id, q]) => ({ s: q.s, id, value: val(b, t).abs(), h: q.l }));
 // A unary node's tower at .C counts as its result once the glyph has faded, so LN keeps
-// its glyph through the FOLD (the light is still its operand) and fades it in READ.
-function fold(b, node, towers, caption, { glyph = true } = {}) {
+// its glyph through the FOLD (the light is still its operand) and fades it in READ. A fold
+// whose light unfolds next shows the fill readout (`resting`).
+function fold(b, node, towers, caption, { glyph = true, resting = false } = {}) {
   const todo = towers.filter(t => !lit(b, t));
   if (todo.length) {
     const x = val(b, todo[0]);
     b.begin('fold', node, { caption, ledger: { law: 'fold', value: x.key(), h: height(x) } });
     if (glyph) working(b, node);
-    for (const t of todo) foldInto(b, t);
-    b.end();
+    for (const t of todo) { foldInto(b, t); if (resting) rest(b, t); }
+    close(b);
   }
   return towers.map(t => lightGroups(b, t));
 }
 // A light where a tower is needed (a pile, a shift) unfolds first.
 const expand = (b, node, towers) => { for (const t of towers) if (lit(b, t)) unfold(b, node, t); };
 const foldCaption = (x, groups) => groups.length > 1
-  ? `Fold each colour into its own light: blue rises to ≈ ${groups[0].h.toFixed(2)}, red to ≈ ${groups[1].h.toFixed(2)}.`
-  : `Fold: the bulbs merge into one light at height ${lnText(x)}.`;
+  ? fit(`Fold each colour into its own light: blue rises to ≈ ${s2(groups[0].h.toFixed(2))}, red to ≈ ${s2(groups[1].h.toFixed(2))}.`, 'Fold each colour into its own light.')
+  : fit(`Fold: the bulbs merge into one light at height ${lnText(x)}.`, `Fold: the bulbs merge into one light at height ≈ ${s2(height(x).toFixed(4))}.`);
 
 // MEET: the smaller light subtracts from the larger, which drops to
 // h_max + ln(1 − e^−Δ), the subtraction logarithm. Which is larger is certified, never
@@ -319,8 +365,9 @@ function meet(b, node, t, groups) {
     b.drop(lose.id, { to: { t, l: h }, dissolve: true });
     b.bulb(win.id, { l: h, s: sign(x) });
     b.tower(t, { pending: null, reading: lnText(x) });
+    rest(b, t);
   }
-  b.end();
+  close(b);
   return s !== 0;
 }
 
@@ -344,20 +391,22 @@ function deposits(b, t, s, u0, u1, h0, h1, k, d) {
 function unfold(b, node, t) {
   const x = val(b, t), s = sign(x), light = bulbsOf(b, t).find(([, q]) => isLight(q))[0];
   const { g, events, end } = unfoldPlan(x), n = events.length;
-  const hs = [...events.map(e => e.h), end];
+  // the light falls to the dust's height before it fades: that too is on the rail
+  const hs = [...events.map(e => e.h), reach(end)];
   const caption = n ? fit(`The light falls and leaves the bulbs that fit: ${x.text()} = ${digitsText(x)}.`, `The light falls and leaves the bulbs that fit: ${digitsText(x)}.`)
     : fit(`${x.text()} has no bulb above the floor: the light falls and fades into dust. ${digitsText(x)}`, `The light fades into dust: ${digitsText(x)}`);
-  const finish = () => b.tower(t, { form: 'tower', pending: null, dust: g.exact ? null : true });
+  const finish = () => b.tower(t, { form: 'tower', pending: null, dust: g.exact ? null : true, note: null });
   if (b.pace !== 'level' || n <= 1) {
     b.begin('unfold', node, { caption, ledger: { law: 'unfold', value: x.key() } });
     working(b, node);
     const path = n ? hs.map((h, j) => [r4(0.9 * j / n), h]) : undefined;
     events.forEach((e, j) => deposits(b, t, s, r4(0.9 * j / n), r4(0.9 * (j + 1) / n), hs[j], hs[j + 1], e.k, e.d));
     b.drop(light, { ...(path ? { path } : {}), fade: [0.9, 1] });
-    finish(); b.end();
+    finish(); close(b);
     return;
   }
-  // Level pace: one beat per deposit; between beats the light rests at ln of what is left.
+  // Level pace: one beat per deposit; between beats the light rests at ln of what is left,
+  // with the fill readout of what is left beside it.
   let R = x.abs();
   events.forEach((e, j) => {
     const last = j === n - 1, h0 = hs[j], h1 = hs[j + 1];
@@ -369,10 +418,9 @@ function unfold(b, node, t) {
     if (last) { b.drop(light, { path: [[0, h0], [0.9, h1]], fade: [0.9, 1] }); finish(); }
     else {
       b.bulb(light, { l: h1 }, { path: [[0, h0], [0.9, h1]] });
-      const lv = Math.floor(h1), fill = approx(R) / Math.exp(lv);
-      b.tower(t, { pending: true, reading: `≈ ${fill.toFixed(2)} bulbs’ worth at e${sup(lv)}` });
+      b.tower(t, { pending: true, reading: null, note: fillText(R) });
     }
-    b.end();
+    close(b);
   });
 }
 // After a pile: LEGAL if it is already a numeral, otherwise FOLD, MEET when both colours
@@ -387,23 +435,24 @@ function normalise(b, node, t) {
   b.begin('fold', node, { caption: foldCaption(x, foldPreview(b, t)), ledger: { law: 'fold', value: x.key(), h: height(x) } });
   working(b, node);
   const groups = foldInto(b, t);
-  b.end();
+  if (groups.length === 1) rest(b, t);
+  close(b);
   if (groups.length > 1 && !meet(b, node, t, groups)) return;
   unfold(b, node, t);
 }
 // The groups a fold will make, for its caption (heights of each colour's total).
-function foldPreview(b, t) {
-  const x = val(b, t), list = bulbsOf(b, t).filter(([, q]) => q.s && !isLight(q)), dust = x.sub(sumOf(list));
-  return [1, -1].map(s => { let S = sign(dust) === s ? dust.abs() : ZERO; for (const [, q] of list) if (q.s === s) S = S.add(E.e(q.l)); return { s, h: S.isZero() ? null : height(S) }; }).filter(g => g.h !== null);
-}
+const foldPreview = (b, t) => foldGroups(b, t).map(({ items, dust }) => {
+  let S = dust ?? ZERO; for (const [, q] of items) S = S.add(E.e(q.l));
+  return { h: height(S) };
+});
 
 // RETURN inside a split: the leaf's result rides up into its parent's socket.
 function ride(b, child, t) {
   const { parent, socket } = b.scene.nodes[child], x = val(b, t);
-  b.begin('return', child, { caption: `${x.text()} rides up.`, ledger: { law: 'move', value: x.key() } });
+  b.begin('return', child, { caption: fit(`${x.text()} rides up.`, 'The answer rides up.'), ledger: { law: 'move', value: x.key() } });
   b.dropNode(child);
   b.tower(t, { at: `${parent}.${socket}` });
-  b.end();
+  close(b);
 }
 
 // SHIFT (×eᵏ, and every leaf of a split): A rises k levels while the multiplier's bulb
@@ -416,10 +465,10 @@ function shift(b, node, ta, tm, mult = val(b, tm)) {
   const condensed = [];
   const caption = () => {
     const head = `${opnd(a)} × ${opnd(mult)}`, sw = sm < 0 ? ' and every colour swaps' : '';
-    if (!k) return sm < 0 ? `${head}: every colour swaps. ${out.text()}.` : `${head}: the 1 dissolves; ${a.text()} stays put.`;
+    if (!k) return sm < 0 ? fit(`${head}: every colour swaps. ${out.text()}.`, 'Every colour swaps.') : fit(`${head}: the 1 dissolves; ${a.text()} stays put.`, 'The 1 dissolves; the number stays put.');
     const dust = condensed.length ? `; ${plural(condensed.length, 'bulb')} condense${condensed.length === 1 ? 's' : ''} out of the dust` : '';
     return fit(k > 0 ? `${head}: ${a.text()} rises ${plural(k, 'level')}${sw}${dust}. ${out.text()}.` : `${head}: ${a.text()} descends ${plural(-k, 'level')}${sw}; the lowest sink into the dust. ${out.text()}.`,
-      `${head}: ${k > 0 ? 'rises' : 'descends'} ${plural(Math.abs(k), 'level')}${sw}. ${out.text()}.`);
+      `${head}: ${k > 0 ? 'rises' : 'descends'} ${plural(Math.abs(k), 'level')}${sw}. ${out.text()}.`, `It ${k > 0 ? 'rises' : 'descends'} ${plural(Math.abs(k), 'level')}${sw}.`);
   };
   // work out the bulbs first so the caption can count what condenses
   const moved = new Map(), plan = [];
@@ -439,7 +488,7 @@ function shift(b, node, ta, tm, mult = val(b, tm)) {
   lead.forEach(([id], j) => b.drop(id, { to: { t: ta, l: j ? 0 : k }, dissolve: true }));
   b.dropTower(tm);
   b.tower(ta, { at: `${node}.C`, value: out.key(), dust: g.exact ? null : true });
-  b.end();
+  close(b);
   return { result: ta };
 }
 
@@ -448,14 +497,14 @@ function shift(b, node, ta, tm, mult = val(b, tm)) {
 function zero(b, node, ta, tb) {
   const a = val(b, ta), c = val(b, tb), [z, other] = a.isZero() ? [ta, tb] : [tb, ta];
   b.begin('zero', node, {
-    caption: a.isZero() ? `Nothing to multiply: 0 × ${opnd(c)} = 0.` : `${opnd(a)} × 0: no bulbs to shift. 0.`,
+    caption: a.isZero() ? fit(`Nothing to multiply: 0 × ${opnd(c)} = 0.`, 'Nothing to multiply: 0.') : fit(`${opnd(a)} × 0: no bulbs to shift. 0.`, 'Times 0: no bulbs to shift. 0.'),
     ledger: { law: 'zero', a: a.key(), b: c.key(), out: '0' },
   });
   working(b, node);
   b.tower(z, { at: `${node}.C` });
   for (const [id] of bulbsOf(b, other)) b.drop(id, { to: { t: z, l: 0 } });
   b.dropTower(other);
-  b.end();
+  close(b);
   return { result: z };
 }
 
@@ -478,18 +527,18 @@ function split(b, node, ta, tb) {
   b.node(nr, { op: 'mul', parent: node, socket: 'R' });
   born(b).add(nl); born(b).add(nr);
   b.tower(ta, { at: `${nl}.L` });
-  const copy = b.id('t'), rest = b.id('t');
+  const copy = b.id('t'), tr = b.id('t');
   b.tower(copy, { at: `${nr}.L`, form: 'tower', value: a.key(), ...(b.scene.towers[ta].dust ? { dust: true } : {}) });
   for (const [, q] of bulbsOf(b, ta)) b.bulb(b.id('b'), { t: copy, l: q.l, s: q.s, slot: q.slot }, { from: { t: ta, l: q.l, slot: q.slot } });
-  b.tower(rest, { at: `${nr}.R`, form: 'tower', value: R.key() });
+  b.tower(tr, { at: `${nr}.R`, form: 'tower', value: R.key() });
   const slots = new Map();
-  for (const [id, q] of list) if (id !== head) { const slot = slots.get(q.l) ?? 0; slots.set(q.l, slot + 1); b.bulb(id, { t: rest, slot }); }
+  for (const [id, q] of list) if (id !== head) { const slot = slots.get(q.l) ?? 0; slots.set(q.l, slot + 1); b.bulb(id, { t: tr, slot }); }
   b.tower(tb, { at: `${nl}.R`, value: T.key() });
   b.mark({ k: 'ring', t: tb, l: Math.max(...[...slots.keys()]) });
-  b.end();
+  close(b);
   const left = multiply(b, nl, ta, tb);
   ride(b, nl, left);
-  const right = multiply(b, nr, copy, rest);
+  const right = multiply(b, nr, copy, tr);
   ride(b, nr, right);
   return add(b, node, [ta, right]);
 }
@@ -520,7 +569,8 @@ function slide(b, node, ta, tb) {
   b.dropTower(tb);
   b.bulb(ga.id, { l: h, s: sign(out) });
   b.tower(ta, { at: `${node}.C`, value: out.key() });
-  b.end();
+  rest(b, ta);
+  close(b);
   unfold(b, node, ta);
   return { result: ta };
 }
@@ -543,17 +593,20 @@ function sub(b, node, [left, right]) {
   b.node(node, { op: 'add' });
   for (const [id, q] of list) if (q.s) { const w = r4(Math.min(0.04 * levels.indexOf(q.l), 0.4)); b.bulb(id, { s: -q.s }, { state: [w, r4(w + 0.6)] }); }
   b.tower(right, { value: n.key() });
-  b.end();
+  close(b);
   return add(b, node, [left, right]);
 }
 const mul = (b, node, [ta, tb]) => ({ result: multiply(b, node, ta, tb) });
-// ×eᵏ: the right socket holds the count k as typed, or, once FANOUT has expanded it as
-// it does SHL's count, the power e^k itself, labelled with its note (×e²).
+// ×eᵏ: FANOUT (or the count's RETURN) has expanded the count k into the power e^k, the
+// right socket's tower, and noted it in node.arg, which is what this reads: the power, not
+// a count that could be mistaken for one. A count past −6..12 makes the run too big.
 function mule(b, node, [ta, tk]) {
-  const a = val(b, ta), t = b.scene.towers[tk], m = val(b, tk);
+  const a = val(b, ta), arg = b.scene.nodes[node].arg, m = arg !== undefined ? E.parse(arg) : E.e(Number(val(b, tk).coeff(0).n));
+  const k = m.t[0][0];
+  if (k < MIN_EXP || k > MAX_EXP) throw new LimitError(`×eᵏ counts run from ${s2(MIN_EXP)} to ${MAX_EXP}`);
   if (a.isZero()) return zero(b, node, ta, tk);
   expand(b, node, [ta]);
-  return shift(b, node, ta, tk, t.note?.startsWith('×') ? m : E.e(shiftOf(m)));
+  return shift(b, node, ta, tk, m);
 }
 // COMP: colours decide when they differ or one side is 0; otherwise FOLD both and RACE.
 // The verdict is the certified compare(); heights only draw it.
@@ -565,8 +618,8 @@ function cmp(b, node, [ta, tb]) {
   if (sa && sc && sa === sc) {
     fold(b, node, [ta, tb], fit(`Fold both: ${lnText(a.abs())} and ${lnText(c.abs())}.`, 'Fold both into lights.'));
     kind = 'race';
-    const close = Math.abs(ln(a) - ln(c)) < 1e-9;
-    caption = close && v ? `Equal as far as the eye can see; the exact test decides: ${said}.`
+    const near = Math.abs(ln(a) - ln(c)) < 1e-9;
+    caption = near && v ? `Equal as far as the eye can see; the exact test decides: ${said}.`
       : !v ? `The two lights stand level: ${said}.`
         : sa < 0 ? `Both red: the higher light is the more negative, so ${said}.` : `Race: the higher light is the larger number, so ${said}.`;
   }
@@ -578,14 +631,14 @@ function cmp(b, node, [ta, tb]) {
   for (const t of [ta, tb]) { for (const [id] of bulbsOf(b, t)) b.drop(id, { fade: [0.8, 1] }); b.dropTower(t); }
   b.tower(verdict, { at: `${node}.C`, form: 'tower', value: String(v) });
   b.bulb(b.id('b'), { t: verdict, l: 0, s: v, slot: 0 }, { in: [0.8, 1] });
-  b.end();
+  close(b);
   return { result: verdict };
 }
 // MEASURE: unfold any value into its digit tower. A typed value arrives as a light.
 function measure(b, node, [t]) {
   const x = val(b, t);
   if (x.isZero()) { legal(b, node, t, '0 is exact: one dark bulb.'); return { result: t }; }
-  fold(b, node, [t], foldCaption(x, foldPreview(b, t)));
+  fold(b, node, [t], foldCaption(x, foldPreview(b, t)), { resting: true });
   unfold(b, node, t);
   return { result: t };
 }
@@ -594,10 +647,10 @@ function lnOp(b, node, [t]) {
   const x = val(b, t);
   if (sign(x) <= 0) throw RangeError(`ln of ${x.text()}: the pre-check should have refused it`);
   fold(b, node, [t], foldCaption(x, foldPreview(b, t)), { glyph: false });
-  b.begin('read', node, { caption: `${lnText(x)}: the height of the folded light.`, ledger: { law: 'read', value: x.key(), h: height(x) } });
+  b.begin('read', node, { caption: fit(`${lnText(x)}: the height of the folded light.`, 'The height of the folded light is its logarithm.'), ledger: { law: 'read', value: x.key(), h: height(x) } });
   working(b, node);
   b.tower(t, { value: `ln(${x.key()})` });
-  b.end();
+  close(b);
   return { result: t };
 }
 export const E_OPS = { add, sub, mul, mule, cmp, measure, ln: lnOp };
