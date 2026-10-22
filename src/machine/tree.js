@@ -205,10 +205,11 @@ export function evaluateNodes(tree, inputs, base, {limits = true} = {}) {
   return {ok: true, values, text: `[${values.map(v => spec.display(v, {form: 'coin'}).text).join(', ')}]`, nodes, root};
 }
 // A domain error names its cause, with the subexpression that produced the bad operand.
+// ×eᵏ keeps its base's own message: its k may be negative, and only a k that is not whole fails.
 function explain(op, res, parts, args) {
   const said = (part, v) => { const shown = fmt(v); return part.text === shown ? shown : `${part.text} = ${shown}`; };
   if (res.reason === 'zeroDivision') return `Nothing fits into zero: the ${BLOCKS[op]}'s divisor is ${said(parts[1], args[1])}`;
-  if (res.reason === 'domain' && ['shl', 'shr', 'mule'].includes(op)) return `A shift needs a whole number of levels ≥ 0: the ${BLOCKS[op]}'s count is ${said(parts[1], args[1])}`;
+  if (res.reason === 'domain' && ['shl', 'shr'].includes(op)) return `A shift needs a whole number of levels ≥ 0: the ${BLOCKS[op]}'s count is ${said(parts[1], args[1])}`;
   if (res.reason === 'domain' && op === 'ln') return `ln needs a positive number: ${said(parts[0], args[0])} has no logarithm; its light would fall forever.`;
   return res.message;
 }

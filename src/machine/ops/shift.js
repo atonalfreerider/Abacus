@@ -10,11 +10,13 @@ import {leaf, zero} from './multiply.js';
 
 export const COUNT_OPS = {shl: '×', shr: '÷', mule: '×'};
 const symbol = base => base === 'e' ? 'e' : String(RADIX[base]);
-// The value string of b^k: base e spells e^k through its own parser.
+// The value string of b^k. Base e spells e^k with its own power(), which has no typed limit:
+// parseValue would refuse a count past −6..12 and leave no value to place, and such a count
+// must still plan far enough to be refused as tooBig with its answer.
 export function powerValue(base, k) {
   if (RADIX[base]) return String(RADIX[base] ** BigInt(k));
-  const parsed = getBase(base).parseValue(k === 0 ? '1' : k === 1 ? 'e' : `e^${k}`);
-  return parsed.value;
+  const spec = getBase(base);
+  return spec.power ? spec.power(k) : spec.parseValue(k === 0 ? '1' : k === 1 ? 'e' : `e^${k}`).value;
 }
 // Inside an open beat: tower t holds the count k; rewrite it as b^k and note it. The node
 // remembers the multiplier in `arg`, so the tree's value never depends on the expansion.

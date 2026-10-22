@@ -68,6 +68,9 @@ export function planMachine({tree, inputs, base, pace = 'together'}) {
 // Any computed value or shift count past the tower cap is refused before planning (b^k
 // itself stands k + 1 levels tall). Partial products past it are caught while planning.
 function tooTall(tree, pre, base) {
+  // a ×eᵏ count past −6..12, typed or computed, like SHL's count past the tower
+  const [lo, hi] = LIMITS.e.mule;
+  if (base === 'e' && Object.entries(pre.nodes).some(([id, {args}]) => tree[id].op === 'mule' && (Number(args[1]) < lo || Number(args[1]) > hi))) return true;
   const cap = LIMITS[base]?.levels; if (!cap) return false;
   for (const [id, {args, values}] of Object.entries(pre.nodes)) {
     const op = tree[id].op;

@@ -9,6 +9,7 @@ import { PlanBuilder } from '../src/machine/builder.js';
 import { planMachine, validatePlan } from '../src/machine/plan.js';
 import { applyDiff } from '../src/machine/scene.js';
 import { evaluateTree, openSockets, ARITY } from '../src/machine/tree.js';
+import { powerValue } from '../src/machine/ops/shift.js';
 
 const here = p => new URL(p, import.meta.url);
 const fixtures = here('fixtures/machine/');
@@ -491,6 +492,11 @@ test('past a cap the run is tooBig, and the exact answer comes with it (6.10)', 
   big('mule', ['3', '13'], ['3e^13']);
   big('mule', ['3', '-8'], ['3e^-8']);
   big(chain('mule', 'mul'), ['1', '4', '4'], ['e^16']);
+  big('mule', ['3', '25'], ['3e^25']);
+  // e^k is spelled for any whole k (the typed −6..12 is parseValue's), so a count past its
+  // range never leaves FANOUT without a value; the explanation of a bad count is ×eᵏ's own
+  assert.equal(powerValue('e', 25), 'e^25'); assert.equal(powerValue('e', -8), 'e^-8');
+  assert.equal(evaluateTree(one('mule'), ['3', 'e'], 'e').message, '×eᵏ needs a whole k from −6 to 12: e is not a whole number');
   // a light below the rail's reach: 10⁻¹² is a slide-rule light at −27.6, and the fall of
   // 1 + e⁻⁶/10⁶ to its dust ends at −19.8
   big(chain('measure', 'mul'), ['1/1000000', '1/1000000'], ['1/1000000000000']);
