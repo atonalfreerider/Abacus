@@ -357,8 +357,12 @@ export function layoutPlan(plan) {
   const towerBox = (scene, id, options) => towerParts(scene, id, options).reduce(union, null);
   // Furniture boxes: the triangle and the IO pills.
   const ioBoxes = [boxOf(-IO.half, IO.top, IO.half, IO.tip), ...Object.values(ioPills).map(p => boxOf(p.x - p.w / 2, p.top, p.x + p.w / 2, p.bottom))];
+  // what the camera frames of IO: the triangle, and the pills with their INPUT and OUTPUT
+  // captions outside them (14 px small capitals, about 11 units a letter)
+  const caption = text => 10 + 11 * text.length, [, inBox, outBox] = ioBoxes;
+  const ioFrame = [ioBoxes[0], {...inBox, x: inBox.x - caption('INPUT'), w: inBox.w + caption('INPUT')}, {...outBox, w: outBox.w + caption('OUTPUT')}];
   let bounds = null;
-  for (const b of ioBoxes) bounds = union(bounds, b);
+  for (const b of ioFrame) bounds = union(bounds, b);
   for (const id of nodes.keys()) bounds = union(bounds, nodeBox(id));
   for (const scene of scenes) for (const id of Object.keys(scene.towers)) bounds = union(bounds, towerBox(scene, id));
   // a falling light can pass below its floor during a beat
@@ -378,98 +382,244 @@ export function layoutPlan(plan) {
     parentOf: id => nodes.get(id)?.parent, socketOf: id => nodes.get(id)?.socket,
     socketPoint: id => socketPoint(nodes.get(id)),
     place: placeSlot, placeOf, pillCentre, nodeAt, nodeBox, towerBox, towerParts, pillBox, noteBox, pillLift,
-    wire: id => wires.get(id), ioBoxes, bounds,
+    wire: id => wires.get(id), ioBoxes, ioFrame, bounds,
   };
 }
 
 // ---- the camera (4.5): a pure function of t ----
+// A camera is {lam, c: [x, y], top}: lam machine units per CSS px, c the machine point at the
+// centre of the framed area, top that area's top inset in px. Every beat ends on a
+// keyframe chosen so that the bulbs that moved are in view, then (when they fit) the next
+// beat's movers where they start, the block, and the rest of the beat's frame. In between,
+// the camera rides the movers' own bounding box: on each axis its centre is
+//   lerp(lo − pad + v/2, hi + pad − v/2, ρ),
+// which for ρ ∈ [0, 1] keeps the whole box in view whenever it fits, and keeps the view inside
+// the box (ρ = 0 its top or left end, 1 its bottom or right end) when it does not. ρ eases
+// from the start keyframe's to the end keyframe's, so a mover is never lost on the way; a
+// box too big to show sweeps from one end to the other in the middle of the beat (the pan).
 const ease = u => 1 - (1 - u) ** 2;
 const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
-const DOWNWARD = new Set(['borrow', 'unfold', 'drop', 'descend', 'zero']);
-// The box a beat must show: its node, the node's towers and pills before and after, and the
-// socket the node hangs from.
-const frames = new WeakMap();
-function beatFrame(plan, layout, k) {
-  let cache = frames.get(layout);
-  if (!cache) frames.set(layout, cache = new Map());
-  if (!cache.has(k)) cache.set(k, frameOf(plan, layout, k));
-  return cache.get(k);
+const lerp = (a, b, e) => (1 - e) * a + e * b;
+const win = (u, [a, b]) => u <= a ? 0 : u >= b ? 1 : (u - a) / (b - a);
+// the pan: the near end held through the first fifth, the far end from four fifths on
+const sweep = u => { const v = clamp01((u - .2) / .6); return v * v * (3 - 2 * v); };
+
+// What a beat moves: every bulb whose drawn position changes, from where it starts to where
+// it ends, with its move window and light path, placed as the renderer places it (6.3). Only
+// bulbs the diff touches, or whose tower it moves, can move.
+const moverCache = new WeakMap();
+function beatMovers(plan, layout, k) {
+  let cache = moverCache.get(layout);
+  if (!cache) moverCache.set(layout, cache = []);
+  if (cache[k]) return cache[k];
+  const scenes = scenesOf(plan), a = scenes[k], z = scenes[k + 1], beat = plan.beats[k], motion = beat.motion || {};
+  const at = (scene, b) => {
+    const t = scene.towers[b.t]; if (!t) return null;
+    const o = layout.placeOf(t.at), off = bulbOffset(layout.base, t, b), pitch = isCollapsed(t) ? UNITS.coin : UNITS.pitch;
+    return {x: o.x + off.x, y: o.y + off.y, s: off.scale, oy: o.y, pitch, perch: off.y + pitch * (b.k === 'light' && isCollapsed(t) ? 0 : b.l)};
+  };
+  const ids = new Set([...Object.keys(beat.set?.bulbs || {}), ...Object.keys(motion)]);
+  for (const [tid, p] of Object.entries(beat.set?.towers || {})) if (p && ('at' in p || 'form' in p)) for (const id of [...bulbIdsOf(a, tid), ...bulbIdsOf(z, tid)]) ids.add(id);
+  const list = [], from = new Set(), to = new Set();
+  let dx = 0, dy = 0;
+  for (const id of ids) {
+    const ba = a.bulbs[id], bz = z.bulbs[id], mo = motion[id] || {};
+    let p0 = null, p1 = null, t0 = null, t1 = null;
+    if (ba && bz) { p0 = at(a, ba); p1 = at(z, bz); t0 = ba.t; t1 = bz.t; }
+    else if (ba) { p0 = at(a, ba); t0 = ba.t; p1 = mo.to ? at(z.towers[mo.to.t] ? z : a, {...mo.to, k: ba.k}) : z.towers[ba.t] ? at(z, ba) : p0; t1 = mo.to?.t ?? ba.t; }
+    else if (bz) {
+      p1 = at(z, bz); t1 = bz.t; t0 = mo.from?.t ?? bz.t;
+      if (mo.from) p0 = at(a.towers[mo.from.t] ? a : z, {...mo.from, k: bz.k});
+      else if (p1 && a.towers[bz.t]) { const oa = layout.placeOf(a.towers[bz.t].at), oz = layout.placeOf(z.towers[bz.t].at); p0 = {...p1, x: p1.x + oa.x - oz.x, y: p1.y + oa.y - oz.y, oy: oa.y}; }
+      else p0 = p1;
+    }
+    if (!p0 || !p1 || !(mo.path || Math.hypot(p1.x - p0.x, p1.y - p0.y) >= 1)) continue;
+    list.push({x0: p0.x, y0: p0.y, x1: p1.x, y1: p1.y, r: UNITS.bulbR * Math.max(p0.s, p1.s), w: mo.move || [0, 1], path: mo.path || null, oy0: p0.oy, oy1: p1.oy, pitch: p1.pitch, perch0: p0.perch, perch1: p1.perch});
+    dx += p1.x - p0.x; dy += p1.y - p0.y;
+    from.add(t0); to.add(t1);
+  }
+  const out = {list, dx, dy};
+  if (list.length) {
+    // the movers' towers whole, pills and digit gutters too, where they start and end: in
+    // between their box eases from one to the other with the bulbs (a light falling down a
+    // tower that stays put keeps the whole tower in view)
+    const whole = (u, scene, towers) => { let box = moversBox(out, u); for (const t of towers) if (scene.towers[t]) box = union(box, layout.towerBox(scene, t)); return box; };
+    out.towers = [whole(0, a, from), whole(1, z, to)];
+    out.s0 = moversBox(out, 0); out.s1 = moversBox(out, 1);
+  }
+  return cache[k] = out;
 }
-function frameOf(plan, layout, k) {
+// The movers' bounding box at u, bulb rims included, and (once known) their towers'.
+function moversBox({list, towers}, u) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const m of list) {
+    const e = ease(win(u, m.w));
+    const x = lerp(m.x0, m.x1, e), y = m.path && u < 1 ? lerp(m.oy0, m.oy1, e) - m.pitch * pathLevel(m.path, u) + lerp(m.perch0, m.perch1, e) : lerp(m.y0, m.y1, e);
+    if (x - m.r < x0) x0 = x - m.r; if (x + m.r > x1) x1 = x + m.r;
+    if (y - m.r < y0) y0 = y - m.r; if (y + m.r > y1) y1 = y + m.r;
+  }
+  if (towers) {
+    const e = ease(u), [p, q] = towers;
+    x0 = Math.min(x0, lerp(p.x, q.x, e)); y0 = Math.min(y0, lerp(p.y, q.y, e));
+    x1 = Math.max(x1, lerp(p.x + p.w, q.x + q.w, e)); y1 = Math.max(y1, lerp(p.y + p.h, q.y + q.h, e));
+  }
+  return {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
+}
+// The beat's frame: its block and the parent socket, the block's towers and pills wherever
+// they start or end (a split sends them into its children, a return up to the parent), and
+// any block born or spent in the beat. For IO's beats: IO and its towers.
+function contextOf(plan, layout, k) {
   const scenes = scenesOf(plan);
   if (k < 0) {
-    // the opening frame: IO, the inputs and the machine as built
     let box = null;
-    for (const b of layout.ioBoxes) box = union(box, b);
-    for (const id of Object.keys(plan.start.nodes)) if (layout.nodeAt(id)) box = union(box, layout.nodeBox(id));
+    for (const b of layout.ioFrame) box = union(box, b);
     for (const id of Object.keys(plan.start.towers)) box = union(box, layout.towerBox(plan.start, id));
-    return {box, centre: null, front: null};
+    let all = box;
+    for (const id of Object.keys(plan.start.nodes)) if (layout.nodeAt(id)) all = union(all, layout.nodeBox(id));
+    return {core: box, box: all, want: null};
   }
   const beat = plan.beats[k], node = beat.node, before = scenes[k], after = scenes[k + 1];
-  let box = null, centre;
   const mine = at => { const p = parsePlace(at); return node === 'io' ? !!p.io : p.node === node; };
-  if (node === 'io' || !layout.nodeAt(node)) { for (const b of layout.ioBoxes) box = union(box, b); centre = {x: 0, y: 0}; }
-  else { box = layout.nodeBox(node); const s = layout.socketPoint(node); box = union(box, {x: s.x - 1, y: s.y - 1, w: 2, h: 2}); centre = layout.nodeAt(node); }
-  let top = Infinity, bottom = -Infinity;
-  // the node's towers wherever they start or end (a split sends them into its children, a
-  // return up to the parent socket), and any node born or spent in the beat
+  let box = null, core = null, want;
+  if (node === 'io' || !layout.nodeAt(node)) { for (const b of layout.ioFrame) box = union(box, b); want = {x: 0, y: -FURNITURE.follow}; }
+  else {
+    const n = layout.nodeAt(node), s = layout.socketPoint(node);
+    if (after.nodes[node]) core = layout.nodeBox(node);
+    box = union(layout.nodeBox(node), {x: s.x - 1, y: s.y - 1, w: 2, h: 2});
+    want = {x: n.x, y: n.y - FURNITURE.follow};
+  }
   for (const id of new Set([...Object.keys(before.towers), ...Object.keys(after.towers)])) {
     if (![before, after].some(s => s.towers[id] && mine(s.towers[id].at))) continue;
     for (const scene of [before, after]) if (scene.towers[id]) box = union(box, layout.towerBox(scene, id));
   }
   for (const id of new Set([...Object.keys(before.nodes), ...Object.keys(after.nodes)])) if (!before.nodes[id] !== !after.nodes[id] && layout.nodeAt(id)) box = union(box, layout.nodeBox(id));
-  // the motion front: bulbs that move or change in this beat
-  for (const [id, b] of Object.entries({...before.bulbs, ...after.bulbs})) {
-    const a = before.bulbs[id], z = after.bulbs[id];
-    if (a && z && a.t === z.t && a.l === z.l && a.s === z.s && a.slot === z.slot && before.towers[a.t]?.at === after.towers[z.t]?.at) continue;
-    for (const [scene, bb] of [[before, a], [after, z]]) if (bb && scene.towers[bb.t] && mine(scene.towers[bb.t].at)) {
-      const t = scene.towers[bb.t], o = layout.placeOf(t.at), off = bulbOffset(layout.base, t, bb), y = o.y + off.y;
-      top = Math.min(top, y - R * off.scale); bottom = Math.max(bottom, y + R * off.scale);
+  return {core, box, want};
+}
+
+// The keyframes of every beat for one viewport and inset, computed once in order: each beat
+// starts where the last one ended.
+const chains = new WeakMap();
+function chainOf(plan, layout, viewport, inset) {
+  const hud = inset.hud && inset.hud.width > 0 && inset.hud.height > 0 ? inset.hud : null;
+  const key = [viewport.width, viewport.height, inset.left || 0, inset.right || 0, inset.top || 0, inset.bottom || 0, hud?.width, hud?.height].join(' ');
+  let byView = chains.get(layout);
+  if (!byView) chains.set(layout, byView = new Map());
+  if (byView.has(key)) return byView.get(key);
+  if (byView.size >= 8) byView.delete(byView.keys().next().value);   // a resize makes many
+  const G = geometry(viewport, inset);
+  const P = FURNITURE.pad, lo = 1 / FURNITURE.maxScale, hi = 1 / FURNITURE.minScale, b = layout.bounds;
+  const clampLam = l => Math.min(hi, Math.max(lo, l));
+  const need = (box, top) => Math.max(box.w / Math.max(1, G.W - 2 * P), box.h / Math.max(1, G.H(top) - 2 * P));
+  const fits = (l, h, v, p) => h - l + 2 * p <= v + 1e-9;
+  const centre = (l, h, v, p, rho) => lerp(l - p + v / 2, h + p - v / 2, rho);
+  const rhoOf = (c, l, h, v, p) => { const a = l - p + v / 2, z = h + p - v / 2; return Math.abs(z - a) < 1e-9 ? 0 : (c - a) / (z - a); };
+  const inBounds = (c, axis) => axis ? Math.min(b.y + b.h, Math.max(b.y, c)) : Math.min(b.x + b.w, Math.max(b.x, c));
+  const ext = (box, axis) => axis ? [box.y, box.y + box.h] : [box.x, box.x + box.w];
+  const sizes = (lam, top) => ({v: [G.W * lam, G.H(top) * lam], p: P * lam});
+  // The end of a beat at a given top inset: the largest of the nested boxes that fits is
+  // framed as close to `want` as it allows, and that sets ρ against the first box. When the
+  // first box does not fit, ρ is the pan's end: the far end if the beat started too big to
+  // show as well (so the sweep crosses all of it), else the end the movers head for.
+  const solve = (boxes, want, top, start, dir) => {
+    const lam = clampLam(need(boxes.at(-1), top)), {v, p} = sizes(lam, top), first = boxes[0];
+    const out = {lam, top, c: [0, 0], rho: [0, 0], slide: [false, false]};
+    for (const axis of [0, 1]) {
+      const [l, h] = ext(first, axis), over = !!start?.over[axis];
+      out.slide[axis] = over;
+      if (!fits(l, h, v[axis], p)) { out.rho[axis] = over ? (start.rho[axis] <= .5 ? 1 : 0) : dir[axis] < 0 ? 0 : 1; out.slide[axis] = true; }
+      else {
+        let c = null;
+        for (let j = boxes.length - 1; j >= 0 && c === null; j--) {
+          const [bl, bh] = ext(boxes[j], axis);
+          if (fits(bl, bh, v[axis], p)) c = Math.min(bl - p + v[axis] / 2, Math.max(bh + p - v[axis] / 2, want ? (axis ? want.y : want.x) : (bl + bh) / 2));
+        }
+        out.rho[axis] = clamp01(rhoOf(c, l, h, v[axis], p));
+      }
+      out.c[axis] = inBounds(centre(l, h, v[axis], p, out.rho[axis]), axis);
     }
+    return out;
+  };
+  // Is a box under the HUD in the corner of the viewport?
+  const underHud = (box, cam) => {
+    if (!hud) return false;
+    const H = G.H(cam.top), X = G.left + G.W / 2 + (box.x - cam.c[0]) / cam.lam, Y = cam.top + H / 2 + (box.y - cam.c[1]) / cam.lam;
+    return X < hud.width && Y < hud.height && X + box.w / cam.lam > 0 && Y + box.h / cam.lam > 0;
+  };
+  const end = (boxes, want, start, dir) => {
+    let out = solve(boxes, want, G.top, start, dir);
+    if (underHud(boxes[0], out) && hud.height > G.top) out = solve(boxes, want, hud.height, start, dir);
+    return out;
+  };
+  // the opening frame: IO, the inputs, the machine as built (too wide to show: the Input end)
+  const open = contextOf(plan, layout, -1), first = plan.beats.length ? beatMovers(plan, layout, 0) : null;
+  const opening = end([open.core, ...(first?.s0 ? [union(open.core, first.s0)] : []), open.box], open.want, null, [-1, 1]);
+  const keys = [{lam: opening.lam, top: opening.top, c: opening.c}], beats = [];
+  for (let k = 0; k < plan.beats.length; k++) {
+    const prev = keys[k], mv = beatMovers(plan, layout, k), ctx = contextOf(plan, layout, k);
+    const s0 = mv.s0 || ctx.box, s1 = mv.s1 || ctx.box;
+    // the start: where the last beat ended, zoomed out if the movers do not fit there, and
+    // moved just enough to take them in (a box too big to show starts at its nearer end)
+    let lamA = prev.lam;
+    { const {v, p} = sizes(lamA, prev.top); if (![0, 1].every(axis => { const [l, h] = ext(s0, axis); return fits(l, h, v[axis], p); })) lamA = clampLam(Math.max(lamA, need(s0, prev.top))); }
+    const A = {lam: lamA, top: prev.top, c: [0, 0], rho: [0, 0], over: [false, false]}, sa = sizes(lamA, prev.top);
+    for (const axis of [0, 1]) {
+      const [l, h] = ext(s0, axis), rel = rhoOf(prev.c[axis], l, h, sa.v[axis], sa.p);
+      A.over[axis] = !fits(l, h, sa.v[axis], sa.p);
+      A.rho[axis] = A.over[axis] ? (clamp01(rel) <= .5 ? 0 : 1) : clamp01(rel);
+      A.c[axis] = inBounds(centre(l, h, sa.v[axis], sa.p, A.rho[axis]), axis);
+    }
+    const swoop = A.lam !== prev.lam || Math.abs(A.c[0] - prev.c[0]) > 1e-6 || Math.abs(A.c[1] - prev.c[1]) > 1e-6;
+    // the end: these movers, then the next beat's where they start, the block, the frame
+    const next = k + 1 < plan.beats.length ? beatMovers(plan, layout, k + 1).s0 : null;
+    const boxes = [s1];
+    if (next) boxes.push(union(boxes.at(-1), next));
+    if (ctx.core) boxes.push(union(boxes.at(-1), ctx.core));
+    boxes.push(union(boxes.at(-1), ctx.box));
+    const K = end(boxes, ctx.want, A, [mv.dx, mv.dy]);
+    keys.push({lam: K.lam, top: K.top, c: K.c});
+    beats.push({A, K, swoop, mv, focus: ctx.box});
   }
-  return {box, centre, front: top < Infinity ? {top, bottom, down: DOWNWARD.has(beat.kind)} : null};
+  const chain = {G, keys, beats, sizes, centre, inBounds, ext};
+  byView.set(key, chain);
+  return chain;
 }
-function fit(frame, W, H, {overview = false, bounds} = {}) {
-  const P = FURNITURE.pad, box = overview ? bounds : frame.box;
-  let s = Math.min((W - 2 * P) / box.w, (H - 2 * P) / box.h);
-  if (!overview) s = Math.min(FURNITURE.maxScale, Math.max(FURNITURE.minScale, s));
-  const vw = W / s, vh = H / s, pad = P / s;
-  const axis = (want, lo, hi, v) => {
-    const min = hi + pad - v / 2, max = lo - pad + v / 2;   // centres that keep [lo, hi] in view
-    return min <= max ? Math.min(max, Math.max(min, want)) : null;
-  };
-  const cx0 = frame.centre ? frame.centre.x : box.x + box.w / 2, cy0 = frame.centre ? frame.centre.y - FURNITURE.follow : box.y + box.h / 2;
-  const cx = axis(cx0, box.x, box.x + box.w, vw) ?? box.x + box.w / 2;
-  const cy = axis(cy0, box.y, box.y + box.h, vh);
-  return {s, cx, cy, vw, vh, pans: cy === null, box};
+// The framed area for a viewport and inset (CSS px); hud is a box in the top-left corner that
+// the beat's movers keep clear of.
+function geometry(viewport, inset) {
+  const left = inset.left || 0, right = inset.right || 0, bottom = inset.bottom || 0, top = inset.top || 0;
+  return {vw: viewport.width, vh: viewport.height, left, top, W: Math.max(1, viewport.width - left - right), H: t => Math.max(1, viewport.height - t - bottom)};
 }
-// cameraAt → the viewBox {x, y, w, h} in machine units for the whole viewport; inset (CSS px)
-// shrinks the part the camera frames into (recording mode's caption band).
+// cameraAt → the viewBox {x, y, w, h} in machine units for the whole viewport. inset (CSS px)
+// shrinks the part the camera frames into (the recording band, a palette over the stage);
+// inset.hud {width, height} is the DOM HUD in the top-left corner.
 export function cameraAt(plan, layout, t, viewport, {reduced = false, inset = {}, overview = false} = {}) {
-  const left = inset.left || 0, right = inset.right || 0, top = inset.top || 0, bottom = inset.bottom || 0;
-  const W = Math.max(1, viewport.width - left - right), H = Math.max(1, viewport.height - top - bottom);
   const n = plan.beats.length, tt = Math.max(0, Math.min(n, t));
-  const k = tt <= 0 ? -1 : Math.ceil(tt) - 1, u = tt <= 0 ? 1 : tt - k;
-  const at = (j, v) => {
-    const f = fit(beatFrame(plan, layout, j), W, H, {overview, bounds: layout.bounds});
-    let cy = f.cy;
-    if (cy === null) {
-      // The frame does not fit at the smallest scale: pan, eased like the beat, from the frame's
-      // foot to the top of the motion front (a carry ripple, a rising shift), or from the top
-      // of the front down to the foot (a borrow, a falling light).
-      const fr = beatFrame(plan, layout, j).front, half = f.vh / 2, pad = FURNITURE.pad / f.s;
-      const foot = f.box.y + f.box.h + pad - half, head = f.box.y - pad + half;
-      const crest = fr ? Math.min(foot, Math.max(head, fr.top - 8 + half)) : head;
-      const [a, b] = fr?.down ? [crest, foot] : [foot, crest];
-      cy = a + (b - a) * ease(clamp01(v));
-    }
-    return {s: f.s, cx: f.cx, cy, pans: f.cy === null};
-  };
-  const from = at(k - 1, 1), to = at(k, reduced ? 1 : u);
-  // a panning beat swoops onto its path in the first tenth of the beat, then rides it
-  const e = reduced ? (u >= .5 ? 1 : 0) : to.pans ? ease(clamp01(u / .1)) : ease(u);
-  const s = from.s + (to.s - from.s) * e, cx = from.cx + (to.cx - from.cx) * e, cy = from.cy + (to.cy - from.cy) * e;
-  // sizes round down, so the scale never drops below its floor
-  const r = v => Math.round(v * 1000) / 1000, down = v => Math.floor(v * 1000) / 1000;
-  return {x: r(cx - (left + W / 2) / s), y: r(cy - (top + H / 2) / s), w: down(viewport.width / s), h: down(viewport.height / s)};
+  let cam;
+  if (overview) {
+    const G = geometry(viewport, inset), P = FURNITURE.pad, b = layout.bounds;
+    const lam = Math.max(b.w / Math.max(1, G.W - 2 * P), b.h / Math.max(1, G.H(G.top) - 2 * P));
+    cam = {lam, top: G.top, c: [b.x + b.w / 2, b.y + b.h / 2]};
+    return viewBoxOf(G, cam);
+  }
+  const chain = chainOf(plan, layout, viewport, inset), G = chain.G;
+  if (tt <= 0) return viewBoxOf(G, chain.keys[0]);
+  const k = Math.ceil(tt) - 1, u = tt - k, beat = chain.beats[k], {A, K} = beat;
+  if (reduced) return viewBoxOf(G, u < .5 ? A : K);
+  if (u >= 1) return viewBoxOf(G, K);
+  // the path: zoom and inset ease like the beat, ρ eases (or sweeps), the box is the movers'
+  const e = ease(u), lam = lerp(A.lam, K.lam, e), top = lerp(A.top, K.top, e), {v, p} = chain.sizes(lam, top);
+  const box = beat.mv.list.length ? moversBox(beat.mv, u) : beat.focus;
+  const c = [0, 1].map(axis => { const [l, h] = chain.ext(box, axis); return chain.inBounds(chain.centre(l, h, v[axis], p, lerp(A.rho[axis], K.rho[axis], K.slide[axis] ? sweep(u) : e)), axis); });
+  cam = {lam, top, c};
+  // a beat that cannot start where the last one ended glides onto its path in its first tenth
+  if (beat.swoop && u < .1) {
+    const prev = chain.keys[k], w = ease(u / .1);
+    cam = {lam: lerp(prev.lam, lam, w), top: lerp(prev.top, top, w), c: [lerp(prev.c[0], c[0], w), lerp(prev.c[1], c[1], w)]};
+  }
+  return viewBoxOf(G, cam);
+}
+// sizes round down, so the scale never drops below its floor
+function viewBoxOf(G, cam) {
+  const r = v => Math.round(v * 1000) / 1000, down = v => Math.floor(v * 1000) / 1000, H = G.H(cam.top);
+  return {x: r(cam.c[0] - (G.left + G.W / 2) * cam.lam), y: r(cam.c[1] - (cam.top + H / 2) * cam.lam), w: down(G.vw * cam.lam), h: down(G.vh * cam.lam)};
 }
