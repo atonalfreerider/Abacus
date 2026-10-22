@@ -94,3 +94,34 @@ test('a frame stamped before the beat began never runs the clock backwards', () 
   assert.equal(c.beat, 0); assert.equal(c.t(1500), .5);
   c.step(1500); assert.equal(c.t(1490), 1, 'a beat begun at 1500 holds at its start');
 });
+
+test('read along on a level-pace plan: the clock starts every beat when schedule() says, at every speed', () => {
+  // Captions long enough to need a gap after every beat, and carry beats half a beat long:
+  // the gap subtracts the carry's own length (dur · sp), not dur² · sp.
+  const carries = { beats: [{ i: 0, kind: 'collide', caption: 'x'.repeat(40) }, { i: 1, kind: 'carry', dur: .5, caption: 'y'.repeat(25) },
+    { i: 2, kind: 'carry', dur: .5, caption: 'z'.repeat(60) }, { i: 3, kind: 'return', caption: 'w'.repeat(12) }, { i: 4, kind: 'output', caption: 'Output [22].' }] };
+  for (const sp of SPEEDS) {
+    const s = schedule(carries, sp, { readAlong: true }), c = new BeatClock(carries, { sp, readAlong: true });
+    c.start(0);
+    carries.beats.forEach((beat, i) => {
+      const len = s.ends[i] - s.starts[i];
+      assert.ok(Math.abs(c.t((s.starts[i] + len / 4) * 1000) - (i + .25)) < 1e-9, `sp ${sp}: beat ${i} a quarter in`);
+      if (i + 1 < carries.beats.length) assert.equal(c.t((s.ends[i] + (s.starts[i + 1] - s.ends[i]) / 2) * 1000), i + 1, `sp ${sp}: reading after beat ${i}`);
+    });
+    assert.equal(c.t(s.total * 1000 + 1), carries.beats.length); assert.equal(c.done, true);
+  }
+  assert.ok(Math.abs(schedule(carries, 1, { readAlong: true }).starts[2] - (1 + (.8 + 40 / 15 - 1) + .5 + (.8 + 25 / 15 - .5))) < 1e-12, 'a carry beat waits 0.8 + chars/15 − 0.5 s');
+});
+
+test('Step after a fractional seek finishes that beat and rests; the next Step plays the beat after', () => {
+  for (const frac of [.4, .5, .6, .9]) {
+    for (const auto of [true, false]) {
+      const c = new BeatClock(plan, { auto });
+      c.seek(7 + frac); assert.equal(c.beat, 7, 'part-way into beat 7');
+      assert.equal(c.step(1000), 'finish'); assert.equal(c.t(1000), 8, `seek(${7 + frac}) then Step ends beat 7`); assert.equal(c.playing, false);
+      assert.equal(c.step(1000), 'play'); assert.equal(c.beat, 8); assert.equal(c.t(1500), 8.5, 'then beat 8 plays');
+    }
+  }
+  const end = new BeatClock(plan); end.seek(15.5); assert.equal(end.step(0), 'finish'); assert.equal(end.t(0), 16); assert.equal(end.done, true);
+  const whole = new BeatClock(plan); whole.seek(7); assert.equal(whole.step(0), 'play'); assert.equal(whole.beat, 7, 'at a boundary Step plays the next beat');
+});
