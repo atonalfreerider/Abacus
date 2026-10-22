@@ -33,14 +33,15 @@ export function face(x,y,size,color,meta,attributes='',role='top') {
 }
 // An LED bulb round a 43-wide box at (x, y), the size of a card: base 2 and balanced
 // ternary hold one bit or trit per tray. Lit, it glows in its sign's colour; dark, it is
-// a socket with a filament.
+// a socket with a filament. The machine passes a palette to draw either style's symbols
+// without switching the live one; the default is the live palette.
 export const BULB=37;
-export function bulb(x,y,color,opacity=1){
-  const b=ink.bulb[color]||ink.bulb.blue,cx=round(x+21.5),cy=round(y+21.5),R=BULB;
+export function bulb(x,y,color,opacity=1,palette=ink){
+  const b=palette.bulb[color]||palette.bulb.blue,cx=round(x+21.5),cy=round(y+21.5),R=BULB;
   return `<g class="bulb bulb-${color}" opacity="${round(opacity)}"><circle cx="${cx}" cy="${cy}" r="${round(R*1.42)}" fill="${b.glow}" opacity=".14"/><circle cx="${cx}" cy="${cy}" r="${round(R*1.22)}" fill="${b.glow}" opacity=".26"/><circle cx="${cx}" cy="${cy}" r="${R}" fill="${b.body}" stroke="${b.glow}" stroke-width="2"/><circle cx="${cx}" cy="${cy}" r="${round(R*.58)}" fill="${b.core}" opacity=".85"/><ellipse cx="${round(cx-R*.36)}" cy="${round(cy-R*.42)}" rx="${round(R*.26)}" ry="${round(R*.15)}" transform="rotate(-35 ${round(cx-R*.36)} ${round(cy-R*.42)})" fill="#fff" opacity=".75"/></g>`;
 }
-export function socket(x,y){
-  const o=ink.bulb.off,cx=round(x+21.5),cy=round(y+21.5),R=BULB;
+export function socket(x,y,palette=ink){
+  const o=palette.bulb.off,cx=round(x+21.5),cy=round(y+21.5),R=BULB;
   return `<g class="bulb-socket"><circle cx="${cx}" cy="${cy}" r="${R}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="2"/><path d="M${cx-13} ${cy+11}v-9l4.6 -8l4.2 8l4.2 -8l4.2 8l4.2 -8l4.6 8v9" fill="none" stroke="${o.filament}" stroke-width="2" stroke-linejoin="round"/><ellipse cx="${round(cx-R*.36)}" cy="${round(cy-R*.42)}" rx="${round(R*.24)}" ry="${round(R*.13)}" transform="rotate(-35 ${round(cx-R*.36)} ${round(cy-R*.42)})" fill="#fff" opacity=".35"/></g>`;
 }
 // The numeral under a bulb (a barred 1 for the trit T).

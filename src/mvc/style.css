@@ -166,3 +166,200 @@ body.numbers-active #workspace,body.numbers-active .original-dock,body.numbers-a
 @media(max-width:480px){#numbers-phase{flex:1 1 50px;min-width:50px;width:auto}.numbers-digits{font-size:12px}}
 /* LED bulbs: the place value in a tray's corner. */
 .place-value{font-family:Georgia,serif}
+/* Machine: PRIME's function machine in LED bulbs. A grid, so the same parts rearrange for
+   desktop (side panel), tablets (palette always up), phones in portrait (a palette strip and
+   a control row under the stage, Steps in a sheet) and in landscape (a right rail). */
+body.machine-active #workspace,body.machine-active .original-dock,body.machine-active #transport,body.machine-active #entry-bar,body.machine-active #tutor-bar{display:none!important}
+/* The equation space's empty alert line would keep 22 px under the machine from its stage. */
+body.machine-active #feedback:empty{display:none}
+#open-machine[aria-pressed=true]{background:#2f5d6b;color:#fff;border-color:#2f5d6b}
+.nav-short{display:none}
+.visually-hidden{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+#watch-machine{background:#fff3d6;border-color:#b07a1d}
+#machine-mode{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto auto;grid-template-areas:"bar side" "stage side" "sentence side" "caption side" "result side" "status side" "ask side" "controls side";column-gap:10px}
+.machine-bar{grid-area:bar;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:14px;margin-bottom:6px}
+.machine-bar-more{display:contents}
+#machine-base{display:inline-flex;border:1px solid #777366;border-radius:8px;overflow:hidden;flex-shrink:0}
+#machine-base button{border:0;border-radius:0;padding:5px 10px;min-width:40px;background:#f8f5e9dd}
+#machine-base button+button{border-left:1px solid #b2aa92}
+#machine-base button[aria-checked=true]{background:#2f5d6b;color:#fff}
+.machine-in{display:flex;align-items:center;gap:6px}.machine-in span{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:#7a7263}
+#machine-input,#machine-expr{font:inherit;font-size:18px;padding:3px 10px;border:1px solid #8d8574;border-radius:18px;background:#fffdf4;width:8.5em;font-variant-numeric:lining-nums tabular-nums}
+#machine-expr{font-size:15px;width:11em;border-radius:8px}
+.machine-bar .primary,.machine-controls .primary,#machine-ask button:first-of-type{background:#3b6c78;color:#fff;border-color:#2f5d6b}
+#machine-stage{grid-area:stage;position:relative;min-height:160px;border:1px solid #292820;border-radius:23px;overflow:hidden;background:#fbf7ea8c;touch-action:none;outline:none}
+#machine-stage:focus-visible{box-shadow:0 0 0 2px #266a80}
+#machine-svg{display:block;position:absolute;inset:0;width:100%;height:100%;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.m-hit{fill:transparent;cursor:pointer}.m-hit-tower{cursor:help}
+.m-hit-socket{stroke:#2f5d6b;stroke-width:3;stroke-dasharray:6 7;stroke-opacity:0}.m-hit-socket:hover{stroke-opacity:.55}
+.m-hit-socket.target{stroke:#d18a1c;stroke-width:4;stroke-opacity:1}
+.m-preview{fill:none;stroke:#d18a1c;stroke-width:3;stroke-dasharray:8 6;pointer-events:none}
+.m-output-note{font:600 28px Georgia,serif;fill:#b3261e;pointer-events:none}
+/* The HUD stands on a panel of the stage's own colour: the camera frames each beat clear of it
+   (machine-app.js inset()), but a pill or tower outside the frame can still pass beneath, and
+   it is hidden there rather than printed through the HUD's text. */
+#machine-hud{position:absolute;left:8px;top:6px;z-index:1;padding:4px 8px;border-radius:12px;background:#fbf7eaf2;font-size:11px;letter-spacing:.12em;line-height:1.55;pointer-events:none}
+#machine-hud>*{opacity:.5;transition:opacity .2s}#machine-hud:hover>*{opacity:.9}.hud-title{font-size:19px;letter-spacing:.16em}
+.hud-row{display:flex;align-items:center;gap:7px}.hud-row>span:first-child{width:4.4em}
+.hud-bulb,.hud-bulbs i{display:inline-block;width:14px;height:14px;min-height:0;border-radius:50%;padding:0;border:1px solid #7b7564;background:#ebe5d2;vertical-align:middle}
+.hud-bulb{pointer-events:auto;cursor:pointer}.hud-bulbs{display:inline-flex;gap:3px}.hud-bulbs i{width:10px;height:10px}
+.hud-bulb.lit,.hud-bulbs i.lit{background:radial-gradient(circle,#e2f3ff 0 28%,#2f7fc4 62%);border-color:#4aa3ff;box-shadow:0 0 6px #4aa3ff}
+#machine-peek{position:absolute;z-index:3;display:flex;flex-direction:column;gap:1px;padding:8px 12px;border:1px solid #6d6655;border-radius:12px;background:#fffaf0f2;box-shadow:0 8px 20px #0003;font-size:14px;pointer-events:none;max-width:280px;overflow-wrap:anywhere}
+#machine-peek b{font-size:20px;font-weight:normal}#machine-peek small{color:#7a7263}
+#machine-sentence{grid-area:sentence;margin:6px 0 0;text-align:center;font-size:18px;min-height:1.35em;font-variant-numeric:lining-nums;overflow-wrap:anywhere}
+#machine-caption{grid-area:caption;margin:2px 0 0;text-align:center;font-size:15px;color:#4a463b;min-height:1.35em}
+.machine-result{grid-area:result;display:flex;justify-content:center;gap:8px;align-items:baseline;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:#7a7263}
+.machine-result output{font-size:17px;letter-spacing:0;text-transform:none;color:#25241e;font-variant-numeric:lining-nums}
+.machine-result:has(output:empty){display:none}
+#machine-status{grid-area:status;margin:2px 0 0;text-align:center;font-size:13px;color:#2f5d6b}#machine-status:empty{display:none}#machine-status[data-tone=refuse]{color:#923923}
+#machine-ask{grid-area:ask;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 8px;margin:4px 0 0;font-size:14px}
+.machine-rail{display:contents}
+#machine-palette{grid-area:stage;align-self:end;justify-self:center;z-index:2;display:flex;gap:6px;max-width:calc(100% - 24px);overflow-x:auto;padding:6px 10px;margin-bottom:8px;border:1px solid #6d6655;border-radius:16px;background:#fffaf0eb;box-shadow:0 6px 18px #0002;touch-action:pan-x;overscroll-behavior:contain;scrollbar-width:thin;transform:translateY(calc(100% - 22px));clip-path:inset(0 0 calc(100% - 22px) 0);transition:transform .5s,clip-path .5s}
+#machine-palette:hover,#machine-palette:focus-within,body.machine-dragging #machine-palette{transform:none;clip-path:inset(0)}
+#machine-palette button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex-shrink:0;min-width:58px;padding:3px 6px;font-size:11px;letter-spacing:.06em;touch-action:pan-x}
+#machine-palette button svg{display:block;width:44px;height:24px;pointer-events:none}
+.machine-controls{grid-area:controls;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin:6px 0 2px;font-size:14px}
+.machine-controls button,.machine-controls select{font-size:14px;padding:5px 10px}.machine-controls select{width:auto;border-radius:8px}
+#machine-auto[aria-pressed=true],#machine-pause[aria-pressed=true]{background:#2f5d6b;color:#fff;border-color:#2f5d6b}
+.machine-speed{display:inline-flex;align-items:center;gap:4px}#machine-speed{min-width:3.3em;text-align:center;font-variant-numeric:tabular-nums}
+.machine-check{display:flex;align-items:center;gap:4px}
+/* The options (carries, Digits, Read along, Reduced motion) flow in the control row; phones
+   give them a strip of their own. */
+.machine-extras{display:contents}
+#machine-steps-toggle,#machine-sheet-close{display:none}
+#machine-side{grid-area:side;min-height:0;display:flex;flex-direction:column;border:1px solid #6d6655;border-radius:14px;background:#fffaf0d9;overflow:hidden}
+.machine-tabs{display:flex;border-bottom:1px solid #d4cbb3}
+.machine-tabs [role=tab]{flex:1;border:0;border-radius:0;background:none;padding:8px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#7a7263}
+.machine-tabs [role=tab][aria-selected=true]{color:#25241e;box-shadow:inset 0 -2px #2f5d6b}
+#machine-sheet-close{border:0;background:none;font-size:22px;padding:4px 12px}
+#machine-steps-panel,#machine-parts-panel{flex:1;min-height:0;overflow:auto;padding:6px 8px}
+#machine-steps{margin:0;padding:0;list-style:none}
+#machine-steps button{display:flex;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:5px 6px;font-size:14px;line-height:1.3}
+#machine-steps button span{min-width:1.7em;color:#7a7263;font-variant-numeric:tabular-nums}
+#machine-steps button[aria-current]{background:#fff3d6;box-shadow:inset 3px 0 #d18a1c}
+#machine-outline ul{list-style:none;margin:0;padding-left:16px}#machine-outline>ul{padding-left:0}
+#machine-outline [role=treeitem]{outline:none}#machine-outline [role=treeitem]>span{display:block;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:14px}
+#machine-outline [role=treeitem]:focus>span{box-shadow:0 0 0 2px #266a80}
+#machine-outline [aria-selected=true]>span{background:#fff3d6;box-shadow:inset 3px 0 #d18a1c}
+.machine-help{font-size:13px;color:#5d584c;margin:4px 0 8px}
+.machine-ghost{position:fixed;left:0;top:0;z-index:50;pointer-events:none;display:flex;flex-direction:column;align-items:center;padding:4px 6px;border:1px solid #6d6655;border-radius:10px;background:#fffaf0;box-shadow:0 8px 18px #0004;font-size:11px;letter-spacing:.06em}
+.machine-ghost svg{width:44px;height:24px}
+.shake{animation:machine-shake .4s}
+@keyframes machine-shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+@media(prefers-reduced-motion:reduce){.shake{animation:none;box-shadow:0 0 0 2px #b3261e}#machine-palette{transition:none}}
+/* The Machine's own Reduced motion option (design 4.9) does the same inside the mode. */
+#machine-mode.reduced .shake{animation:none;box-shadow:0 0 0 2px #b3261e}#machine-mode.reduced #machine-palette{transition:none}
+@media(pointer:coarse){.machine-bar button,.machine-controls button,.machine-controls select,#machine-base button,#machine-input,#machine-expr{min-height:44px}#machine-base button,.machine-speed button,#machine-back{min-width:44px}#machine-steps button{min-height:40px}}
+/* Touch screens: the palette is always up; tablets get 48 px blocks. */
+@media(hover:none){#machine-palette{transform:none;clip-path:none}}
+@media(hover:none) and (min-width:700px){#machine-palette button{min-width:64px;min-height:48px}}
+@media(max-width:1023px){#machine-mode{grid-template-columns:minmax(0,1fr) 250px}}
+/* Phones in portrait: the bar wraps to two rows, the stage takes the height, and a palette
+   strip and a control row sit under the sentence; Steps and Parts open in a sheet. During a
+   run the strip and the bar's second row fold away, giving the stage about 100 px more. */
+@media(max-width:699px){
+ #machine-mode{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto auto auto;grid-template-areas:"bar" "stage" "sentence" "caption" "result" "status" "ask" "palette" "controls"}
+ .machine-bar{gap:4px 5px;margin-bottom:2px}.machine-in{flex:1;min-width:0}.machine-in span{display:none}#machine-input{flex:1;min-width:0;width:auto;font-size:17px}
+ .machine-bar-more{display:flex;gap:5px;flex:1 1 100%}#machine-expr{flex:1;min-width:0;width:auto;font-size:16px}
+ #machine-mode.running .machine-bar-more,#machine-mode.running #machine-palette{display:none}
+ /* (a 568 px tall phone has no room for 200 px: the sentence and caption were drawn over it) */
+ #machine-stage{border-radius:16px;min-height:120px}
+ #machine-sentence{font-size:16px;margin-top:2px}#machine-caption{font-size:14px}
+ #machine-palette{grid-area:palette;transform:none;clip-path:none;align-self:stretch;justify-self:stretch;max-width:none;height:56px;margin:3px 0 0;padding:3px 6px;border-radius:12px;box-shadow:none}
+ #machine-palette button{min-width:52px;min-height:44px;padding:1px 4px;font-size:10px}#machine-palette button svg{width:38px;height:20px}
+ /* Design 4.8's row (Step, AUTO, −/+, Back, Rebuild, Steps) and Pause, the only pause a
+    touch screen has, wrap rather than scroll out of sight: at 360 to 414 px they take two
+    rows, every one on screen. The options are at the foot of the Steps sheet (machine-app.js
+    moves them there on phones): a strip of their own cost the stage 52 px at the opening. */
+ .machine-controls{flex-wrap:wrap;justify-content:flex-start;gap:4px 5px;margin:3px 0 0}
+ .machine-controls>*{flex-shrink:0;min-height:44px}.machine-controls button,.machine-controls select{font-size:13px;padding:4px 9px;min-height:44px}
+ #machine-step{min-width:64px;order:1}#machine-auto{order:2}.machine-speed{order:3}#machine-back{order:4;min-width:44px}#machine-rebuild{order:5}#machine-pause{order:6}#machine-remove{order:7}#machine-steps-toggle{display:inline-block;order:8}#machine-centre{order:9}#machine-overview{order:10}
+ .machine-speed button{min-width:44px}
+ #machine-side{position:fixed;left:0;right:0;bottom:0;z-index:20;max-height:62vh;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0003;display:none;padding-bottom:max(0px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px));background:#fffaf0}
+ #machine-side.open{display:flex}#machine-sheet-close{display:block}
+}
+/* Phones in landscape: the stage takes the whole height; the bar, the sentence and caption,
+   the palette and the controls form a right rail beside it, like the dock. */
+@media(max-height:520px) and (min-aspect-ratio:3/2){
+ /* The mode takes the empty tutor row's gap too, and the brand its motto's line: height is
+    what a landscape stage lacks (a 15-level tower settles whole at 844 × 390). The rail is
+    280 px, so the base switch's 44 px buttons leave Input room for [16,7]. */
+ body.machine-active .brand small{display:none!important}
+ #machine-mode{grid-column:1/-1;grid-row:2/7;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:auto auto auto auto auto auto minmax(0,1fr);grid-template-areas:"stage bar" "stage sentence" "stage caption" "stage result" "stage status" "stage ask" "stage rail"}
+ .machine-bar{gap:4px;margin-bottom:2px}.machine-in{flex:1;min-width:0}.machine-in span{display:none}#machine-input{flex:1;min-width:0;width:auto;font-size:15px;padding:3px 6px}
+ #machine-base button{min-width:30px;padding:4px 6px}#machine-run{padding:4px 8px}
+ .machine-bar-more{display:flex;gap:4px;flex:1 1 100%}#machine-expr{flex:1;min-width:0;width:auto;font-size:14px}
+ #machine-mode.running .machine-bar-more{display:none}
+ #machine-sentence,#machine-caption,#machine-status,.machine-result{text-align:left;justify-content:flex-start}
+ /* the long run's ask keeps its two buttons on one row: in cyber's wider letters they took two,
+    and on a 568 × 320 phone Show the answer fell 10 px below the screen */
+ #machine-ask{justify-content:flex-start;gap:4px 6px;font-size:13px;line-height:1.25}#machine-ask button{font-size:13px;padding:3px 8px}
+ #machine-sentence{font-size:15px;margin-top:2px}#machine-caption{font-size:13px;line-height:1.3}
+ /* The palette is one row that scrolls sideways (as on a portrait phone) and folds away
+    during a run, so Step, Back, AUTO and Pause are on screen from the opening; the options
+    are at the foot of the Steps sheet, as on a portrait phone. */
+ .machine-rail{grid-area:rail;display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin-top:4px}
+ #machine-palette{transform:none;clip-path:none;align-self:stretch;justify-self:auto;max-width:none;margin:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding:4px;border-radius:12px;box-shadow:none;touch-action:pan-x;flex-shrink:0}
+ #machine-palette button{min-width:44px;min-height:44px;padding:1px 3px;font-size:9px;touch-action:pan-x}#machine-palette button svg{width:34px;height:18px}
+ #machine-mode.running #machine-palette{display:none}
+ .machine-controls{margin:0;justify-content:flex-start;gap:4px}.machine-controls button,.machine-controls select{min-height:44px;font-size:12px;padding:3px 7px}
+ .machine-controls #machine-step{min-width:64px}.machine-speed button,#machine-back{min-width:44px}
+ /* Take off, shown while a block is selected, leads the controls, under the palette: at
+    order 7 it fell below the visible rail, which the selection's status line shortens. */
+ #machine-remove{order:0}#machine-step{order:1}#machine-back{order:2}#machine-auto{order:3}#machine-pause{order:4}.machine-speed{order:5}#machine-rebuild{order:6}#machine-steps-toggle{display:inline-block;order:8;min-width:44px}#machine-centre{order:9}#machine-overview{order:10}.machine-extras{display:contents}.machine-extras>*{order:11}
+ #machine-stage{border-radius:14px;min-height:120px}
+ /* The sheet stands the full height at the right. A landscape phone under 700 px wide also
+    matches the portrait query, whose bottom sheet (left 0, 62vh) made this a 62vh box at the
+    top left with 25 to 60 px left for the list under the options: left and max-height are
+    reset here, not inherited. */
+ #machine-side{position:fixed;top:0;right:0;bottom:0;left:auto;max-height:none;width:min(360px,60vw);z-index:20;border-radius:16px 0 0 16px;box-shadow:-10px 0 30px #0003;display:none;padding-bottom:max(0px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px));background:#fffaf0}
+ #machine-side.open{display:flex}#machine-sheet-close{display:block}
+}
+/* Recording mode (&recording, the silent videos): only the stage, unless a build scene
+   asks for the bar and palette. The burned-in caption takes the bottom band. */
+body.machine-recording #machine-caption,body.machine-recording #machine-sentence,body.machine-recording #machine-side,body.machine-recording .machine-controls,body.machine-recording .machine-result,body.machine-recording #machine-status,body.machine-recording #machine-ask{display:none!important}
+body.machine-recording:not(.machine-chrome-build) .machine-bar,body.machine-recording:not(.machine-chrome-build) #machine-palette{display:none!important}
+body.machine-recording #machine-mode{grid-template-columns:minmax(0,1fr) 0;column-gap:0}
+body.machine-recording #machine-palette{transform:none;clip-path:none}
+/* Phones: the HUD is one line along the top of the stage (two below 360 px), so the camera,
+   which frames below it (machine-app.js inset()), loses as little height as possible. During a
+   run it folds away with the palette strip and the bar's second row: its readouts are in the
+   control row (AUTO, the beat length) and the bar (the base), and a tall tower that settles
+   whole keeps its pill on stage instead of under the band (design 4.5, 4.8). A recording keeps
+   it, as it was filmed. */
+@media(max-width:699px),(max-height:520px){#machine-hud{left:0;right:0;top:0;border-radius:0;padding:2px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;font-size:9px;letter-spacing:.08em;line-height:1.4}.hud-title{font-size:11px;letter-spacing:.1em}.hud-row{gap:4px}.hud-row>span:first-child{width:auto}.hud-bulb{width:12px;height:12px}.hud-bulbs{gap:2px}.hud-bulbs i{width:8px;height:8px}
+ body:not(.machine-recording) #machine-mode.running #machine-hud{display:none}}
+/* 360 px (a common Android width) and the 332 px stage beside a 640 × 360 phone's rail: tighter
+   spacing keeps the HUD to one line, so the default machine opens with its × block on stage. */
+@media(max-width:374px),(max-width:699px) and (max-height:520px){#machine-hud{padding:2px 6px;gap:0 5px;letter-spacing:.04em}.hud-title{letter-spacing:.05em}}
+/* Phones: the options (carries, Digits, Read along, Reduced motion) are at the foot of the
+   Steps sheet, under both tabs (machine-app.js moves them there while the sheet query holds). */
+#machine-side .machine-extras{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;flex-shrink:0;padding:6px 10px 8px;border-top:1px solid #d4cbb3;font-size:14px}
+#machine-side .machine-extras::before{content:'Options';flex:1 1 100%;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:#7a7263}
+#machine-side .machine-extras select{font-size:14px;padding:4px 8px;border-radius:8px;width:auto}
+/* A landscape sheet is short (320 px on a 568 × 320 phone): the options keep to two rows with
+   no caption line (the group is still named Options), so the Steps list and the Parts outline
+   keep about half the sheet. */
+@media(max-height:520px) and (min-aspect-ratio:3/2){#machine-side .machine-extras{padding:4px 10px 6px;row-gap:2px}#machine-side .machine-extras::before{display:none}}
+/* Every touch control is at least 44 px each way, the landscape rail's base switch included
+   (its 30 px rule above is for a short window with a mouse). */
+@media(pointer:coarse){#machine-base button,#machine-sheet-close,.machine-tabs [role=tab]{min-width:44px;min-height:44px}#machine-steps button,.machine-check,#machine-side .machine-extras select,#machine-ask button{min-height:44px}
+ /* the Parts outline's rows (24 px) and the long run's Play at 4× and Show the answer (30 px) */
+ #machine-outline [role=treeitem]>span{display:flex;align-items:center;min-height:44px}
+ /* The HUD's AUTO bulb (12 px) is a readout on a touch screen: AUTO is the control row's
+    44 px button, and a tap there falls through to the stage. */
+ .hud-bulb{pointer-events:none}}
+/* Six header buttons on a 360 px phone: no motto, tighter buttons, "Eq." for Equation (its
+   accessible name stays "Equation"). */
+@media(max-width:420px){.brand small{display:none!important}nav{gap:2px}nav button{padding:5px 4px;font-size:12px}.nav-long{display:none}.nav-short{display:inline}}
+/* Six header buttons at every width: the nav keeps its place and the brand gives way (its
+   motto clips at the right) wherever even the tighter buttons below leave too little room,
+   so View is never pushed off a screen whose body cannot scroll. */
+header>nav{flex-shrink:0}header>.brand{min-width:0}.brand small{overflow:hidden}
+@media(min-width:701px) and (max-width:860px){nav{gap:4px}nav button{padding:6px 8px}}
+@media(min-width:421px) and (max-width:560px){nav button{padding:5px 5px}}
+@media(max-width:350px){header{gap:4px}nav button{padding:5px 3px;font-size:11px}}
+.machine-result output{min-width:0;overflow-wrap:anywhere;max-height:4.6em;overflow-y:auto}
+/* Watch in the machine floats above the transport on small screens: in the row it wrapped
+   the transport mid-animation, shrinking the workspace and pushing Undo off the left edge. */
+@media(max-width:700px),(max-height:520px){#transport{position:relative}#watch-machine{position:absolute;right:0;bottom:calc(100% + 6px);z-index:5;box-shadow:0 4px 12px #0003}}

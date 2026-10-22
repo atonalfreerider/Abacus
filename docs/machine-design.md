@@ -155,6 +155,7 @@ All label text comes from the plan (`Tower.text`, `approx`, `digits`, `reading`,
   - Light towers show `reading`: `ln 112 ≈ 4.7185`.
   - Timing: the text switches at u ≥ 0.9 of each beat and the pill is always placed on top. This fixes PRIME's label left inside the stack.
   - Placement: centred on its tower, but an `.L` pill's right edge never passes x = −14 and an `.R` pill's left edge never passes x = +14 (relative to the node). Long pills shift outward, so sibling pills never overlap (6.3b).
+  - **Legibility at small scales** (`view.minFont`, which the mode sets to 10 px; the recording leaves it unset): wherever the camera draws small, as on a phone at its smallest scale, a pill's 27-unit text draws at 6.6 px and the INPUT/OUTPUT captions at 3.4 px. A label whose text would draw under minFont (a caption under 0.8 of it) grows about its foot (centred, or from a corner; an IO pill also from its top or middle, centred or from its inner end, carrying its caption with it, which then grows from its own inner end: about its middle, else its top or its foot) up to that size, into free space only: never over a bulb where it starts or ends the beat, a block (its hub apart from it), IO, a static tower's furniture, another label (2 px apart, the active node's pills placed first) or the edge of the framed area. A label already lying against one of those at its own size (inside the 2 px, or into it by at most 1 px: a pill whose foot rests on the socket ring under its tower, a pill at the stage's edge) grows away from it, never further in. The layout's sizes are untouched, so 6.3b's guarantee holds for what is drawn; where the layout leaves no room the label keeps its size. The one such label on an 844 × 390 phone is the Input pill at the opening (7.2 px): the input coins' rims stand 8 units over both its ends and the triangle's top edge lies 10 units under its inner 27 units, so scaled about any point of its box it either rises into a coin or sinks into the triangle (10 px needs 50 units of height there; there are 39 between them, 2 px kept clear of each). Only moving it out from under its coins would make room, and labels grow about their own boxes, so the coins keep standing on Input; its values are read in the coins' own pills (10 px), the sentence line and the Input field. Its INPUT caption, under the first coin's rim, grows down from its top to 8 px.
 - **Digits (D).**
   - Place values (`2⁰ 2¹ …`, `3ᵏ`, `eᵏ`, opacity .55) form one column left of the active node's leftmost tower.
   - The digit glyph sits right of each column bulb; T is a barred 1. Lane bulbs have no glyphs.
@@ -177,7 +178,7 @@ All label text comes from the plan (`Tower.text`, `approx`, `digits`, `reading`,
 - **HUD** (DOM overlay, top left, alpha .5):
   - the title `PRIME / FUNCTION` (the user's own movie);
   - BASE (2, ±3 or e);
-  - **AUTO**: one bulb, lit when on. Clicking it toggles AUTO and redraws, which PRIME's did not.
+  - **AUTO**: one bulb, lit when on. Clicking it toggles AUTO and redraws, which PRIME's did not. On a touch screen the 12 px bulb is a readout only (a tap falls through to the stage): AUTO is the control row's 44 px button.
   - **SPEED**: six bulbs, the lit count showing the beat length, plus the seconds. PRIME's readout was the constant `101`.
 - **Palette** along the bottom. Hover raises it on pointer devices; it is always raised on touch.
 
@@ -896,7 +897,7 @@ The base-e palette is ADD, SUB, MULT, ×eᵏ (k ∈ [−6, 12]), COMP, MEASURE a
   - Or drag a block: the nearest open socket within r 250 previews a wire (PRIME `Ping`), and dropping attaches.
   - On touch, a horizontal movement in the palette strip scrolls it. A drag starts only after a vertical movement of more than 10 px out of the strip, or a 350 ms press.
   - Dropping on an occupied socket pushes the existing block into the new block's left socket.
-  - Backspace on a selected block detaches it.
+  - Backspace on a selected block detaches it; so does the Take off button (`#machine-remove`), shown while a block is selected, which is the touch path.
 - **Edits rewind.** Any attach, detach, base switch or pace switch, mid-run or after OUTPUT:
   - re-plans at once;
   - rewinds to beat 0;
@@ -943,12 +944,15 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
 - **Framing:** the union of the active node, its towers and pills at the beat's start and end, and its parent socket, padded by 24 px.
   - The scale lies between **18/74 CSS px per unit** (bulbs at least 18 px across) and 1.2.
   - `view.inset` (recording mode, 5.1) shrinks the usable viewport.
+  - The opening frames IO, the inputs and the machine as built. When that just misses at the minimum scale (on a phone the root hangs as far below IO as the tallest tower it will hold), it is framed without its margins, centred. When it misses even so (a machine of two rows, (5 + 3) × 7), it is framed from IO down: IO and the inputs keep their margins at the top and the stage reaches as far into the machine as it can, with IO and the root block framed tight if that alone leaves the block out. Never only a wire running off the stage while IO and the root block fit together.
 - **Panning when the frame does not fit.** If the box does not fit at the minimum scale, the camera stays at the minimum scale and pans along the tower during the beat:
   - it follows the motion front: the carry being resolved (level pace), the climbing ripple from bottom to top (together pace), A's top (shift), the donor (borrow), or the light (UNFOLD);
-  - the pan is eased like the beat, so every moving bulb passes through the frame at ≥ 18 px.
+  - the pan is eased like the beat, so every moving bulb passes through the frame at ≥ 18 px;
+  - **the pan settles**: when the beat's moving bulbs fit the stage at the minimum scale (their towers' pills may not), the beat ends with every one of them on it, 3 px clear of the edge, with their towers whole if those fit, else as much of the pill as that leaves; the next beat starts there. Only bulbs taller than the stage end at the motion front. The HUD counts as an inset: on a phone it folds away during a run (4.8), so the stage's whole height is framed and no settled pill ends under its band (at 844 × 390 every beat of [255,255] × settles, its 15-level towers with their pills; the 16-level 65025's bulbs fit, and its pill, 14 px past the stage with them, is cut by the stage's top).
+- **The fold** (4.8): on a phone the run folds the HUD away, and in portrait the palette strip and the bar's second row with it, so the stage grows and moves, or (in landscape) only loses the HUD's inset. The camera never jumps there. At t = 0 and t = n it frames as at rest, in the stage as it stood when the run began, carried into the run's stage at the same scale with every machine point under the same screen point (`moveCamera`); over the first beat it eases from that to the run's own framing, and back over the last, like the beat (`foldWeight`, `foldCamera`; with reduced motion it cuts at mid-beat with the camera). Between the two the movers stay on stage and the scale at its floor or above, since both framings keep them. After a rotation or resize mid-run the run's own camera is used. Output's line, which first appears at t = n, is outside the fold: where it takes its height from the stage (a desktop, 360×640 and 375×667, by ≈ 20 px) the stage at rest is shorter at the run's end than as it began, and the camera reframes for it.
 - **Coins far away.** Towers **outside** the active node collapse to coins when their bulbs would draw under 12 px across. The active node's towers never collapse, even in the overview (O).
 - **Overrides:** a manual pan or zoom suspends following until T or the next Step.
-- The camera is a pure function of t (`cameraAt`), so videos and tests are exact.
+- The camera is a pure function of t (`cameraAt`), so videos and tests are exact; on a phone during a run, of t and the stage at rest as the run began (the fold).
 
 ### 4.6 Relation to the equation space
 
@@ -959,6 +963,7 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
   - It hides when the base changes, another term is focused, the equation is reloaded, or 8 s after the term's animation ends.
   - It opens Machine with `{expression: termText, base}`.
   - Only × and ÷ terms qualify: + and − are not operation terms in the equation space.
+  - Every ÷ but the last must divide exactly. The machine's ÷ passes only its quotient up (the remainder fades), so `7 ÷ 2 × 4` would play 3 × 4 = 12 beside the cards' 14; the last ÷ shows its quotient and remainder, as a lone `7 ÷ 2` does.
   - Moving between the modes is a plain mode switch; the earlier row-to-column quarter turn is dropped from v1.
 - **To the cards** (`#machine-to-cards`) loads Output's first value into the equation space. The app.js `cards` handler:
   1. calls `showMachine(false)`;
@@ -991,11 +996,13 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
 - **Phone portrait:**
   - the bar wraps to two rows;
   - the stage fills the height, which suits vertical trees and towers;
-  - below it come the sentence and caption, a 56 px palette strip that scrolls sideways, and a control row (Step 64 px wide, AUTO, −/+, Back, Rebuild, Steps), with every target ≥ 44 px;
-  - **during a run** (playing, or paused mid-plan) the palette strip and the bar's second row collapse, giving the stage about 100 px more (≈ 530 px tall at 390×844, room for a 21-level tower at the minimum scale);
-  - Steps and Parts open in a bottom sheet;
+  - below it come the sentence and caption, a 56 px palette strip that scrolls sideways, and a control row (Step 64 px wide, AUTO, −/+, Back, Rebuild, Pause, Steps, Centre, Overview), with every target ≥ 44 px. It wraps (two rows from 360 to 414 px, in both styles) rather than scrolling any of them out of sight;
+  - the options (carries, Digits, Read along, Reduced motion) are at the foot of the Steps sheet, under both tabs, on phones in either orientation: a strip of their own under the control row cost the stage 52 px at the opening, when the camera needs the height most;
+  - the HUD is one line along the top of the stage from 360 px wide (tighter below 375 px; two lines below 360), and the stage is ≈ 490 px tall at 390×844, ≈ 315 px at 375×667 and ≈ 285 px at 360×640 at the opening, where every README machine opens with its root block on stage;
+  - **during a run** (playing, or paused mid-plan) the palette strip, the bar's second row and the HUD collapse, giving the stage about 110 px more (≈ 600 px tall at 390×844, room for the bulbs of a 29-level tower at the minimum scale) and the camera the HUD's band: its readouts are in the control row (AUTO, the beat length) and the bar (the base). The picture does not jump as they fold or come back: the camera eases between the framing at rest and the run's over the first and the last beat (4.5, the fold);
+  - Steps and Parts open in a bottom sheet (at most 62% of the height); on touch every row of the Parts outline is 44 px tall, as are the long run's Play at 4× and Show the answer;
   - Input is never auto-focused (4.2).
-- **Phone landscape** (height < 520 px): the palette and controls form a right rail, like the dock. Tall towers use the camera pan (4.5).
+- **Phone landscape** (height < 520 px): the palette (one row that scrolls sideways and folds away during a run) and the controls form a 280 px right rail, like the dock, so Step, Back, AUTO and Pause are on screen from the opening; Take off, while a block is selected, leads the controls, under the palette. The base switch's buttons are 44 px wide like every touch target, and the rail is wide enough for Input beside them. The brand's motto folds away in the mode, so the stage has the height (≈ 330 px at 844×390). The HUD is one line (in its tighter spacing on the stages beside a phone's rail under 700 px wide) and folds away during a run, as in portrait; the stage keeps its size, and the camera eases into the HUD's band over the first beat and out of it over the last (4.5, the fold). Steps and Parts open in a sheet the full height at the right (a phone under 700 px wide matches the portrait query too, so the sheet resets its left edge and height); the options keep to two rows there without their caption line, leaving the list ≈ 170 px at 568×320 and ≈ 240 px at 844×390. A long run's ask keeps Play at 4× and Show the answer on one row, so neither falls below a 320 px screen. Tall towers use the camera pan (4.5).
 - **All devices:** safe areas are respected. A `ResizeObserver` recomputes only the camera, because the layout does not depend on the viewport.
 - **A header with six buttons.** The browser test asserts no wrap or overflow at 360 × 740. The CSS fallback at ≤ 420 px hides the brand motto, sets nav padding to 4 px, and shows "Equation" as "Eq." through a long/short span pair.
 
@@ -1005,7 +1012,7 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
   - when stepping (AUTO off, or Step pressed) or with Read along on: "caption. sentence." once per beat;
   - under AUTO without Read along: the sentence once per **completed node** (at its RETURN), and the Output.
 
-  The visible `#machine-caption` and `#machine-sentence` are not live, so nothing is announced twice.
+  The visible `#machine-caption` and `#machine-sentence` are not live, so nothing is announced twice. `#machine-status` is `role=status` (6.7), a polite region of its own: refusals and edits are announced from there and never written to `#machine-live` as well.
 - **The sentence line** writes the tree as algebra after each beat:
   - `16 × 7` → `16 × 4 + 16 × 3` → `64 + 16 × 3` → `64 + (16 × 2 + 16 × 1)` → … → `112`;
   - division shows its invariant: `100 = 7 × 12 + 16`.
@@ -1361,7 +1368,7 @@ export function diffScenes(a, b) { /* inverse of applyDiff: new ids full, change
 **Light paths and deposits (normative; the planner writes them and the renderer only interpolates):**
 - With n deposit events (levels with d_k > 0, top down to the floor):
   - keyframe j (0 ≤ j ≤ n) sits at u_j = 0.9·j/n, at height h_j = height(remainder before event j);
-  - the final keyframe h_n is height(dust), or, when the result is exact, the level of the last deposit.
+  - the final keyframe h_n is height(dust), but never below the rail's end at −14 (6.10: the fading tail of a value just off a numeral, such as 9545/25946 = 0.100…ₑ with dust at −21, is no reason to refuse the run), or, when the result is exact, the level of the last deposit.
   - In level pace, each deposit is its own beat with n = 1.
 - Within segment j, the light's height is h_j + (h_{j+1} − h_j)·ease((u − u_j)/Δ), with Δ = u_{j+1} − u_j.
 - Deposit j at level k_j crosses at f_j = (h_j − k_j)/(h_j − h_{j+1}). Its bulbs are born with **`in` = [c_j, c_j + 0.081]**, where **c_j = u_j + Δ·(1 − √(1 − f_j))**, the inverse of the ease. Every bulb is therefore born within 0.05 level of the light (tested).
@@ -1418,7 +1425,8 @@ All coordinates are machine units, with y pointing down. The layout is a pure fu
 4. **Extents.** A node's half-width W(n) is the maximum over its places of |x| + the place's horizontal extent:
    - bulb 37 + digit gutter 48 + place-value column 56 on the leftmost place;
    - lanes 84 + 37;
-   - pill extents.
+   - pill extents;
+   - a two-socket block's socket rings, socketX + 44, and the 8 of a selected socket's mark: a machine still being built has no towers to widen it, and siblings packed by their faces alone overlapped rings, so a tap on one socket picked its neighbour.
 
    up(n) is the highest point above the centre line of any tower, lane, pill or rail in n's places over all scenes, at least 44. down(n) is the lowest point below it: 37 for binary/ternary, 84·(−minLevel) + 37 in base e including rails and dust, at least 44.
 5. **Rows.**
@@ -1681,6 +1689,11 @@ export function layoutPlan(plan)
               wire(id) → [x, y][], bounds} */;
 export function cameraAt(plan, layout, t, viewport /* {width, height} */, {reduced = false, inset = {}} = {})
   /* {x, y, w, h} */;
+// the fold (4.5): the run framing's share at t; a viewBox carried from one stage {x, y, width,
+// height} to another; the blend of the framing at rest (carried) and the run's
+export function foldWeight(t, n, reduced = false) /* 0 at t ≤ 0 and t ≥ n, 1 from t = 1 to n − 1 */;
+export function moveCamera(cam, from, to) /* {x, y, w, h} */;
+export function foldCamera(rest, run, w) /* {x, y, w, h} */;
 
 // ── render.js (C) ───────────────────────────────────────────────
 export const easeOut = u => 1 - (1 - u) ** 2;
@@ -1860,9 +1873,9 @@ Unit and property tests run with `node --test tests/*.test.js`.
 
 **Past a limit:**
 - **Typed input:** refused at Enter. The pill shakes and the status names the limit.
-- **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`.
+- **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`. The pre-check still works the exact answer out far past every tower (binary and balanced ternary up to 2¹⁴ bits, base e up to e^±2048), so `cmp(shl(1, 5000), 3)` is `tooBig` with the answer [1]; only a value past that budget is `tooBig` with no answer, and its message says why: "That number is too long to work out: it would need more than 16 384 bits (2¹⁴)." The budget is a size in bits in both bases (a decimal digit count would be wrong both ways: 2¹⁶³⁸⁴ and 10⁴⁹³³ − 1 both have 4 933 digits), and a ternary shift is measured, not bounded at 2 bits a trit.
 - **While planning:** the planner checks every tower as it is built. When a tower would exceed its cap, or the node or beat cap is passed, it returns `{ok:false, reason:'tooBig', result}`.
-- **Level pace:** the planner first retries in together pace.
+- **Level pace:** the planner first retries in together pace. The mode also plays carries together when a level-pace plan would pass 1000 beats ((2³² − 1)² is 1649): laying that out froze the page for over a second, for a run that takes minutes even at 4×. Between 400 and 1000 beats the soft limit asks at Enter.
 - The app then shows the exact answer statically in Output, with "Too big to animate step by step; here is the exact answer." Nothing is ever truncated or rounded silently.
 
 ### 6.11 What must not change (v1)
@@ -1872,7 +1885,7 @@ Unit and property tests run with `node --test tests/*.test.js`.
 - **Not modified in v1:** `bases.js`, `units.js`, `operations.js`, `animation.js`, `place-value.js`, `tutor.js`, `drag.js`. Any `bases.js` base-e float disagreement found by the cross-check is reported as a `todo`, for a separate change.
 - **Tutor:** the existing lessons and their 200-problem tests, and "lessons count in tens".
 - **Narrated videos:** the three videos, the ElevenLabs path, and `npm run videos` with no arguments. The audio-less mux runs only when there are no clips.
-- **App start:** Machine is lazy-loaded, makes no network requests, adds no dependencies, and adds ≤ 120 KB raw to `dist-app` (measured in `docs/verification.md`). `e-base.js` is loaded only on first use of base e. The global key handler changes only to ignore `machine-active`.
+- **App start:** Machine is lazy-loaded, makes no network requests and adds no dependencies. Budget (restated 2026-10-22 from the measured build, `docs/verification.md`; the first draft's 120 KB raw for the whole mode could not hold the specified module set): what every app start loads may grow by at most 40 KB raw / 10 KB gzip; the lazily loaded `src/machine` may weigh at most 350 KB raw / 120 KB gzip. `e-base.js` is loaded only on first use of base e. The global key handler changes only to ignore `machine-active`.
 
 **Phase 5 (owner D, after v1), the files it will touch:**
 - Lessons: `src/machine/lessons.js` and `tests/machine-lessons.test.js` (new); `src/machine/machine-app.js` (lesson mode); `src/mvc/app.js` (dialog entries, `startMachineLesson`).

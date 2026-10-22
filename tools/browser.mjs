@@ -33,7 +33,7 @@ export async function launch(url,{width=1280,height=800,scale=1}={}){
    await page.mouse('mouseReleased',to.x,to.y,{modifiers:shift?8:0});
   },
   async screenshot(file){const {data}=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(file,Buffer.from(data,'base64'));},
-  async close(){try{socket.close();}catch{}child.kill();await new Promise(r=>setTimeout(r,200));fs.rmSync(profile,{recursive:true,force:true});}
+  async close(){try{socket.close();}catch{}child.kill();await new Promise(r=>setTimeout(r,200));fs.rmSync(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}  // Chrome may still be writing its profile (ENOTEMPTY)
  };
  await page.goto(url);
  return page;
