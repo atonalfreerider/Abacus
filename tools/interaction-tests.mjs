@@ -133,23 +133,29 @@ try{
   const text=await page.eval(`document.getElementById('area-result').innerText`);if(!/Strips add up to\s+−8\.5/.test(text)||!/−20\/3/.test(text))throw Error(text);
   expect(await page.eval(`!!document.querySelector('#graph-svg .exact-mark')`),true,'exact integral marked on the gathered stack');
  });
- // The system lesson's worked example, then the learner's turn: drag the point to the crossing.
- const systemTurn=async()=>{
-  await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`[...document.querySelectorAll('#lessons button')].find(b=>b.textContent.includes('Solve a system by graphing')).click()`);await wait(1200);
+ // A crossing lesson's worked example, then the learner's turn: drag the point to the crossing.
+ const crossingTurn=async(title='Solve a system by graphing')=>{
+  await page.eval(`document.getElementById('open-tutor').click()`);await page.eval(`[...document.querySelectorAll('#lessons button')].find(b=>b.textContent.includes(${JSON.stringify(title)})).click()`);await wait(1200);
   await page.eval(`document.getElementById('tutor-step').click()`);await wait(600);await page.eval(`document.getElementById('tutor-turn').click()`);await wait(900);
   const from=await graphRect('#graph-svg .tracer circle'),box=await page.eval(`(()=>{const r=document.getElementById('graph-svg').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};})()`);
   if(!(from.x>box.x&&from.x<box.x+box.w&&from.y>box.y&&from.y<box.y+box.h))throw Error(`the point starts off the graph at (${Math.round(from.x)}, ${Math.round(from.y)})`);
+  if(!(await page.eval(`!!document.querySelector('#graph-svg .special.solution')`)))throw Error('the crossing is off the graph');
   await drag(from,await graphRect('#graph-svg .special.solution circle'),40);await wait(500);
   return page.eval(`document.getElementById('tutor-prompt').textContent`);
  };
  await check('tutor graph lesson: example, then the learner drags to the crossing',async()=>{
-  const text=await systemTurn();if(!/^Found it/.test(text))throw Error(text);
+  const text=await crossingTurn();if(!/^Found it/.test(text))throw Error(text);
  });
  await check('tutor graph lesson: crowded points (a crossing between intercepts) still start the point on the graph',async()=>{
   // The draw that failed on 2026-10-22: the clear whole numbers ran off the graph, and the point started below it.
   await page.eval(`import('./src/mvc/tutor.js').then(m=>{m.lessons.find(l=>l.id==='graph-system').make=()=>['y = -3x - 5','y = 3x + 13'];})`);
-  const text=await systemTurn();if(!/^Found it: \(−3, 4\)/.test(text))throw Error(text);
+  const text=await crossingTurn();if(!/^Found it: \(−3, 4\)/.test(text))throw Error(text);
  });
+ // 5x + 9 = x + 33 on a phone: the frame once sampled the steep line out to the shallow line's intercept at −33, and the crossing at (6, 39) fell off the graph.
+ for(const [w,h] of [[390,844],[844,390]])await check(`tutor graph lesson: graph both sides keeps the crossing on the graph past a far intercept (${w}×${h})`,async()=>{
+  await page.eval(`import('./src/mvc/tutor.js').then(m=>{m.lessons.find(l=>l.id==='graph-both-sides').make=()=>['5x + 9 = x + 33'];})`);
+  const text=await crossingTurn('Graph both sides');if(!/^Found it: \(6, 39\)/.test(text))throw Error(text);
+ },{width:w,height:h});
  await check('style: the cyber look restyles cards, stacks and the graph live, and switches back',async()=>{
   await load('345 - 1208 = 2x');
   const pick=style=>page.eval(`(()=>{const s=document.getElementById('style');s.value='${style}';s.dispatchEvent(new Event('change'));})()`);

@@ -22,18 +22,32 @@ export function niceStep(raw) { const p = 10 ** Math.floor(Math.log10(raw)), m =
 export function snapStep(unit) { for (const s of [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100]) if (s * unit >= 9) return s; return 100; }
 export const fx = (curve, x) => curve.poly.reduceRight((a, c) => a * x + numeric(c), 0);
 // Frame the interesting points (roots, vertices, crossings) with the origin, sampling
-// curves only between them so a parabola's steep arms do not shrink the picture.
+// curves only between them so a parabola's steep arms do not shrink the picture. When
+// that cannot fit even at the smallest scale, each curve is sampled only between its own
+// points: in 5x + 3 = x + 27 the steep line, sampled out to the shallow line's far
+// intercept, would push the crossing off the graph. It may leave through the top or
+// bottom instead, and every point stays in view.
 export function fitView(v, groups, curves) {
   const xs = groups.map(g => g.x);
   let x0 = Math.min(0, ...xs), x1 = Math.max(0, ...xs);
   if (x1 - x0 < 4) { const c = (x0 + x1) / 2; x0 = c - 2; x1 = c + 2; }
-  const ys = [0, ...groups.map(g => g.y)];
-  for (const c of curves) if (c.kind === 'function') for (let k = 0; k <= 40; k++) { const y = fx(c, x0 + (x1 - x0) * k / 40); if (Number.isFinite(y)) ys.push(y); }
-  let y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const xpad = Math.max(1, (x1 - x0) * .25), ypad = Math.max(1, (y1 - y0) * .15);
-  x0 -= xpad; x1 += xpad; y0 -= ypad; y1 += ypad;
-  v.unit = Math.max(3, Math.min(90, Math.min(v.width / (x1 - x0), v.height / (y1 - y0))));
-  v.cx = (x0 + x1) / 2; v.cy = (y0 + y1) / 2;
+  const xpad = Math.max(1, (x1 - x0) * .25), left = x0 - xpad, right = x1 + xpad;
+  // The padded y range, each curve sampled across the frame or only between its own points.
+  const yRange = own => {
+    const ys = [0, ...groups.map(g => g.y)];
+    curves.forEach((c, i) => {
+      if (c.kind !== 'function') return;
+      const mine = groups.filter(g => g.curves.includes(i)).map(g => g.x), [a, b] = own ? [Math.min(...mine), Math.max(...mine)] : [x0, x1];
+      if (a <= b) for (let k = 0; k <= 40; k++) { const y = fx(c, a + (b - a) * k / 40); if (Number.isFinite(y)) ys.push(y); }
+    });
+    const y0 = Math.min(...ys), y1 = Math.max(...ys), ypad = Math.max(1, (y1 - y0) * .15);
+    return [y0 - ypad, y1 + ypad];
+  };
+  const scale = ([y0, y1]) => Math.min(v.width / (right - left), v.height / (y1 - y0));
+  let ys = yRange(false);
+  if (scale(ys) < 3) ys = yRange(true);
+  v.unit = Math.max(3, Math.min(90, scale(ys)));
+  v.cx = (left + right) / 2; v.cy = (ys[0] + ys[1]) / 2;
 }
 // Where the point starts on a curve: on screen, where it can be grabbed, and clear of the
 // interesting points (at least ¾ of a card and 16 px), so finding them is the learner's
