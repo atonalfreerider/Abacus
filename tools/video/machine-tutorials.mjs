@@ -51,13 +51,17 @@ async function run(ctx, {flow = 2, speed = 1.5, settle = .7} = {}) {
 // given), press Enter, and hide them again once the numbers are down the wire.
 async function expression(ctx, text, caption) {
   const M = ctx.machine;
+  // The field is small and scrolls a long expression out of sight: while it is typed in, it
+  // is larger and wide enough to show the whole of it.
+  const field = big => ctx.eval(`Object.assign(document.getElementById('machine-expr').style,${JSON.stringify(big ? {fontSize: '18px', width: '440px'} : {fontSize: '', width: ''})})`);
   await cut(ctx, {tree: {}, input: ''}, async () => {
     await ctx.eval(`document.getElementById('machine-input').value='';document.getElementById('machine-expr').value=''`);
     await M.chrome('build');
+    await field(true);
     await ctx.eval(`__rec.below(['.machine-bar'])`);
   });
   const shown = caption && ctx.caption(caption, null, top);
-  await ctx.type('#machine-expr', text, {per: .07});
+  await ctx.type('#machine-expr', text);
   if (shown) await ctx.until(shown.end - .3);
   await ctx.hold(.6);
   // the numbers come in at the top: the top band clears as Enter is pressed
@@ -65,14 +69,32 @@ async function expression(ctx, text, caption) {
   await ctx.key('Enter');
   await M.until(1, {speed: 1.5});
   await M.chrome('run');
+  await field(false);
   await M.until(2, {speed: 1.5});
   await ctx.freeze(.5);
 }
+// The app's camera reaches a beat's frame only as the beat ends, so in a tree of blocks a
+// gate can start with its towers out of the picture or under the caption. ahead() gets the
+// camera to beat i's frame first: before a beat that works at a new block (the picture held),
+// in the first third of a ride back up. Then M.centre() hands the camera back to the app.
+const ahead = async (ctx, i) => {
+  const [beat] = (await ctx.machine.beats()).slice(i, i + 1);
+  if (beat.kind === 'return') await ctx.machine.follow({at: i + 1}, [i, i + .3]);
+  else await ctx.machine.zoom({at: i + 1}, {seconds: .6});
+};
 // The rest of the run, back up the wires and out, and a moment on the Output.
 async function finish(ctx, speed = 1.5) {
   await ctx.machine.until('end', {speed});
   await ctx.freeze(.8);
 }
+// Base e runs end on their answer: a moment on it, then the cut. (Their ride back up leaves
+// the digit column and the spent block's outline behind in render.js, so it is not filmed.)
+const settle = ctx => ctx.freeze(.8);
+// A point on the stage with nothing under it: a tap there clears the selection.
+const emptyPoint = ctx => ctx.eval(`(()=>{const r=document.getElementById('machine-stage').getBoundingClientRect();
+  for(const[fx,fy]of[[.8,.45],[.2,.45],[.8,.25],[.2,.25],[.5,.12]]){const x=r.x+r.width*fx,y=r.y+r.height*fy,el=document.elementFromPoint(x,y);
+    if(el?.closest('#machine-stage')&&!el.closest('[data-socket],[data-node],[data-tower],#machine-hud,#machine-palette,#machine-peek,button,input'))return{x,y};}
+  throw Error('no empty point on the stage');})()`);
 
 export const machineTutorials = {
   // V1: build a machine, then watch 16 × 7 split into shifts and sums.
@@ -93,27 +115,33 @@ export const machineTutorials = {
       await ctx.tap(() => ctx.element('#machine-svg [data-socket="io"]'));
       await ctx.hold(.5);
       await ctx.tap(() => ctx.element('#machine-palette button[data-op="mul"]'));
+      // Hanging the block selects its first open socket; a tap on the empty stage clears it.
+      await ctx.tap(() => emptyPoint(ctx));
       await ctx.until(hang.end);
       const typed = ctx.caption('Type the two numbers: [16,7].', null, top);
       await ctx.type('#machine-input', '[16,7]');
       await ctx.until(typed.end);
-      // Hanging the block selected its first open socket; committing the numbers clears that.
-      await M.load({});
-      // From here on the captions sit at the bottom, over the palette: the numbers come in at
-      // the top, where the top band would cover them.
-      ctx.caption('Press Enter.', 1.6);
-      await ctx.hold(1.4);
+      ctx.caption('Press Enter.', null, top);
+      await ctx.hold(1.7);
       await M.start({field: '#machine-input'});
-      ctx.caption('The numbers drop down the wire.', 2.6);
-      await M.until(1);
+      // The bar and palette go as the run starts, and the captions move to the bottom: the
+      // numbers come in at the top, where the top band would cover them.
       await M.chrome('run');
+      const drop = ctx.caption('The numbers drop down the wire.');
+      const {ms} = await M.left(1);
+      await ctx.stretch(ms, Math.max(ms / 1000, drop.end - ctx.time));
       await digits(ctx);
       await M.captionBeat(2, {text: ['Each number is a tower of bulbs.', 'Each level is worth twice the one below.'], min: 4});
       await M.note('7 has three lit bulbs: 4 + 2 + 1.', {extra: .4});
+      // The splits: the app frames them from the triangle down; the camera keeps closer.
+      await M.follow({nodes: ['n1', 'n2', 'n3'], scenes: [4, 4], max: 2}, [3, 4]);
       await M.captionBeat(3, {min: 3});
+      await M.follow('auto', [4, 5]);
       await M.captionBeat(4, {min: 4, extra: 'The top bulb of 4 vanishes: × 1 changes nothing.'});
       await M.captionBeat(5);
+      await M.follow({nodes: ['n3', 'n4', 'n5'], scenes: [7, 7], max: 2}, [6, 7]);
       await M.captionBeat(6, {min: 3});
+      await M.follow('auto', [7, 8]);
       for (const i of [7, 8, 9, 10]) await M.captionBeat(i, {min: i % 2 ? 2.5 : 1.5});
       await M.captionBeat(11, {text: c => ['Adding is a collision, level by level.', c], min: 3});
       await M.captionBeat(12);
@@ -147,7 +175,8 @@ export const machineTutorials = {
 
       await cut(ctx, {op: 'add', input: '6,3', pace: 'level'});
       await run(ctx);
-      await M.until(4, {speed: .6});
+      await M.captionBeat(3, {min: 3});
+      await M.captionBeat(4, {min: 2.5});
       await M.captionBeat(5, {text: 'A carry lands on a lit bulb: that bulb climbs on, and the carry stays dark.', min: 4.5});
       await M.captionBeat(6, {text: '1001 = 9.', min: 2});
       await finish(ctx);
@@ -173,7 +202,7 @@ export const machineTutorials = {
   'binary-negative': {
     title: 'Red bulbs and borrowing',
     silent: true, overlay,
-    path: page({machine: 'cmp', input: '-5,5'}),
+    path: page({machine: 'not', input: '-5'}),
     async script(ctx) {
       const M = ctx.machine;
       await opening(ctx, {bits: 'T0T', title: 'Red bulbs and borrowing'});
@@ -189,7 +218,8 @@ export const machineTutorials = {
       await finish(ctx);
 
       await cut(ctx, {op: 'sub', input: '5,12'});
-      await run(ctx, {flow: 3});
+      await run(ctx);
+      await M.captionBeat(3, {min: 2.5});
       await M.captionBeat([4, 5], {text: 'The larger tower receives, so the answer is red: −7.', min: 4.5});
       await finish(ctx);
       await closing(ctx, {bits: '111', title: 'Borrowing is a carry run backwards.'});
@@ -223,7 +253,7 @@ export const machineTutorials = {
       await M.captionBeat([9, 12], {text: '12 fits.', speed: 2});
       await M.captionBeat([13, 17], {text: '6 fits.', speed: 2});
       await M.captionBeat([18, 19], {text: '45 = 7 × 6 + 3.', min: 3, hold: .8});
-      await closing(ctx, {bits: '111', text: '7 r 3', title: 'Division is comparing and subtracting, top level first.'});
+      await closing(ctx, {rows: [{bits: '111', text: '7', label: 'quotient'}, {bits: '11', text: '3', label: 'remainder'}], title: 'Division is comparing and subtracting, top level first.'});
     },
   },
 
@@ -246,8 +276,11 @@ export const machineTutorials = {
       // The half adder, typed into the expression field with the bar and palette on screen;
       // once the numbers are down the wire they hide again, as in the first video.
       await expression(ctx, '(12^10)+((12&10)<<1)', 'What stays is XOR. What climbs is AND.');
-      for (const i of [3, 4, 5, 6]) await M.captionBeat(i, {min: i % 2 ? 2.5 : 1.2});
-      await M.captionBeat([7, 11], {text: 'Shift AND up a level and add: 22 = 12 + 10.', min: 6, hold: .5});
+      for (const i of [3, 4, 5, 6, 7, 8]) { await ahead(ctx, i); await M.captionBeat(i, {min: i % 2 ? 2.5 : 1.2}); }
+      await ahead(ctx, 9);
+      await M.captionBeat(9, {text: 'Shift AND up a level and add: 22 = 12 + 10.', min: 5, hold: .5});
+      await M.centre();
+      await finish(ctx);
 
       await cut(ctx, {op: 'not', input: '5'});
       await run(ctx);
@@ -283,7 +316,7 @@ export const machineTutorials = {
       await run(ctx);
       await M.captionBeat(3, {text: 'Blue meets red: they cancel.', min: 3.5});
       await M.captionBeat(4, {text: 'Two reds make one red carry and leave a blue: −2 = −3 + 1.', min: 4});
-      await M.captionBeat(5, {text: '12.', min: 2.5});
+      await M.captionBeat(5, {min: 3, extra: '12.'});
       await finish(ctx);
 
       await cut(ctx, {op: 'cmp', input: '5,-5'});
@@ -325,7 +358,9 @@ export const machineTutorials = {
       await M.captionBeat([9, 10], {text: '19 = 4 × 5 − 1: ternary rounds to the nearest.', min: 4, hold: .5});
 
       await cut(ctx, {op: 'div', input: '14,4'});
-      await run(ctx, {flow: 6, speed: 2.5});
+      await run(ctx);
+      await M.captionBeat(3);
+      await M.captionBeat([4, 6], {speed: 2});
       await M.captionBeat(7, {text: '2 or −2: equally near zero.', min: 3});
       await M.captionBeat(8, {text: 'A tie keeps the dividend\'s sign: 14 = 3 × 4 + 2.', min: 4});
       await finish(ctx);
@@ -356,8 +391,11 @@ export const machineTutorials = {
       }
 
       await expression(ctx, 'sum(5,7)+(cons(5,7)<<1)');
-      for (const i of [3, 4, 5, 6, 7, 8]) await M.captionBeat(i, {min: i % 2 ? 2.5 : 1.2});
-      await M.captionBeat([9, 11], {text: '−6 + 3 × 6 = 12 = 5 + 7.', min: 5, hold: .5});
+      for (const i of [3, 4, 5, 6, 7, 8]) { await ahead(ctx, i); await M.captionBeat(i, {min: i % 2 ? 2.5 : 1.2}); }
+      await ahead(ctx, 9);
+      await M.captionBeat(9, {text: '−6 + 3 × 6 = 12 = 5 + 7.', min: 5, hold: .5});
+      await M.centre();
+      await finish(ctx);
       await closing(ctx, {...card, title: 'SUM and CONS do for 3 what XOR and AND do for 2.'});
     },
   },
@@ -373,46 +411,43 @@ export const machineTutorials = {
         M.load({base: 'e', tree: {n1: {op: 'add', parent: 'io', socket: 'C'}, n2: {op: 'add', parent: 'n1', socket: 'L'}}, input: 'e, e^2, 2'}));
       await digits(ctx);
       await run(ctx, {flow: 1});
+      // The towers stand up with the camera closer than the app's frame (their floors run
+      // off the foot of the picture).
+      await M.follow({nodes: ['n1', 'n2'], scenes: [3, 3], min: 1.5}, [2, 3]);
       await M.captionBeat(2, {text: 'Base e: each level is worth e ≈ 2.718 of the one below.', min: 4.5});
       // A close-up of the level 2 stands on: two sockets full, and the sliver.
-      const level = await M.point('t3', 0, {dx: 50});
-      await ctx.wheel(level, 2.2, 1.2);
+      await M.zoom({tower: 't3', level: 0, dx: 50, factor: 2.2}, {seconds: 1.2});
       await M.note('A level has room for e bulbs: two, and a sliver.', {extra: .4});
-      await ctx.wheel(level, 1 / 2.2, .8);
-      // Closer on the three towers, around e²'s top bulb, for their digits.
-      const three = await M.point('t2', 2);
-      await ctx.wheel(three, 1.4, .8);
+      // Closer on e's tower, whose digits sit by the lower block (the cut that follows hands
+      // the camera back to the app).
+      await M.zoom({tower: 't1', level: 1, factor: 2}, {seconds: 1});
       await M.note('e = 10ₑ, e² = 100ₑ, 2 = 2ₑ.', {extra: .6});
-      await ctx.wheel(three, 1 / 1.4, .8);
-      await M.centre();
 
       await cut(ctx, {op: 'add', base: 'e', input: 'e^2,2'});
       await run(ctx);
       await M.captionBeat([3, 4], {text: '102ₑ is exactly e² + 2.', min: 4});
-      await finish(ctx);
+      await settle(ctx);
 
       await cut(ctx, {op: 'measure', base: 'e', input: '3'});
       await run(ctx, {flow: 1});
       await M.captionBeat(2, {min: 3});
       await M.captionBeat(3, {text: '3 = 10.02…: the light leaves one bulb at level 1, two at level −2…', min: 6});
       // A close-up of the dust under the floor.
-      const dust = await M.point('t1', -3.6);
-      await ctx.wheel(dust, 2, 1.2);
+      await M.zoom({tower: 't1', level: -3.6, factor: 2}, {seconds: 1.2});
       await M.note('…and what is left never runs out: e is transcendental.', {extra: .4});
-      await ctx.wheel(dust, 1 / 2, 1);
-      await M.centre();
+      await M.unzoom({seconds: 1});
       await M.note('Only 0, 1 and 2 end.', {extra: .5});
-      await finish(ctx);
+      await settle(ctx);
 
       await cut(ctx, {op: 'mule', base: 'e', input: '3,2'});
       await run(ctx);
       await M.captionBeat(3, {text: '×e² is a shift: two levels up, and a 1 condenses out of the dust.', min: 5, extra: '1002.001…ₑ'});
-      await finish(ctx);
+      await settle(ctx);
 
       await cut(ctx, {op: 'mule', base: 'e', input: '2,3'});
       await run(ctx);
       await M.captionBeat(3, {text: '×e³: three levels up.', min: 3, extra: '2000ₑ.'});
-      await finish(ctx);
+      await settle(ctx);
       await closing(ctx, {bits: '10.02…', base: 'e', title: 'Shifts are exact; whole numbers never end.'});
     },
   },
@@ -433,14 +468,14 @@ export const machineTutorials = {
       await stage(ctx);
       await M.start();
       await M.captionBeat(6, {text: 'Merge two bulbs: the light rises ln 2 = 0.69.', min: 4.5});
-      await finish(ctx, 2);
+      await settle(ctx);
 
       await cut(ctx, {op: 'add', base: 'e', input: '2,1'});
       await run(ctx);
       await M.captionBeat(3, {min: 2.5});
       await M.captionBeat(4, {text: 'Three rise ln 3 = 1.099: past the next level.', min: 4.5});
       await M.captionBeat(5, {text: 'One bulb lands at level 1; the change falls on, forever.', min: 5});
-      await finish(ctx);
+      await settle(ctx);
 
       await cut(ctx, {op: 'add', base: 'binary', input: '1,1'});
       await run(ctx);
@@ -451,27 +486,33 @@ export const machineTutorials = {
       await run(ctx);
       await M.captionBeat([3, 4], {text: 'Pile them up and merge to one light at height ln 23.', min: 6});
       await M.captionBeat(5, {text: ['Let it fall: it leaves bulbs where it can afford them.', '1010.011…ₑ'], min: 6.5});
-      await finish(ctx);
+      await settle(ctx);
 
       await cut(ctx, {op: 'add', base: 'e', input: '2e,2'});
       await run(ctx);
       await M.captionBeat(3, {text: 'Even 22ₑ is too full: 2e + 2 is more than e².', min: 4.5});
       await M.captionBeat(4, {min: 3.5});
-      await M.captionBeat(5, {min: 4});
-      await finish(ctx);
+      // The plan's own caption stops at the third zero (100.000…), which reads as exactly e².
+      await M.captionBeat(5, {text: 'The light falls past level −3: 2e + 2 = 100.0002…ₑ, just over e².', min: 4});
+      await settle(ctx);
 
       await cut(ctx, {op: 'mul', base: 'e', input: '16,7'});
       await run(ctx);
       await M.captionBeat(3, {text: 'Fold both: ln 16 = 2.77, ln 7 = 1.95.', min: 4.5});
-      await M.captionBeat(4, {text: 'Multiplying adds heights: 2.77 + 1.95 = 4.72.', min: 5, extra: 'Levels 2 + 1 = 3, but 112 stands at level 4: the heights carried.'});
+      await M.captionBeat(4, {text: 'Multiplying adds heights: 2.77 + 1.95 = 4.72.', min: 5});
+      // Closer on the ruler, so its levels can be read.
+      await M.zoom({tower: 't1', level: 3, factor: 1.7, centre: true});
+      await M.note('Levels 2 + 1 = 3, but 112 stands at level 4:');
+      await M.note('the heights carried.', {extra: .3});
+      await M.follow('auto', [5, 6]);
       await M.captionBeat(5, {text: '112.', min: 5});
-      await finish(ctx);
+      await settle(ctx);
 
       await cut(ctx, {op: 'ln', base: 'e', input: '112'});
       await run(ctx, {flow: 1});
       await M.captionBeat(2, {min: 3.5});
       await M.captionBeat(3, {text: 'The height of the folded light is ln.', min: 4});
-      await finish(ctx);
+      await settle(ctx);
       await closing(ctx, {rows: [{bits: '1110000', label: 'base 2'}, {bits: '11011', base: 'ternary', label: 'base 3'}, {bits: '20010.001…', base: 'e', label: 'base e'}], title: 'The cost of a base, b\u00a0÷\u00a0ln\u00a0b: 2.885, 2.731, 2.718.'}, 5.5);
     },
   },

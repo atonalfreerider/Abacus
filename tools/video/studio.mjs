@@ -91,7 +91,7 @@ export async function record({origin, format: formatName, script, out, fps = 30,
   async function frame() {
     const now = time;
     const shown = captions.find(c => now >= c.start && now < c.end), current = shown ? `${shown.at || ''}|${shown.text}` : '';
-    const calls = [`__vt.advance(${1000 * dt * rate})`, `__rec.touch(${JSON.stringify(touch)})`];
+    const calls = ['window.__recCam?.tick()', `__vt.advance(${1000 * dt * rate})`, `__rec.touch(${JSON.stringify(touch)})`];
     app += 1000 * dt * rate;
     if (current !== caption) { caption = current; calls.push(`__rec.caption(${JSON.stringify(shown?.text || '')},${JSON.stringify(shown?.at || '')})`); }
     calls.push(`__rec.frame(${dt})`);
@@ -102,6 +102,19 @@ export async function record({origin, format: formatName, script, out, fps = 30,
     if (frames % (fps * 10) === 0) log(`${formatName}: ${time.toFixed(0)} s recorded`);
   }
   const touchEvent = (type, x, y) => page.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y, id: 1, radiusX: 11, radiusY: 11, force: 1}]});
+  // The pieces a silent caption shows in: past the format's width it splits at clause ends
+  // into balanced parts (chunk), and a scrap joins its neighbour (tidy). A clause that ends in
+  // a colon introduces the next piece, so it moves down to it when a sentence ends before it
+  // ('… their levels.' / 'Level 0: a lit bulb …').
+  const pieces = text => {
+    const words = text.split(/\s+/).filter(Boolean).map((w, i) => ({text: w, start: i, end: i + 1}));
+    const out = tidy(chunk(words, format.captionChars), format.captionChars).map(c => c.text);
+    for (let i = 0; i + 1 < out.length; i++) {
+      const m = /^(.*[.!?])\s+([^.!?]*:)$/.exec(out[i]);
+      if (m && `${m[2]} ${out[i + 1]}`.length <= format.captionChars) [out[i], out[i + 1]] = [m[1], `${m[2]} ${out[i + 1]}`];
+    }
+    return out;
+  };
   const resolve = async point => typeof point === 'function' ? point() : point;
 
   const ctx = {
@@ -127,22 +140,26 @@ export async function record({origin, format: formatName, script, out, fps = 30,
       const at = word => { const w = clip.words.find(w => w.text.toLowerCase().replace(/\W/g, '') === word.toLowerCase()); if (!w) throw Error(`"${word}" is not in: ${text}`); return start + w.start; };
       return {start, end: start + clip.duration, at, done: (pad = .35) => ctx.until(start + clip.duration + pad), word: word => ctx.until(at(word))};
     },
-    // A silent caption (no narration): shown now for `seconds` (by default long enough to
-    // read: about 15 characters a second, at least 1.6 s). await caption.done() waits it out.
-    // Text longer than the format's caption width is shown in chunks, timed by their length;
+    // A silent caption (no narration): shown now for `seconds`, by default long enough to
+    // read. await caption.done() waits it out. Text longer than the format's caption width is
+    // shown in pieces (pieces()), one after another, each on screen for its own reading time
+    // (about 15 characters a second, at least 1.6 s); a given `seconds` is shared out in
+    // proportion to those times, and `tail` keeps the last piece up a little longer.
     // {at: 'top'} puts it in the top band. A new caption replaces the one on screen.
-    caption(text, seconds, {at} = {}) {
-      const start = time, length = seconds ?? readingTime(text), end = start + length;
+    caption(text, seconds, {at, tail = 0} = {}) {
+      const start = time, parts = pieces(text), need = parts.map(readingTime), total = need.reduce((a, b) => a + b, 0);
+      const length = seconds ?? total, end = start + length + tail;
       for (const c of captions) if (c.start <= start && c.end > start) c.end = start;
-      const words = text.split(/\s+/).filter(Boolean), total = words.reduce((n, w) => n + w.length + 1, 0);
-      let chars = 0;
-      const timed = words.map(w => { const s = start + length * chars / total; chars += w.length + 1; return {text: w, start: s, end: start + length * chars / total}; });
-      const mine = tidy(chunk(timed, format.captionChars), format.captionChars).map(c => ({text: c.text, start: c.start, end: c.end, at}));
+      let from = start;
+      const mine = parts.map((piece, i) => { const c = {text: piece, start: from, end: from + length * need[i] / total, at}; from = c.end; return c; });
+      if (mine.length) mine.at(-1).end = end;
       captions.push(...mine);
       captions.sort((a, b) => a.start - b.start);
-      // stop() takes the caption down now (a chunk not yet shown is dropped).
+      // stop() takes the caption down now (a piece not yet shown is dropped).
       return {start, end, done: (pad = .2) => ctx.until(end + pad), stop: () => { for (const c of mine) c.end = Math.max(c.start, Math.min(c.end, time)); }};
     },
+    // How long a caption needs on screen: the reading times of the pieces it shows in.
+    readingTime: text => pieces(text).reduce((s, piece) => s + readingTime(piece), 0),
     // Hold the picture: video time passes while the app's clock stands still.
     async freeze(seconds) { const previous = rate; rate = 0; await ctx.hold(seconds); rate = previous; },
     // Play exactly `ms` of app time at `speed` (app ms per video ms), the last frame partial.
@@ -254,7 +271,7 @@ export async function record({origin, format: formatName, script, out, fps = 30,
     labels: (term, names) => page.eval(`__rec.labels(${JSON.stringify(term || null)},${JSON.stringify(names || [])})`),
     setCamera: camera => page.eval(`(()=>{const s=document.getElementById('camera');s.value=${JSON.stringify(camera)};s.dispatchEvent(new Event('change'));})()`),
   };
-  ctx.machine = machineHelpers(ctx, page);
+  ctx.machine = machineHelpers(ctx, page, {frame, fps});
 
   try {
     await script(ctx);
@@ -281,7 +298,7 @@ export async function record({origin, format: formatName, script, out, fps = 30,
 // plays under AUTO on its own beat clock, which reads the page's virtual time, so these
 // helpers pace a run purely by how much app time each video frame advances: a beat can be
 // played at speed, stretched over a caption's reading time, or held (frozen) at its end.
-function machineHelpers(ctx, page) {
+function machineHelpers(ctx, page, {frame, fps}) {
   const hook = (call, ...args) => page.eval(`window.__machine.${call}(${args.map(a => JSON.stringify(a)).join(',')})`);
   // Seconds since the run began at plan time t (beats chain with no gaps: no read-along).
   const elapsed = (beats, t) => {
@@ -291,7 +308,7 @@ function machineHelpers(ctx, page) {
     return b.start + Math.max(0, t - k) * (b.end - b.start);
   };
   const m = {
-    load: params => hook('load', {auto: 1, ...params}),
+    load: async params => { await page.eval('window.__recCam?.stop()'); return hook('load', {auto: 1, ...params}); },
     beats: () => hook('beats'),
     state: () => hook('state'),
     plan: () => hook('plan'),
@@ -340,13 +357,14 @@ function machineHelpers(ctx, page) {
       await m.to(first);
       for (const line of [].concat(before)) await m.note(line, {at});
       const {beats, ms: length} = await m.left(last), own = beats[first].caption, lines = [].concat(typeof text === 'function' ? text(own) : text ?? own);
-      const reading = lines.reduce((s, l) => s + readingTime(l), 0);
+      const reading = lines.reduce((s, l) => s + ctx.readingTime(l), 0);
       const seconds = Math.max(speed ? 0 : min, reading, speed ? length / 1000 / speed : 0);
-      // several lines share the beat in proportion to their reading time; each caption
-      // stays until the next one replaces it, so none blinks out between frames
+      // several lines share the beat in proportion to their reading time (each line's pieces
+      // in proportion to theirs); each caption stays until the next one replaces it, so none
+      // blinks out between frames
       for (const [k, line] of lines.entries()) {
-        const share = seconds * readingTime(line) / reading;
-        ctx.caption(line, share + .25 + (k === lines.length - 1 ? hold : 0), {at});
+        const share = seconds * ctx.readingTime(line) / reading;
+        ctx.caption(line, share, {at, tail: .25 + (k === lines.length - 1 ? hold : 0)});
         await ctx.stretch(length * share / seconds, share);
       }
       for (const line of [].concat(extra)) await m.note(line, {at});
@@ -363,6 +381,118 @@ function machineHelpers(ctx, page) {
       return {x:p.x,y:p.y};})()`),
     // Back to following the beat (T: the camera recentres on the active node).
     centre: () => page.eval(`document.getElementById('machine-centre').click()`),
+    // Close-ups. The app's camera frames each beat for the whole viewport (from the socket a
+    // block hangs from down to its towers), which can leave bulbs a few pixels across. These
+    // take the camera over with the stage's own wheel zoom and drag pan, and give it back to
+    // the app seamlessly. Specs:
+    //   {nodes, scenes: [a, b], max = 1.6, min, align}: frame those nodes and the towers on
+    //     them at plan times a to b, at most `max` times the app's own camera at b (at least
+    //     `min` times, cutting the box's foot off, or its middle with align: 'centre');
+    //   {tower, level, dx, dy, factor, centre}: `factor` times closer about a point of a tower
+    //     (as point()), from the app's camera at this moment; centre: true brings the point to
+    //     the middle of the picture;
+    //   {at: t}: the app's own camera at plan time t (to get to a beat's frame early).
+    // zoom() moves there now, eased over `seconds` with the app's clock held (freeze: false
+    // lets it run); follow() moves there as the run plays from plan time t0 to t1, with the
+    // app's own easing, and follow('auto', [t0, t1]) eases back onto the app's camera, which
+    // then takes over again; unzoom() goes back at once (held), then hands the camera over.
+    async zoom(spec, {seconds = .8, freeze = true} = {}) {
+      await install();
+      await move(await page.eval(`__recCam.target(${JSON.stringify(spec)})`), seconds, freeze);
+    },
+    async follow(spec, [t0, t1]) {
+      await install();
+      await page.eval(`__recCam.follow(${JSON.stringify(spec)},${t0},${t1})`);
+    },
+    async unzoom({seconds = .8, freeze = true} = {}) {
+      await install();
+      await move(await page.eval('__recCam.auto()'), seconds, freeze);
+      await m.centre();
+    },
   };
+  const install = () => page.eval(CAMERA);
+  async function move(target, seconds, freeze) {
+    const from = await page.eval('__recCam.stop(), __recCam.now().cam'), n = Math.max(1, Math.round(seconds * fps)), previous = ctx.rate;
+    if (freeze) ctx.rate = 0;
+    for (let i = 1; i <= n; i++) {
+      await page.eval(`__recCam.step(${JSON.stringify(from)},${JSON.stringify(target)},${ease(i / n)})`);
+      await frame();
+    }
+    ctx.rate = previous;
+  }
   return m;
 }
+
+// In the page: the camera behind zoom(), follow() and unzoom(). The stage's wheel handler
+// zooms about the pointer and its drag handler pans; both act at once on the app's manual
+// camera, which is drawn on the next frame, so each step lands exactly. A step zooms about
+// the middle of the picture above the caption band (the anchor) and pans the anchor along a
+// straight line. tick() runs before every frame and plays a follow() path, if one is set.
+const CAMERA = `window.__recCam ??= (() => {
+  let L = null, path = null;
+  const ready = import('/src/machine/layout.js').then(m => { L = m; });
+  const $ = id => document.getElementById(id);
+  const view = () => { const st = $('machine-stage'), vw = Math.max(1, st.clientWidth), vh = Math.max(1, st.clientHeight); return {vw, vh, band: vh > vw ? 170 : 120}; };
+  const union = (a, b) => { if (!a) return b; if (!b) return a; const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return {x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y}; };
+  const now = () => { const [x, y, w, h] = $('machine-svg').getAttribute('viewBox').split(/[\\s,]+/).map(Number), r = $('machine-svg').getBoundingClientRect(); return {cam: {x, y, w, h}, rect: {x: r.x, y: r.y, width: r.width, height: r.height}, ...view()}; };
+  const plan = () => { const p = __machine.plan(); return {p, lay: L.layoutPlan(p)}; };
+  const cameraAt = ({p, lay}, t) => { const {vw, vh, band} = view(); return L.cameraAt(p, lay, t, {width: vw, height: vh}, {inset: {bottom: band}}); };
+  const auto = async (t = __machine.state().t) => { await ready; return cameraAt(plan(), t); };
+  // a tower's level, in machine units: from one of its drawn bulbs (render.js marks each with
+  // data-t and data-l), as point() does, or from the layout when the camera has culled them
+  function point({tower, level = 0, dx = 0, dy = 0}) {
+    const g = document.querySelector('#machine-svg .mb[data-t="' + tower + '"]');
+    if (!g) {
+      const P = plan(), s = L.scenesOf(P.p)[Math.round(__machine.state().t)], t = s?.towers[tower]; if (!t) throw Error('no tower ' + tower);
+      const o = P.lay.placeOf(t.at);
+      return {x: o.x + (P.p.base === 'e' && t.form !== 'light' ? L.UNITS.eSlots[0] : 0) + dx, y: o.y - L.UNITS.pitch * level + dy};
+    }
+    const t = /translate\\(([-\\d.]+)[ ,]+([-\\d.]+)\\)/.exec(g.getAttribute('transform'));
+    const m = $('machine-svg').getScreenCTM().inverse().multiply(g.parentNode.getScreenCTM());
+    return new DOMPoint(+t[1] + dx, +t[2] - 84 * (level - Number(g.dataset.l)) + dy).matrixTransform(m);
+  }
+  async function target(spec) {
+    await ready;
+    const {vw, vh, band} = view(), H = vh - band;
+    if (spec.at != null) return cameraAt(plan(), spec.at);
+    if (spec.tower) {
+      const A = await auto(), p = point(spec), f = spec.factor, w = A.w / f, h = A.h / f;
+      if (spec.centre) return {x: p.x - w / 2, y: p.y - h * H / 2 / vh, w, h};
+      return {x: p.x - (p.x - A.x) / f, y: p.y - (p.y - A.y) / f, w, h};
+    }
+    const P = plan(), scenes = L.scenesOf(P.p), {nodes, scenes: [a, b], max = 1.6, min = 0, align = 'top', pad = 24} = spec;
+    let box = null;
+    for (const id of nodes) box = union(box, P.lay.nodeBox(id));
+    for (let k = a; k <= b; k++) for (const [id, tower] of Object.entries(scenes[k].towers)) if (nodes.includes(L.parsePlace(tower.at).node)) box = union(box, P.lay.towerBox(scenes[k], id));
+    const A = cameraAt(P, b), s = Math.max(min * vw / A.w, Math.min((vw - 2 * pad) / box.w, (H - 2 * pad) / box.h, max * vw / A.w));
+    const tall = box.h + 2 * pad / s > H / s, cy = tall && align === 'top' ? box.y - pad / s + H / 2 / s : box.y + box.h / 2;
+    return {x: box.x + box.w / 2 - vw / 2 / s, y: cy - H / 2 / s, w: vw / s, h: vh / s};
+  }
+  // One step of a move from camera a to camera b, e (0..1) of the way.
+  function step(a, b, e) {
+    const {cam, rect, vw, vh, band} = now(), fy = (vh - band) / 2 / vh, st = $('machine-stage');
+    const anchor = c => ({x: c.x + c.w / 2, y: c.y + c.h * fy}), from = anchor(a), to = anchor(b), here = anchor(cam);
+    const w = a.w * (b.w / a.w) ** e, want = {x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e};
+    const x = rect.x + rect.width / 2, y = rect.y + rect.height * fy;
+    const k = Math.log(w / cam.w);
+    if (Math.abs(k) > 1e-9) st.dispatchEvent(new WheelEvent('wheel', {clientX: x, clientY: y, deltaY: k / .0015, cancelable: true}));
+    // the zoom keeps the anchor in place; a drag (past the 6 px a tap may wander) pans it
+    const scale = vw / cam.w, dx = -(want.x - here.x) * scale, dy = -(want.y - here.y) * scale;
+    if (Math.hypot(dx, dy) < 1e-6) return;
+    const pointer = (type, px, py) => st.dispatchEvent(new PointerEvent(type, {pointerId: 917, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: px, clientY: py}));
+    pointer('pointerdown', x, y); pointer('pointermove', x + 7, y); pointer('pointermove', x + dx, y + dy); pointer('pointerup', x + dx, y + dy);
+  }
+  async function follow(spec, t0, t1) {
+    await ready;
+    path = {from: now().cam, to: spec === 'auto' ? null : await target(spec), plan: plan(), t0, t1};
+  }
+  function tick() {
+    if (!path) return;
+    const u = Math.min(1, Math.max(0, (__machine.state().t - path.t0) / (path.t1 - path.t0))), to = path.to ?? cameraAt(path.plan, path.t0 + u * (path.t1 - path.t0));
+    step(path.from, to, 1 - (1 - u) ** 2);
+    if (u < 1) return;
+    if (!path.to) $('machine-centre').click();
+    path = null;
+  }
+  return {now, auto, target, step, follow, tick, stop: () => { path = null; }};
+})(), true`;
