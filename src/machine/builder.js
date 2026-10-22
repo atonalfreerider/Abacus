@@ -16,6 +16,10 @@ const NUMBER_POWERS = {binary: Array.from({length: 51}, (_, k) => 2 ** k), terna
 const DISPLAY = ['text', 'approx', 'digits', 'reading'];
 const KINDS = ['nodes', 'towers', 'bulbs'];
 const clean = props => { const out = {}; for (const f in props) if (props[f] !== null && props[f] !== undefined) out[f] = props[f]; return out; };
+const unchanged = (old, props) => {
+  for (const f in props) { const v = props[f]; if (v === null || v === undefined ? f in old : old[f] !== v) return false; }
+  return true;
+};
 const merge = (old, props) => {
   const out = {...old};
   for (const f in props) { if (props[f] === null || props[f] === undefined) delete out[f]; else out[f] = props[f]; }
@@ -87,6 +91,9 @@ export class PlanBuilder {
 
   bulb(id, props = {}, motion) {
     const old = this.#s.bulbs[id];
+    // a patch that changes nothing (a survivor written back where it stands, as a collision
+    // writes its whole column) leaves the bulb, its tower and the diff alone
+    if (old && unchanged(old, props)) { this.#motionFor(id, motion); return id; }
     this.#touch('bulbs', id);
     const next = old ? merge(old, props) : clean(props);
     if (next.s === 0) next.s = 0;       // never −0: plans are compared after a JSON round trip
