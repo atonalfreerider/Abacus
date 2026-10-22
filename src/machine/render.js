@@ -478,14 +478,15 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     let body = blockSVG(opChange ? nz.op : n.op, palette, base, {glyph: alive * fadeGlyph * (opChange ? swap : 1), oldOp: opChange ? na.op : null, oldGlyph: alive * (1 - swap), tilt, sx: layout.socketX, w: layout.blockW, q, id: nid});
     // outlines round the whole block, its socket rings included
     const span = UNARY.has(n.op) ? layout.blockW / 2 : Math.max(layout.blockW / 2, layout.socketX + 44), ring = (g, extra) => `<rect x="${-span - g}" y="${-44 - g}" width="${2 * (span + g)}" height="${88 + 2 * g}" rx="${44 + g}" fill="none" ${extra}/>`;
-    // the block with its socket rings and hub, for the labels to keep clear of
-    if (obst) obst.push({x0: centre.x - span, y0: centre.y - 44 - UNITS.hub, x1: centre.x + span, y1: centre.y + 44, t: null});
+    // the block with its socket rings, and its hub, for the labels to keep clear of (the hub
+    // apart: a band of its height over the whole block kept a pill over a socket at 6.6 px)
+    const hub = pts.at(-1), hx = na && !nz && !reduced ? hub[0] : centre.x, hy = na && !nz && !reduced ? hub[1] : centre.y - UNITS.block[1] / 2;
+    if (obst) obst.push({x0: centre.x - span, y0: centre.y - 44, x1: centre.x + span, y1: centre.y + 44, t: null}, {x0: hx - UNITS.hub, y0: hy - UNITS.hub, x1: hx + UNITS.hub, y1: hy + UNITS.hub, t: null});
     if (view.highlight === nid) body += ring(8, `stroke="${m.error}" stroke-width="5" class="error"`);
     if (view.selected === nid) body += ring(16, `stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"`);
     const sel = typeof view.selected === 'string' && view.selected.startsWith(nid + '.') ? view.selected.slice(nid.length + 1) : null;
     if (sel) body += `<circle cx="${sel === 'L' ? -layout.socketX : sel === 'R' ? layout.socketX : 0}" cy="0" r="52" fill="none" stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"/>`;
-    const hub = pts.at(-1);
-    parts.blocks.push(`<g class="block" data-n="${nid}" data-op="${n.op}" transform="translate(${r(centre.x)} ${r(centre.y)})"${attr('opacity', opacity)}>${body}</g>${hubSVG(na && !nz && !reduced ? hub[0] : centre.x, na && !nz && !reduced ? hub[1] : centre.y - UNITS.block[1] / 2, palette, opacity)}`);
+    parts.blocks.push(`<g class="block" data-n="${nid}" data-op="${n.op}" transform="translate(${r(centre.x)} ${r(centre.y)})"${attr('opacity', opacity)}>${body}</g>${hubSVG(hx, hy, palette, opacity)}`);
   }
 
   // -- IO: the horizon, the Input and Output pills on their wires, the triangle and its eye --
@@ -505,10 +506,12 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const caption = key === 'in' ? 'INPUT' : 'OUTPUT', cx = key === 'in' ? p.x - p.w / 2 - 10 : p.x + p.w / 2 + 10, cy = p.bottom - UNITS.pillLine / 2 + 1;
       const label = `<text x="${r(cx)}" y="${r(cy)}" font-size="14" letter-spacing="2" text-anchor="${key === 'in' ? 'end' : 'start'}" dominant-baseline="central" fill="${m.label}" opacity=".5">${caption}</text>`;
       if (legible) {
-        // the pill grows about its foot, its top or its middle; the caption from its inner end
-        const cw = 11 * caption.length, box = {x0: p.x - p.w / 2, y0: top, x1: p.x + p.w / 2, y1: p.bottom};
-        parts.io.push({io: key, labels: [{t: `io:${key}`, prio: 1, font: 27, inner: svg, box, anchors: [[p.x, p.bottom], [p.x, top], [p.x, (top + p.bottom) / 2]]},
-          {t: `caption:${key}`, prio: 3, font: 14, min: .8, inner: label, box: {x0: key === 'in' ? cx - cw : cx, y0: cy - 9, x1: key === 'in' ? cx : cx + cw, y1: cy + 9}, anchors: [[cx, cy]]}]});
+        // the pill grows about its foot, its top or its middle, centred or from its inner end
+        // (the one by IO), so it can grow away from a tower that rides up beside it; its caption
+        // goes with it, then grows from its own inner end
+        const cw = 11 * caption.length, box = {x0: p.x - p.w / 2, y0: top, x1: p.x + p.w / 2, y1: p.bottom}, inner = key === 'in' ? box.x1 : box.x0;
+        const pill = {t: `io:${key}`, prio: 1, font: 27, inner: svg, box, anchors: [p.x, inner].flatMap(x => [[x, p.bottom], [x, top], [x, (top + p.bottom) / 2]])};
+        parts.io.push({io: key, labels: [pill, {t: `caption:${key}`, prio: 3, font: 14, min: .8, inner: label, follow: pill, box: {x0: key === 'in' ? cx - cw : cx, y0: cy - 9, x1: key === 'in' ? cx : cx + cw, y1: cy + 9}, anchors: [[cx, cy]]}]});
         continue;
       }
       svg += label;
@@ -558,8 +561,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
   }
   if (legible) {
     resolveLabels([...parts.pills.filter(q => q && typeof q === 'object'), ...parts.io.flatMap(q => q?.labels || [])], obst, legible);
-    // k is rounded down, and the translation follows the rounded k, so the anchor stays put
-    const grown = q => { const k = Math.floor(q.k * 1000) / 1000; return k > 1 ? `<g transform="matrix(${k} 0 0 ${k} ${r(q.a[0] * (1 - k))} ${r(q.a[1] * (1 - k))})">${q.inner}</g>` : q.inner; };
+    const grown = q => { const [k, e, f] = q.m; return k > 1 + 1e-9 ? `<g transform="matrix(${r(k)} 0 0 ${r(k)} ${r(e)} ${r(f)})">${q.inner}</g>` : q.inner; };
     parts.pills = parts.pills.map(q => q && typeof q === 'object' ? q.wrap(grown(q)) : q);
     parts.io = parts.io.map(q => q?.labels ? `<g class="io-pill" data-io="${q.io}">${q.labels.map(grown).join('')}</g>` : q);
   }
@@ -577,34 +579,58 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
 const reachK = (b0, b1, a, o0, o1) => o0 >= a ? (b1 > a ? (o0 - a) / (b1 - a) : Infinity) : o1 <= a ? (b0 < a ? (a - o1) / (a - b0) : Infinity) : 0;
 const freeK = (B, [ax, ay], O) => Math.max(1, reachK(B.x0, B.x1, ax, O.x0, O.x1), reachK(B.y0, B.y1, ay, O.y0, O.y1));
 const scaleBox = (B, [ax, ay], k) => ({x0: ax + k * (B.x0 - ax), y0: ay + k * (B.y0 - ay), x1: ax + k * (B.x1 - ax), y1: ay + k * (B.y1 - ay)});
+const scalePoint = ([x, y], [ax, ay], k) => [ax + k * (x - ax), ay + k * (y - ay)];
 const meets = (p, q) => p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1;
+const unionBox = (p, q) => ({x0: Math.min(p.x0, q.x0), y0: Math.min(p.y0, q.y0), x1: Math.max(p.x1, q.x1), y1: Math.max(p.y1, q.y1)});
+// An obstacle a label already lies against at its own size (within the 2 px gap, or into it by
+// at most `tol`: a pill's foot 2 units into the socket ring its tower stands on, a pill at the
+// stage's edge) keeps it from growing towards it, not away: the obstacle's near face is moved
+// back to the label's edge, on the side where the two meet least. Deeper overlaps still block.
+function against(B, P, padding, tol) {
+  if (!meets(B, P)) return P;
+  const sides = [['x0', B.x1 - P.x0, B.x1], ['x1', P.x1 - B.x0, B.x0], ['y0', B.y1 - P.y0, B.y1], ['y1', P.y1 - B.y0, B.y0]];
+  const [side, depth, edge] = sides.reduce((p, q) => q[1] < p[1] ? q : p);
+  return depth - padding <= tol ? {...P, [side]: edge} : P;
+}
 // Each label in turn (the active node's pills, IO's, the others, IO's captions; then in drawing
 // order) takes the largest k up to its target, from the first anchor that reaches it (else the
 // one that goes furthest), clear of the obstacles but its own tower's, of the labels already
 // placed as placed and of the rest at their own size, 2 px apart, inside the framed area.
-// Sets k and a (the anchor) on every label.
+// A label that others follow (an IO pill's INPUT or OUTPUT caption) grows with them as one box
+// and carries them along; each follower then grows on its own from where it was carried.
+// Sets k, a (the anchor) and m (the matrix's k, e, f) on every label.
 function resolveLabels(labels, obstacles, {scale, minFont, frame: F}) {
-  const gap = 2 / scale, big = 1e9, pad = O => ({x0: O.x0 - gap, y0: O.y0 - gap, x1: O.x1 + gap, y1: O.y1 + gap});
+  const gap = 2 / scale, tol = 1 / scale, big = 1e9, pad = O => ({x0: O.x0 - gap, y0: O.y0 - gap, x1: O.x1 + gap, y1: O.y1 + gap});
   const edges = F ? [{x0: -big, y0: -big, x1: F.x0, y1: big}, {x0: F.x1, y0: -big, x1: big, y1: big}, {x0: -big, y0: -big, x1: big, y1: F.y0}, {x0: -big, y0: F.y1, x1: big, y1: big}] : [];
   const order = labels.map((q, i) => [q, i]).sort((p, q) => p[0].prio - q[0].prio || p[1] - q[1]).map(([q]) => q);
+  const followers = L => labels.filter(M => M.follow === L);
   for (const L of order) {
     L.k = 1; L.a = L.anchors[0];
-    const target = (L.min ?? 1) * minFont / (L.font * scale);
+    const carried = L.carried ?? 1, target = (L.min ?? 1) * minFont / (L.font * scale * carried), crew = followers(L);
+    const B = crew.reduce((b, M) => unionBox(b, M.box), L.box);
     if (target > 1 + 1e-3) {
       let reach = null;
-      for (const a of L.anchors) { const b = scaleBox(L.box, a, target); reach = reach ? {x0: Math.min(reach.x0, b.x0), y0: Math.min(reach.y0, b.y0), x1: Math.max(reach.x1, b.x1), y1: Math.max(reach.y1, b.y1)} : b; }
+      for (const a of L.anchors) { const b = scaleBox(B, a, target); reach = reach ? unionBox(reach, b) : b; }
       reach = pad(reach);
-      const near = [...edges];
-      for (const o of obstacles) if (o.t !== L.t && meets(o, reach)) near.push(pad(o));
-      for (const M of labels) if (M !== L && M.t !== L.t) { const b = M.placed || M.box; if (meets(b, reach)) near.push(pad(b)); }
+      const near = edges.map(e => against(B, e, 0, tol));
+      for (const o of obstacles) if (o.t !== L.t && meets(o, reach)) near.push(against(B, pad(o), gap, tol));
+      for (const M of labels) if (M !== L && M.t !== L.t && !crew.includes(M)) { const b = M.placed || M.box; if (meets(b, reach)) near.push(against(B, pad(b), gap, 0)); }
       for (const a of L.anchors) {
         let k = target;
-        for (const o of near) { k = Math.min(k, freeK(L.box, a, o)); if (k <= 1) break; }
+        for (const o of near) { k = Math.min(k, freeK(B, a, o)); if (k <= 1) break; }
         if (k > L.k + 1e-6) { L.k = k; L.a = a; }
         if (L.k >= target - 1e-9) break;
       }
     }
-    L.placed = scaleBox(L.box, L.a, L.k);
+    // k is rounded down, and the translation follows the rounded k, so the anchor stays put
+    const k = Math.floor(L.k * 1000) / 1000, [K, e, f] = L.m0 ?? [1, 0, 0];
+    L.k = k; L.placed = scaleBox(L.box, L.a, k);
+    // the drawn matrix: what carried it (K, e, f), then k about its anchor
+    L.m = [K * k, k * e + L.a[0] * (1 - k), k * f + L.a[1] * (1 - k)];
+    for (const M of crew) {
+      M.box = scaleBox(M.box, L.a, k); M.anchors = M.anchors.map(p => scalePoint(p, L.a, k));
+      M.carried = carried * k; M.m0 = [k, L.a[0] * (1 - k), L.a[1] * (1 - k)];
+    }
   }
 }
 function arrowSVG(p, q, colour, opacity) {

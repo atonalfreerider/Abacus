@@ -368,33 +368,44 @@ test('a viewport: the camera\'s viewBox, culling off-camera towers, coins far aw
 // Legibility (1.3): with view.minFont, a label whose text would draw under minFont px grows
 // into free space. On a landscape phone's stage (536 × 332 under a 20 px band, the camera at
 // its 18/74 floor, pills at 6.6 px) the pills reach 10 px where there is room; at every beat
-// boundary no grown pill meets another tower's bulb, a block or another pill, and none leaves
-// the framed area; between boundaries pills still never meet. Without minFont nothing changes.
+// boundary no grown pill (value or IO) meets another tower's bulb, a block or another pill,
+// and none leaves the framed area, any further than it did at its own size (a pill whose foot
+// rests 2 units into the socket ring under its tower grows up, away from it; at most 1 px);
+// between boundaries pills still never meet. Without minFont nothing changes.
 test('legible labels: pills grow to 10 px into free space only (view.minFont)', () => {
   const viewport = {width: 536, height: 332}, top = 20;
-  const pillsIn = svg => [...svg.matchAll(/<g class="pill" data-t="([^"]+)"[^>]*>(?:<path[^>]*\/>)?(?:<g transform="matrix\(([^ ]+) 0 0 [^ ]+ ([^ ]+) ([^)]+)\)">)?<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)]
-    .map(([, t, k = 1, tx = 0, ty = 0, x, y, w, h]) => ({t, k: +k, x0: +x * k + +tx, y0: +y * k + +ty, x1: (+x + +w) * k + +tx, y1: (+y + +h) * k + +ty}));
+  const box = (t, k, tx, ty, x, y, w, h) => ({t, k: +k, x0: +x * k + +tx, y0: +y * k + +ty, x1: (+x + +w) * k + +tx, y1: (+y + +h) * k + +ty, own: {x0: +x, y0: +y, x1: +x + +w, y1: +y + +h}});
+  const pillsIn = svg => [...[...svg.matchAll(/<g class="pill" data-t="([^"]+)"[^>]*>(?:<path[^>]*\/>)?(?:<g transform="matrix\(([^ ]+) 0 0 [^ ]+ ([^ ]+) ([^)]+)\)">)?<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)]
+    .map(([, t, k = 1, tx = 0, ty = 0, x, y, w, h]) => box(t, k, tx, ty, x, y, w, h)),
+  ...[...svg.matchAll(/<g class="io-pill" data-io="([^"]+)">(?:<g transform="matrix\(([^ ]+) 0 0 [^ ]+ ([^ ]+) ([^)]+)\)">)?<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)]
+    .map(([, t, k = 1, tx = 0, ty = 0, x, y, w, h]) => box(`io:${t}`, k, tx, ty, x, y, w, h))];
   const bulbsAt = svg => [...svg.matchAll(/<g class="mb" data-(?:b|was)="[^"]+" data-s="[^"]+" data-l="[^"]+" data-t="([^"]+)" transform="translate\(([^ ]+) ([^)]+?)\)(?: scale\(([^)]+)\))?"(?: opacity="([^"]+)")?/g)]
     .filter(q => !(+q[5] < .05)).map(([, t, x, y, s = 1]) => ({t, x0: +x - 37 * s, y0: +y - 37 * s, x1: +x + 37 * s, y1: +y + 37 * s}));
   const meets = (p, q) => p.x0 < q.x1 - 1e-3 && q.x0 < p.x1 - 1e-3 && p.y0 < q.y1 - 1e-3 && q.y0 < p.y1 - 1e-3;
-  let grown = 0, readable = 0;
+  // how far p is into q (the least of its four overlaps), and how far it is out of a frame
+  const depth = (p, q) => meets(p, q) ? Math.min(p.x1 - q.x0, q.x1 - p.x0, p.y1 - q.y0, q.y1 - p.y0) : 0;
+  const out = (p, f) => Math.max(0, f.x0 - p.x0, p.x1 - f.x1, f.y0 - p.y0, p.y1 - f.y1);
+  let grown = 0, readable = 0, io = 0;
   for (const inputs of [['16', '7'], ['255', '255']]) {
     const plan = planMachine({tree: {n1: {op: 'mul', parent: 'io', socket: 'C'}}, inputs, base: 'binary'}).plan, L = layoutPlan(plan);
     for (let t = 0; t <= plan.beats.length; t += .5) {
       const active = t > 0 ? plan.beats[Math.ceil(t) - 1].node : 'io', view = {viewport, inset: {top}, active};
-      const out = renderMachine(plan, t, L, ink, {...view, minFont: 10}), [cx, cy, cw, ch] = out.viewBox.split(' ').map(Number), s = viewport.width / cw;
+      const drawn = renderMachine(plan, t, L, ink, {...view, minFont: 10}), [cx, cy, cw, ch] = drawn.viewBox.split(' ').map(Number), s = viewport.width / cw;
       if (t === 3) assert.equal(renderMachine(plan, t, L, ink, {...view, minFont: 0}).svg, renderMachine(plan, t, L, ink, view).svg, 'minFont 0 draws the frame as before');
-      const pills = pillsIn(out.svg), where = `[${inputs}] t ${t}`;
+      const pills = pillsIn(drawn.svg), where = `[${inputs}] t ${t}`, frame = {x0: cx, y0: cy + top / s, x1: cx + cw, y1: cy + ch}, px = 1 / s;
+      // no deeper into q than at its own size, and that at most 1 px
+      const clear = (p, q) => depth(p, q) <= Math.min(px, depth(p.own, q)) + 1e-3;
       for (const p of pills) if (p.k > 1) {
-        grown++; if (27 * p.k * s >= 9.95) readable++;
-        assert.ok(p.x0 >= cx - 1e-3 && p.x1 <= cx + cw + 1e-3 && p.y0 >= cy + top / s - 1e-3 && p.y1 <= cy + ch + 1e-3, `${where}: pill ${p.t} grows out of the framed area`);
+        grown++; if (27 * p.k * s >= 9.95) readable++; if (p.t.startsWith('io:')) io++;
+        assert.ok(out(p, frame) <= Math.min(px, out(p.own, frame)) + 1e-3, `${where}: pill ${p.t} grows out of the framed area`);
         for (const q of pills) if (q !== p && q.t !== p.t) assert.ok(!meets(p, q), `${where}: pills ${p.t} and ${q.t} meet`);
         if (t % 1) continue;
-        for (const b of bulbsAt(out.svg)) if (b.t !== p.t) assert.ok(!meets(p, b), `${where}: pill ${p.t} over a bulb of ${b.t}`);
-        for (const id of Object.keys(sceneAt(plan, t).nodes)) { const n = L.nodeBox(id); assert.ok(!meets(p, {x0: n.x, y0: n.y, x1: n.x + n.w, y1: n.y + n.h}), `${where}: pill ${p.t} over block ${id}`); }
+        for (const b of bulbsAt(drawn.svg)) if (b.t !== p.t) assert.ok(clear(p, b), `${where}: pill ${p.t} over a bulb of ${b.t}`);
+        for (const id of Object.keys(sceneAt(plan, t).nodes)) { const n = L.nodeBox(id); assert.ok(clear(p, {x0: n.x, y0: n.y, x1: n.x + n.w, y1: n.y + n.h}), `${where}: pill ${p.t} over block ${id}`); }
       }
     }
   }
+  assert.ok(io > 0, 'the IO pills grow too');
   assert.ok(grown > 100 && readable > grown / 2, `${grown} grown pills, ${readable} of them at 10 px`);
 });
 
