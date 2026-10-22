@@ -13,6 +13,7 @@ import { ARITY, palette, defaultMachine, attach, detach, openSockets, parseInput
 import { snapshotAt } from './scene.js';
 import { layoutPlan, cameraAt, foldWeight, moveCamera, foldCamera } from './layout.js';
 import { renderMachine, machineDefs, blockGlyphSVG } from './render.js';
+import { lessons as LESSONS, pausesOf, matches, MachineTutor } from './lessons.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -194,7 +195,7 @@ export class MachineView extends EventTarget {
     this.sync(this.clock.t(performance.now()), true);
   }
   // Leaving closes the Steps/Parts sheet too, so the mode never reopens under it.
-  hide() { this.visible = false; this.hidePeek(); this.endDrag(); this.closeSheet(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
+  hide() { this.endLesson(); this.visible = false; this.hidePeek(); this.endDrag(); this.closeSheet(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
   // Android's back closes an open sheet before it leaves the mode, as Esc does: true if it did.
   closeSheet() { if (!$('machine-side').classList.contains('open')) return false; this.sheet(false); return true; }
   // {tree?|op?|expression?, base, input, sp, pace, auto}: resolves once the machine is planned.
@@ -226,6 +227,8 @@ export class MachineView extends EventTarget {
     this.hidePeek(); this.ask(false);
     const now = performance.now(), text = this.$input.value.trim();
     if (enterAction(this.clock, { changed: text !== this.planText.trim() || !!this.refusal }) === 'step') {
+      // a lesson's question waits for an answer (or Show me) before its beat plays
+      if (this.question) { this.lessonSay(`${this.question.question} Answer it, or press Show me.`, 'hint'); return { ok: false, message: 'question' }; }
       if (step || !this.auto) this.stepMode = true;
       this.clock.step(now); this.manual = null; this.sync(this.clock.t(now)); return { ok: true };
     }
@@ -313,6 +316,7 @@ export class MachineView extends EventTarget {
   use(plan) {
     this.planned = plan; this.planId = (this.planId ?? 0) + 1; this.layout = layoutPlan(plan);
     this.clock = new BeatClock(plan, { sp: this.sp / this.boost, auto: this.auto, readAlong: this.readAlong });
+    this.lessonPlanned();
     this.manual = null; this.steps(); this.rewound(); this.hud();
   }
   rewound() { const t = this.clock.t(performance.now()); this.lastDone = Math.floor(t + 1e-9); this.lastStarted = -1; this.lastBoundary = -1; this.dirty = true; this.hidePeek(); this.sync(t, true); }
@@ -408,6 +412,7 @@ export class MachineView extends EventTarget {
     const done = Math.floor(t + 1e-9);
     if (done > this.lastDone) for (let k = Math.max(0, this.lastDone); k < done; k++) this.ended(k);
     this.lastDone = done;
+    if (this.pauses?.length && c.started && !c.run && !c.wait && Math.abs(t - Math.round(t)) < 1e-9) { const q = this.pauses.find(p => p.i === Math.round(t) && !p.done); if (q && q !== this.question) this.lessonAsk(q); }
     // The text and the run's fold first, so the frame is drawn for the stage it is shown in: a
     // caption or sentence that takes another line resizes it, and so does the phone layout's fold.
     this.sync(t);
@@ -428,6 +433,7 @@ export class MachineView extends EventTarget {
     if (beat.kind === 'output' || i === n - 1) {
       if (!this.stepMode && !this.readAlong) this.announce(`Output ${plan.result.text}${plan.result.label ? `: ${plan.result.label}` : ''}.`);
       haptic('success'); this.dispatchEvent(new CustomEvent('done', { detail: { result: plan.result } }));
+      this.lessonDone();
     } else if (['collide', 'carry', 'addone'].includes(beat.kind) && this.grew(i)) haptic('thud');
   }
   // A carry that lands above a tower's top grows the column.
@@ -666,7 +672,7 @@ export class MachineView extends EventTarget {
     $('machine-ask-answer').onclick = () => { this.ask(false); this.clock.seek(this.clock.n); this.clock.started = true; this.rewound(); };
     for (const b of this.mode.querySelectorAll('#machine-base [data-base]')) b.onclick = () => this.setBase(b.dataset.base);
     $('machine-steps').onclick = e => { const b = e.target.closest('[data-beat]'); if (!b) return; this.clock.seek(Number(b.dataset.beat)); this.stepMode = true; this.clock.step(performance.now(), { once: true }); this.rewound(); };
-    this.wireOutline(); this.wireStage(); this.wirePalette();
+    this.wireOutline(); this.wireStage(); this.wirePalette(); this.wireLesson();
     this.mode.addEventListener('keydown', e => this.key(e));
     this.tab('steps'); this.hud();
     // On phones the options (carries, Digits, Read along, Reduced motion) sit at the foot of
@@ -759,6 +765,7 @@ export class MachineView extends EventTarget {
     const up = e => {
       const p = pts.get(e.pointerId); if (!p) return; pts.delete(e.pointerId); if (pts.size < 2) this.pinch = null;
       if (p.moved || e.type === 'pointercancel') return;
+      if (this.question?.tap && this.lessonTap(e.clientX, e.clientY)) return;
       const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-socket],[data-node],[data-tower]') ?? p.target.closest?.('[data-socket],[data-node],[data-tower]');
       if (hit?.dataset.socket) this.select(hit.dataset.socket);
       else if (hit?.dataset.node) this.select(hit.dataset.node);
@@ -823,6 +830,115 @@ export class MachineView extends EventTarget {
   dropDrag() { const d = this.drag; const target = d?.socket; const op = d?.op; this.endDrag(); if (target) this.attachAt(target, op); else this.status('Drop a block near an open socket to hang it there.'); }
   endDrag() { if (this.press) clearTimeout(this.press.timer); this.press = null; if (this.drag) { this.drag.ghost.remove(); this.drag = null; this.hitKey = null; this.dirty = true; document.body.classList.remove('machine-dragging'); } }
 
+  // ---------- lessons (lessons.js, design 5.4) ----------
+  // Watch the example, then Predict on a fresh problem (the machine stops before chosen beats
+  // to ask), then Your turn: build the machine for a fresh problem and predict again. The
+  // lesson bar sits over the bar; the machine's own controls drive every run.
+  async startLesson(lesson, { seed } = {}) {
+    if (!lesson) return { ok: false };
+    if (!this.lesson) this.beforeLesson = { pace: this.pace, auto: this.auto };
+    this.lesson = new MachineTutor(lesson, seed ?? Date.now()); this.question = null;
+    this.mode.classList.add('lesson'); $('machine-lesson').hidden = false; $('mlesson-title').textContent = lesson.title;
+    await this.lessonLoad(this.lesson.problem);
+    this.lessonSay(`${lesson.intro} ${touchFirst() ? 'Tap Run' : 'Press Enter'} to watch ${this.lesson.problem.text}; Step plays one beat at a time.`);
+    this.lessonRefresh();
+    return { ok: true };
+  }
+  endLesson() {
+    if (!this.lesson) return;
+    const was = this.beforeLesson; this.lesson = null; this.question = null; this.pauses = []; if (this.clock) this.clock.holds = new Set();
+    this.mode.classList.remove('lesson'); $('machine-lesson').hidden = true; $('mlesson-choices').hidden = true;
+    if (was) { this.setAuto(was.auto, { remember: false }); if (was.pace !== this.pace) this.setPace(was.pace); }
+    this.dispatchEvent(new Event('lessonend'));
+  }
+  // A problem built and typed in, ready to run (or, for Your turn, an empty machine in its base).
+  async lessonLoad(problem, { build = true } = {}) {
+    this.ask(false);
+    if (build) await this.load({ tree: problem.tree, base: problem.base, input: `[${problem.inputs.join(',')}]`, pace: problem.pace, auto: true });
+    else { this.$input.value = ''; this.$expr.value = ''; await this.load({ tree: {}, base: problem.base, pace: problem.pace, auto: true }); this.status(''); }
+  }
+  // The stops for the plan just made: none while watching, and none for a machine that does
+  // not work out the problem in play.
+  lessonPlanned() {
+    this.question = null; this.pauses = [];
+    const L = this.lesson; if (!L || !this.clock) return;
+    $('mlesson-choices').hidden = true;
+    if (L.phase !== 'watch' && !this.planned.display && (L.phase !== 'turn' || matches(L.problem, this.tree, this.inputs))) this.pauses = pausesOf(L.lesson, this.planned).map(q => ({ ...q, done: false }));
+    this.clock.holds = new Set(this.pauses.map(q => q.i));
+    this.lessonRefresh?.();
+  }
+  lessonSay(text, tone = '') { const el = $('mlesson-prompt'); el.textContent = text; el.dataset.tone = tone; }
+  lessonAsk(q) {
+    this.question = q;
+    const box = $('mlesson-choices'); box.hidden = false;
+    box.innerHTML = q.choices.map(c => `<button type="button" data-value="${esc(c.value)}">${esc(c.label)}</button>`).join('');
+    // the last answer's feedback stays in view while the next question is asked straight after it
+    const said = this.lastFeedback && performance.now() - this.lastFeedback.at < 8000 ? `${this.lastFeedback.text} Next: ` : '';
+    this.lastFeedback = null; this.lessonSay(said + q.question); this.lessonRefresh(); haptic('peek');
+  }
+  // An answer (a choice, or a level tapped on the stage): say why, then play the beat.
+  lessonAnswer(value, { shown = false } = {}) {
+    const q = this.question, L = this.lesson; if (!q || !L) return false;
+    const ok = shown ? null : L.answer(q, value);
+    q.done = true; this.question = null; this.clock.holds.delete(q.i); $('mlesson-choices').hidden = true;
+    const text = shown ? `Here it is: ${q.explain}` : `${ok ? 'Right.' : 'Not quite.'} ${q.explain}`;
+    this.lessonSay(text, shown ? 'hint' : ok ? 'good' : 'detour'); this.lastFeedback = { text, at: performance.now() };
+    if (ok === true) haptic('success'); else if (ok === false) haptic('thud');
+    const now = performance.now(); this.clock.step(now); this.manual = null; this.sync(this.clock.t(now));
+    this.lessonRefresh(); return ok;
+  }
+  // A tap on the stage answers a level question: the level of the asked tower under the finger.
+  lessonTap(x, y) {
+    const q = this.question, at = this.toMachine?.(x, y); if (!q?.tap || !at) return false;
+    const tower = snapshotAt(this.planned, Math.round(this.clock.pos)).towers[q.tap.tower]; if (!tower) return false;
+    let p; try { p = this.layout.place(tower.at); } catch { return false; }
+    const level = Math.round((p.y - at.y) / 84);
+    if (Math.abs(at.x - p.x) > 220 || !q.choices.some(c => c.value === level)) return false;
+    this.lessonAnswer(level); return true;
+  }
+  lessonDone() {
+    const L = this.lesson; if (!L) return;
+    const result = this.planned.result?.text ?? '', score = L.asked ? ` You predicted ${L.right} of ${L.asked}.` : '';
+    this.lastFeedback = null;
+    if (L.phase === 'watch') { L.watched = true; this.lessonSay(`Output ${result}. That was the worked example. Now press Predict: a new problem plays, and the machine stops to ask what will happen next.`, 'done'); }
+    else if (L.phase === 'predict') { L.predicted = true; this.lessonSay(`Output ${result}.${score} Your turn: build one yourself.`, 'done'); }
+    else if (matches(L.problem, this.tree, this.inputs)) { const r = this.planned.result; L.solved = true; this.lessonSay(`Well done: ${L.problem.text}${r.label ? `: ${r.label}` : ` = ${r.text.replace(/^\[|\]$/g, '')}`}.${score} New problem for another, or Next lesson.`, 'done'); }
+    else this.lessonSay(`That machine gave ${result}, but the problem is ${L.problem.text}. ${this.lessonHint()}`, 'detour');
+    this.lessonRefresh();
+  }
+  lessonHint() {
+    const L = this.lesson, p = L.problem, nodes = Object.values(this.tree);
+    if (nodes.length !== 1 || nodes[0].op !== p.op) return `Hang a ${p.block} block under the triangle: tap the triangle's socket, then ${p.block.split(' ')[0]} in the palette${nodes.length ? ' (take the other blocks off first)' : ''}.`;
+    if (!matches(p, this.tree, this.inputs)) return `Type [${p.inputs.join(',')}] in Input, then ${touchFirst() ? 'tap Run' : 'press Enter'}.`;
+    return `${touchFirst() ? 'Tap Run' : 'Press Enter'} to work it out.`;
+  }
+  async lessonPredict() { const L = this.lesson; if (!L) return; const p = L.predict(); await this.lessonLoad(p); this.lessonSay(`Predict: ${p.text} in ${BASE_NAME[p.base]}. The machine stops before key beats to ask what will happen; tap a level or a choice.`); this.lessonRefresh(); this.enter(); }
+  async lessonTurn() { const L = this.lesson; if (!L) return; const p = L.turn(); await this.lessonLoad(p, { build: false }); this.lessonSay(`Your turn: work out ${p.text} in ${BASE_NAME[p.base]}. ${this.lessonHint()} The machine will stop to ask, as before.`); this.lessonRefresh(); }
+  lessonRefresh() {
+    const L = this.lesson; if (!L) return;
+    const phase = L.phase, chip = $('mlesson-phase');
+    chip.textContent = { watch: 'Watch', predict: 'Predict', turn: 'Your turn' }[phase]; chip.dataset.phase = phase;
+    const show = { 'mlesson-predict': phase === 'watch' || phase === 'predict' && !L.predicted, 'mlesson-turn': phase === 'predict', 'mlesson-hint': phase !== 'watch', 'mlesson-show': phase !== 'watch' && (!!this.question || phase === 'turn' && !L.solved), 'mlesson-new': phase !== 'watch', 'mlesson-next': phase === 'turn' };
+    for (const [id, on] of Object.entries(show)) $(id).hidden = !on;
+    $('mlesson-predict').textContent = phase === 'watch' ? 'Predict' : 'Predict again';
+    $('mlesson-predict').classList.toggle('ready', phase === 'watch' && !!L.watched); $('mlesson-turn').classList.toggle('ready', !!L.predicted);
+    $('mlesson-predict').classList.toggle('primary', phase === 'watch'); $('mlesson-turn').classList.toggle('primary', phase === 'predict' && !!L.predicted);
+  }
+  wireLesson() {
+    $('mlesson-predict').onclick = () => this.lessonPredict();
+    $('mlesson-turn').onclick = () => this.lessonTurn();
+    $('mlesson-new').onclick = () => this.lesson?.phase === 'turn' ? this.lessonTurn() : this.lessonPredict();
+    $('mlesson-next').onclick = () => { const i = LESSONS.indexOf(this.lesson?.lesson); this.startLesson(LESSONS[(i + 1) % LESSONS.length]); };
+    $('mlesson-close').onclick = () => { this.endLesson(); this.stage.focus({ preventScroll: true }); };
+    $('mlesson-hint').onclick = () => { const L = this.lesson; if (!L) return; L.hints++; this.lessonSay(`Hint: ${this.question ? this.question.hint ?? this.question.question : L.phase === 'turn' && !L.solved ? this.lessonHint() : 'Press Predict again or New problem for another.'}`, 'hint'); };
+    $('mlesson-show').onclick = async () => {
+      if (this.question) return this.lessonAnswer(null, { shown: true });
+      const L = this.lesson; if (!L || L.phase !== 'turn') return;
+      await this.lessonLoad(L.problem); this.lessonSay(`Watch: a ${L.problem.block} block, and [${L.problem.inputs.join(',')}] in Input.`, 'hint'); this.enter();
+    };
+    $('mlesson-choices').onclick = e => { const b = e.target.closest('button[data-value]'); if (!b || !this.question) return; const v = this.question.choices.find(c => String(c.value) === b.dataset.value)?.value; this.lessonAnswer(v ?? b.dataset.value); };
+  }
+
   // ---------- automation (tests and videos only: &automation) ----------
   hook() {
     window.__machine = {
@@ -834,6 +950,12 @@ export class MachineView extends EventTarget {
       load: async params => { await this.load(presetOf(params)); },
       seek: t => this.seek(t),
       chrome: mode => this.chrome(mode),
+      // lessons: the lesson in play, its phase and the question waiting, if any; and an answer
+      lesson: () => this.lesson && { id: this.lesson.lesson.id, phase: this.lesson.phase, problem: this.lesson.problem.text, right: this.lesson.right, asked: this.lesson.asked,
+        question: this.question && { i: this.question.i, question: this.question.question, choices: this.question.choices.map(c => c.value), answer: this.question.answer },
+        stops: (this.pauses ?? []).map(q => ({ i: q.i, kind: q.kind, done: q.done })), prompt: $('mlesson-prompt').textContent },
+      answer: value => this.lessonAnswer(value),
+      startLesson: (id, seed) => this.startLesson(LESSONS.find(l => l.id === id), { seed }),
     };
   }
 }

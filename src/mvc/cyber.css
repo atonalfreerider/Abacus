@@ -81,7 +81,7 @@
 [data-style=cyber] #equation-status{color:var(--text)}
 [data-style=cyber] #feedback{color:var(--magenta);font-family:var(--mono)}
 /* Dialogs and panels: glass with a hairline and a cyan edge on top. */
-[data-style=cyber] dialog,[data-style=cyber] #tutor-bar,[data-style=cyber] #graph-panel,[data-style=cyber] #peek,[data-style=cyber] #numbers-panel{background:var(--glass);border:1px solid var(--line-bright);border-top-color:var(--cyan);border-radius:4px;color:var(--text);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+[data-style=cyber] dialog,[data-style=cyber] #tutor-bar,[data-style=cyber] #machine-lesson,[data-style=cyber] #graph-panel,[data-style=cyber] #peek,[data-style=cyber] #numbers-panel{background:var(--glass);border:1px solid var(--line-bright);border-top-color:var(--cyan);border-radius:4px;color:var(--text);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 [data-style=cyber] dialog{background:var(--glass-solid)}
 [data-style=cyber] dialog::backdrop{background:#000a}
 [data-style=cyber] .heading h1{font-family:var(--mono);text-transform:uppercase;letter-spacing:.24em;font-size:18px;color:var(--cyan)}
@@ -92,14 +92,15 @@
 [data-style=cyber] #lessons h2,[data-style=cyber] #graph-panel h2,[data-style=cyber] #peek h2,[data-style=cyber] #lessons small{color:var(--dim);font-family:var(--mono)}
 [data-style=cyber] #lessons button{font-family:var(--sans);letter-spacing:0}
 /* Tutor */
-[data-style=cyber] #tutor-title{color:var(--text)}
-[data-style=cyber] #tutor-phase{background:none;border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;font-family:var(--mono)}
-[data-style=cyber] #tutor-phase[data-phase=practice]{border-color:var(--amber);color:var(--amber);background:none}
-[data-style=cyber] #tutor-prompt[data-tone=good],[data-style=cyber] #tutor-prompt[data-tone=done]{color:var(--acid)}
-[data-style=cyber] #tutor-prompt[data-tone=detour]{color:var(--amber)}
-[data-style=cyber] #tutor-prompt[data-tone=hint]{color:var(--cyan)}
+[data-style=cyber] #tutor-title,[data-style=cyber] #mlesson-title{color:var(--text)}
+[data-style=cyber] #tutor-phase,[data-style=cyber] #mlesson-phase{background:none;border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;font-family:var(--mono)}
+[data-style=cyber] #mlesson-phase[data-phase=predict]{border-color:var(--acid);color:var(--acid);background:none}
+[data-style=cyber] #tutor-phase[data-phase=practice],[data-style=cyber] #mlesson-phase[data-phase=turn]{border-color:var(--amber);color:var(--amber);background:none}
+[data-style=cyber] #tutor-prompt[data-tone=good],[data-style=cyber] #tutor-prompt[data-tone=done],[data-style=cyber] #mlesson-prompt[data-tone=good],[data-style=cyber] #mlesson-prompt[data-tone=done]{color:var(--acid)}
+[data-style=cyber] #tutor-prompt[data-tone=detour],[data-style=cyber] #mlesson-prompt[data-tone=detour]{color:var(--amber)}
+[data-style=cyber] #tutor-prompt[data-tone=hint],[data-style=cyber] #mlesson-prompt[data-tone=hint]{color:var(--cyan)}
 [data-style=cyber] .tutor-actions .primary,[data-style=cyber] .area-actions .primary{background:#36e6ff22;color:var(--cyan);border-color:var(--cyan)}
-[data-style=cyber] #tutor-action{background:#ffb21e1a;border-color:var(--amber);color:var(--amber)}
+[data-style=cyber] #tutor-action,[data-style=cyber] #mlesson-choices button{background:#ffb21e1a;border-color:var(--amber);color:var(--amber)}
 @keyframes cyber-beckon{50%{box-shadow:0 0 0 1px #36e6ff,0 0 18px #36e6ff88}}
 [data-style=cyber] .tutor-actions .primary.ready{animation-name:cyber-beckon}
 /* Peek */

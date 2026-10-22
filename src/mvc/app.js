@@ -11,6 +11,7 @@ import { setStyle,onStyle,ink } from './theme.js';
 import { statusBarStyle } from '../native.js';
 import { numeral,setBase,onBase,bases,baseOrder,baseSpec,baseText,placeMeta,digitGlyph } from './bases.js';
 import { fingerprintSVG } from '../numbers/fingerprint.js';
+import { useMachinePlanner,hasMachinePlanner } from './operations.js';
 import { describe } from '../numbers/primes.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
@@ -50,8 +51,14 @@ function refresh() {
  if(tutor)refreshTutor();
 }
 controller.addEventListener('change',refresh);
+// Base 2 and balanced ternary work × and ÷ out in rows, PRIME's split (operations.js): the
+// Machine's planner does the arithmetic. It loads when a bulb base is chosen, never at a
+// decimal start, and a tap that comes first waits for it.
+let rowPlanner=null;
+function loadRowPlanner(){return rowPlanner??=import('../machine/plan.js').then(m=>useMachinePlanner(m.planMachine)).catch(error=>{rowPlanner=null;console.error(error);});}
+async function evaluateTerm(t){if(bases[numeral.id].bulbs&&t.expr&&!hasMachinePlanner())await loadRowPlanner();return safe(()=>controller.evaluate(t.id));}
 const dragger=new Dragger($('stage'),controller,{
- onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){offerWatch(t);return controller.evaluate(t.id);}controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
+ onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){offerWatch(t);return evaluateTerm(t);}controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
  onCommit:(id,drop,origin)=>safe(()=>controller.drop(id,drop.side,drop.target,drop.index,performance.now(),origin)),
  onPeek:(id,at)=>peek(id,at),onPeekEnd:()=>{$('peek').hidden=true;},
 });
@@ -111,7 +118,7 @@ $('stage').addEventListener('pointerup',event=>dragger.up(event));
 $('stage').addEventListener('pointercancel',event=>dragger.cancel(event));
 $('stage').addEventListener('keydown',event=>{
  const term=event.target.closest('[data-term]');if(!term||term.classList.contains('placeholder'))return;const id=term.dataset.term;
- if(['Enter',' '].includes(event.key)){const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){event.preventDefault();offerWatch(t);safe(()=>controller.evaluate(id));}return;}
+ if(['Enter',' '].includes(event.key)){const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){event.preventDefault();offerWatch(t);evaluateTerm(t);}return;}
  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
   event.preventDefault();safe(()=>{
    const direction=['ArrowLeft','ArrowUp'].includes(event.key)?-1:1;
@@ -145,7 +152,20 @@ const answer=()=>controller.model.expression?`The answer is ${controller.status(
 // Every launch deals new worked examples, so the lessons differ each time the app opens.
 // (?examples=written keeps the written examples, for tests and recorded videos.)
 if(new URLSearchParams(location.search).get('examples')!=='written')dealExamples(crypto.getRandomValues(new Uint32Array(1))[0]);
-$('open-tutor').onclick=()=>$('lesson-dialog').showModal();
+$('open-tutor').onclick=()=>{$('lesson-dialog').showModal();listMachineLessons();};
+// Machine lessons (src/machine/lessons.js) follow under a heading of their own, added when the
+// dialog first opens: they load with the machine's planner, never at start. One opens the
+// machine and runs there; it never calls startLesson, never touches the equation model and
+// never changes the cards' base (design 5.4).
+let machineLessons=null;
+function listMachineLessons(){
+ return machineLessons??=import('../machine/lessons.js').then(({lessons:list,describe})=>{
+  const h=document.createElement('h2');h.textContent='Machine';$('lessons').append(h);
+  for(const lesson of list){const b=document.createElement('button');b.dataset.machineLesson=lesson.id;b.innerHTML=`<span>${lesson.title}</span><small>${describe(lesson)}</small>`;b.onclick=()=>{$('lesson-dialog').close();startMachineLesson(lesson);};$('lessons').append(b);}
+  return list;
+ }).catch(error=>{machineLessons=null;console.error(error);});
+}
+async function startMachineLesson(lesson){const view=await showMachine(true);if(view&&!$('machine-mode').hidden)await view.startLesson(lesson);}
 {let group='';for(const lesson of lessons){
  if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
  const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${typesetExample(exampleOf(lesson))}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
@@ -330,7 +350,7 @@ const nativeHandlers={
   if(place==='graph'){leaveTutor();showGraph(true);}
   else if(place==='numbers'){leaveTutor();showNumbers(true);}
   else if(place==='machine'){leaveTutor();showMachine(true);}
-  else if(place==='lessons'){if(!$('graph-mode').hidden)showGraph(false);if(!$('machine-mode').hidden)showMachine(false);$('lesson-dialog').showModal();}
+  else if(place==='lessons'){if(!$('graph-mode').hidden)showGraph(false);if(!$('machine-mode').hidden)showMachine(false);$('lesson-dialog').showModal();listMachineLessons();}
   else if(place==='pemdas'){startLesson(lessons.find(l=>l.id==='pemdas-all'));}
   else if(place==='equation'){if(!$('graph-mode').hidden)showGraph(false);if(!$('machine-mode').hidden)showMachine(false);leaveTutor();$('open-equation').click();}
  },
@@ -355,7 +375,7 @@ $('style').onchange=event=>{setStyle(event.target.value);try{localStorage.setIte
 if(document.documentElement.dataset.style==='cyber')setStyle('cyber');
 $('style').value=ink.name;
 // Numerals: the base the cards are drawn and regrouped in. Saved per device.
-onBase(id=>{hideWatch();controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
+onBase(id=>{if(bases[id].bulbs)loadRowPlanner();hideWatch();controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
 const chooseBase=id=>{lessonBase=null;setBase(id);try{localStorage.setItem('abacus-base',id);}catch{}};
 $('numerals').onchange=event=>chooseBase(event.target.value);
 $('base-cycle').onclick=()=>chooseBase(baseOrder[(baseOrder.indexOf(numeral.id)+1)%baseOrder.length]);
