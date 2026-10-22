@@ -701,6 +701,7 @@ export class MachineView extends EventTarget {
     // them: the base radios, the Steps/Parts tabs, the palette, the Steps list and the outline.
     if (NAV_KEYS.includes(e.key)) { const group = e.target.closest('#machine-base,#machine-palette,[role=tablist],#machine-steps,#machine-outline'); if (group) return this.groupKey(e, group); }
     if (e.target.closest('#machine-outline') && ['Backspace', 'Delete'].includes(e.key)) return;
+    if (this.lessons?.key(e.key)) { e.preventDefault(); return; }
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, now = performance.now();
     const act = {
       Enter: () => this.enter(), ArrowRight: () => this.enter(), ArrowDown: () => this.enter(), ArrowLeft: () => this.back(), ArrowUp: () => this.back(),
@@ -831,7 +832,7 @@ export class MachineView extends EventTarget {
 
   // ---------- lessons (design 5.4) ----------
   // The lesson mode (lesson-mode.js, with lessons.js and lessons.css) loads with the first
-  // lesson; the mode itself only calls into it: planned, frame, done, enter and a stage tap.
+  // lesson; the mode itself only calls into it: planned, frame, done, enter, a stage tap and a key.
   async startLesson(lesson, options) {
     this.lessons = await (this.lessonMode ??= import('./lesson-mode.js').then(m => m.LessonMode.create(this)));
     return this.lessons.start(lesson, options);

@@ -3,8 +3,8 @@
 // problem (the machine stops before chosen beats to ask), then Your turn: build the machine for
 // a fresh problem and predict again. The machine's own controls drive every run; this module,
 // lessons.js and lessons.css load with the first lesson, so neither app start nor opening the
-// mode pays for them. machine-app.js calls in at five places: planned, frame, done, enter and
-// a tap on the stage.
+// mode pays for them. machine-app.js calls in at six places: planned, frame, done, enter, a
+// tap on the stage and a key on it.
 import { haptic } from '../haptics.js';
 import { snapshotAt } from './scene.js';
 import * as kit from './lessons.js';
@@ -68,6 +68,8 @@ export class LessonMode {
     if (!this.pauses.length || !c.started || c.run || c.wait || Math.abs(t - Math.round(t)) > 1e-9) return;
     const q = this.pauses.find(p => p.i === Math.round(t) && !p.done); if (q && q !== this.question) this.ask(q);
   }
+  // On the stage, digit keys pick a choice (the first nine).
+  key(k) { const i = /^[1-9]$/.test(k) ? Number(k) - 1 : -1, c = this.question?.choices[i]; if (!c) return false; this.answer(c.value); return true; }
   // Enter and Step wait for an answer (or Show me) before the beat plays.
   waiting() { if (!this.question) return false; this.say(`${this.question.question} Answer it, or press Show me.`, 'hint'); return true; }
   // A tap on the stage answers a level question: the level of the asked tower under the finger.
@@ -96,7 +98,7 @@ export class LessonMode {
   ask(q) {
     this.question = q;
     const box = $('mlesson-choices'); box.hidden = false;
-    box.innerHTML = q.choices.map(c => `<button type="button" data-value="${esc(c.value)}">${esc(c.label)}</button>`).join('');
+    box.innerHTML = q.choices.map((c, i) => `<button type="button" data-value="${esc(c.value)}"${i < 9 ? ` aria-keyshortcuts="${i + 1}" title="Key ${i + 1}"` : ''}>${esc(c.label)}</button>`).join('');
     // the last answer's feedback stays in view while the next question is asked straight after it
     const said = this.lastFeedback && performance.now() - this.lastFeedback.at < 8000 ? `${this.lastFeedback.text} Next: ` : '';
     this.lastFeedback = null; this.say(said + q.question); this.refresh(); haptic('peek');

@@ -720,7 +720,10 @@ try{
  const lessonState=()=>page.eval(`window.__machine?.lesson?.()`);
  const lessonUntil=async(pred,what,limit=30000)=>{for(let t=0;t<limit;t+=100){const l=await lessonState();if(l&&pred(l))return l;await wait(100);}throw Error(`timed out waiting for ${what}: ${JSON.stringify(await lessonState())}`);};
  // Answer every stop by clicking the right choice, until the run is over.
- const predictAll=async end=>{for(let n=0;n<12;n++){const l=await lessonUntil(l=>l.question||end.test(l.prompt),'a question or the end');if(!l.question)return l;await click(`#mlesson-choices button[data-value="${l.question.answer}"]`);await wait(150);}throw Error('too many stops');};
+ // (byKey: the first answer is a digit key on the stage, the choice's number)
+ const predictAll=async(end,byKey=false)=>{for(let n=0;n<12;n++){const l=await lessonUntil(l=>l.question||end.test(l.prompt),'a question or the end');if(!l.question)return l;
+  if(byKey&&!n){const d=String(l.question.choices.map(String).indexOf(String(l.question.answer))+1);await page.eval(`document.getElementById('machine-stage').focus()`);await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:d,code:'Digit'+d,text:d,windowsVirtualKeyCode:48+Number(d)});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:d,code:'Digit'+d,windowsVirtualKeyCode:48+Number(d)});}
+  else await click(`#mlesson-choices button[data-value="${l.question.answer}"]`);await wait(150);}throw Error('too many stops');};
  async function lessonFlow(viewport){
   await numerals('ternary');await wait(200);
   await page.eval(`document.getElementById('open-tutor').click()`);
@@ -733,7 +736,7 @@ try{
   expect(l.problem,'13 + 9','the worked example');
   await click('#machine-run');await until(s=>s.output==='[22]','the example to play out');
   await lessonUntil(l=>/worked example/.test(l.prompt),'the end of the example');
-  await click('#mlesson-predict');l=await predictAll(/Your turn/);
+  await click('#mlesson-predict');l=await predictAll(/Your turn/,!viewport);
   if(!(l.asked>=2&&l.right===l.asked))throw Error('predictions: '+JSON.stringify(l));
   if(viewport){const q=await page.eval(`(()=>{const b=document.getElementById('mlesson-turn').getBoundingClientRect(),s=document.getElementById('machine-stage').getBoundingClientRect();return {h:b.height,bottom:b.bottom,stage:s.height,vh:innerHeight};})()`);
    if(q.h<44||q.bottom>q.vh)throw Error('Your turn on a phone: '+JSON.stringify(q));if(q.stage<240)throw Error(`the stage is ${q.stage} px tall in a lesson`);}
