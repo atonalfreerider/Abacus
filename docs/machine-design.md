@@ -896,7 +896,7 @@ The base-e palette is ADD, SUB, MULT, ×eᵏ (k ∈ [−6, 12]), COMP, MEASURE a
   - Or drag a block: the nearest open socket within r 250 previews a wire (PRIME `Ping`), and dropping attaches.
   - On touch, a horizontal movement in the palette strip scrolls it. A drag starts only after a vertical movement of more than 10 px out of the strip, or a 350 ms press.
   - Dropping on an occupied socket pushes the existing block into the new block's left socket.
-  - Backspace on a selected block detaches it.
+  - Backspace on a selected block detaches it; so does the Take off button (`#machine-remove`), shown while a block is selected, which is the touch path.
 - **Edits rewind.** Any attach, detach, base switch or pace switch, mid-run or after OUTPUT:
   - re-plans at once;
   - rewinds to beat 0;
@@ -993,11 +993,11 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
 - **Phone portrait:**
   - the bar wraps to two rows;
   - the stage fills the height, which suits vertical trees and towers;
-  - below it come the sentence and caption, a 56 px palette strip that scrolls sideways, and a control row (Step 64 px wide, AUTO, −/+, Back, Rebuild, Steps), with every target ≥ 44 px;
+  - below it come the sentence and caption, a 56 px palette strip that scrolls sideways, and a control row (Step 64 px wide, AUTO, −/+, Back, Rebuild, Pause, Steps, Centre, Overview), with every target ≥ 44 px. It wraps (two rows from 360 to 414 px) rather than scrolling any of them out of sight; the options (carries, Digits, Read along, Reduced motion) scroll sideways in a strip of their own below it;
   - **during a run** (playing, or paused mid-plan) the palette strip and the bar's second row collapse, giving the stage about 100 px more (≈ 530 px tall at 390×844, room for a 21-level tower at the minimum scale);
   - Steps and Parts open in a bottom sheet;
   - Input is never auto-focused (4.2).
-- **Phone landscape** (height < 520 px): the palette and controls form a right rail, like the dock. Tall towers use the camera pan (4.5).
+- **Phone landscape** (height < 520 px): the palette (one row that scrolls sideways and folds away during a run), the controls and the options form a right rail, like the dock, so Step, Back, AUTO and Pause are on screen from the opening. Tall towers use the camera pan (4.5).
 - **All devices:** safe areas are respected. A `ResizeObserver` recomputes only the camera, because the layout does not depend on the viewport.
 - **A header with six buttons.** The browser test asserts no wrap or overflow at 360 × 740. The CSS fallback at ≤ 420 px hides the brand motto, sets nav padding to 4 px, and shows "Equation" as "Eq." through a long/short span pair.
 
@@ -1007,7 +1007,7 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
   - when stepping (AUTO off, or Step pressed) or with Read along on: "caption. sentence." once per beat;
   - under AUTO without Read along: the sentence once per **completed node** (at its RETURN), and the Output.
 
-  The visible `#machine-caption` and `#machine-sentence` are not live, so nothing is announced twice.
+  The visible `#machine-caption` and `#machine-sentence` are not live, so nothing is announced twice. `#machine-status` is `role=status` (6.7), a polite region of its own: refusals and edits are announced from there and never written to `#machine-live` as well.
 - **The sentence line** writes the tree as algebra after each beat:
   - `16 × 7` → `16 × 4 + 16 × 3` → `64 + 16 × 3` → `64 + (16 × 2 + 16 × 1)` → … → `112`;
   - division shows its invariant: `100 = 7 × 12 + 16`.
@@ -1865,7 +1865,7 @@ Unit and property tests run with `node --test tests/*.test.js`.
 - **Typed input:** refused at Enter. The pill shakes and the status names the limit.
 - **Computed values:** a zero divisor, a non-positive LN operand or a negative shift count is a domain error, found by the pre-check (2.6). A computed shift count past its limit is `tooBig`. The pre-check still works the exact answer out far past every tower (binary and balanced ternary up to 2¹⁴ bits, base e up to e^±2048), so `cmp(shl(1, 5000), 3)` is `tooBig` with the answer [1]; only a value past that budget is `tooBig` with no answer, and its message says why.
 - **While planning:** the planner checks every tower as it is built. When a tower would exceed its cap, or the node or beat cap is passed, it returns `{ok:false, reason:'tooBig', result}`.
-- **Level pace:** the planner first retries in together pace.
+- **Level pace:** the planner first retries in together pace. The mode also plays carries together when a level-pace plan would pass 1000 beats ((2³² − 1)² is 1649): laying that out froze the page for over a second, for a run that takes minutes even at 4×. Between 400 and 1000 beats the soft limit asks at Enter.
 - The app then shows the exact answer statically in Output, with "Too big to animate step by step; here is the exact answer." Nothing is ever truncated or rounded silently.
 
 ### 6.11 What must not change (v1)

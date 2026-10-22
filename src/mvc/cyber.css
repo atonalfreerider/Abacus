@@ -203,7 +203,7 @@
 [data-style=cyber] #machine-svg text{font-family:var(--mono)}
 [data-style=cyber] .m-hit-socket{stroke:var(--cyan)}[data-style=cyber] .m-hit-socket.target,[data-style=cyber] .m-preview{stroke:var(--amber)}
 [data-style=cyber] .m-output-note{fill:var(--magenta);font-family:var(--mono)}
-[data-style=cyber] #machine-hud{font-family:var(--mono);color:var(--cyan)}
+[data-style=cyber] #machine-hud{font-family:var(--mono);color:var(--cyan);background:#05080cf0;box-shadow:inset 0 0 0 1px var(--line)}
 [data-style=cyber] .hud-title{font-weight:300;letter-spacing:.3em}
 [data-style=cyber] .hud-bulb,[data-style=cyber] .hud-bulbs i{background:#081016;border-color:#2f6475}
 [data-style=cyber] .hud-bulb.lit,[data-style=cyber] .hud-bulbs i.lit{background:radial-gradient(circle,#ecfeff 0 28%,#12b5d4 62%);border-color:var(--cyan);box-shadow:0 0 8px var(--cyan)}
@@ -231,4 +231,11 @@
 [data-style=cyber] #machine-steps button[aria-current],[data-style=cyber] #machine-outline [aria-selected=true]>span{background:#36e6ff14;box-shadow:inset 2px 0 var(--cyan)}
 [data-style=cyber] #machine-outline [role=treeitem]:focus>span{box-shadow:0 0 0 1px var(--cyan)}
 [data-style=cyber] .machine-help{color:var(--dim)}
+/* A phone's Steps/Parts sheet is solid glass: the palette and controls must not show through. */
+@media(max-width:699px),(max-height:520px) and (min-aspect-ratio:3/2){[data-style=cyber] #machine-side{background:var(--glass-solid)}}
 @media(max-width:420px){[data-style=cyber] nav{gap:2px}[data-style=cyber] nav button{padding:5px 3px}}
+/* Six header buttons in monospace capitals run long on tablets and small phones: tighter
+   letters and padding there (style.css lets the brand give way past that). */
+@media(min-width:701px) and (max-width:860px){[data-style=cyber] nav button{letter-spacing:.04em;padding:6px 7px}[data-style=cyber] .brand{letter-spacing:.2em}[data-style=cyber] .brand small{letter-spacing:.08em}}
+@media(min-width:481px) and (max-width:560px){[data-style=cyber] .brand{letter-spacing:.14em}[data-style=cyber] .brand small{padding:2px 0 0 1.6em;letter-spacing:.02em}[data-style=cyber] nav{gap:2px}[data-style=cyber] nav button{padding:5px 4px;letter-spacing:0}}
+@media(max-width:350px){[data-style=cyber] .brand{letter-spacing:.06em;font-size:13px}[data-style=cyber] .brand::before{margin-right:.3em}[data-style=cyber] nav button{padding:5px 2px;font-size:9.5px}}

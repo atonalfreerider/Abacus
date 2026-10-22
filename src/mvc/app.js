@@ -276,7 +276,8 @@ async function showMachine(on,preset){
    const {MachineView,presetFromQuery}=await import('../machine/machine-app.js');
    if(!machine){machine=new MachineView();
     machine.addEventListener('cards',event=>{showMachine(false);chooseBase(event.detail.base);safe(()=>controller.load(String(event.detail.value)));});
-    machine.addEventListener('leave',()=>showMachine(false));}
+    // Esc on the stage leaves the mode; keyboard focus goes back to the header button
+    machine.addEventListener('leave',()=>{showMachine(false);$('open-machine').focus();});}
    await machine.show(typeof preset==='string'||preset instanceof URLSearchParams?presetFromQuery(preset):preset);
   }catch(error){console.error(error);showMachine(false);message(`The machine could not open: ${error.message}`);}
  }
@@ -339,7 +340,8 @@ const nativeHandlers={
   if(tutor){leaveTutor();return true;}
   if(!$('graph-mode').hidden){showGraph(false);return true;}
   if(!$('numbers-mode').hidden){showNumbers(false);return true;}
-  if(!$('machine-mode').hidden){showMachine(false);return true;}
+  // the Machine's Steps/Parts sheet closes first, as Esc closes it
+  if(!$('machine-mode').hidden){if(!machine?.closeSheet())showMachine(false);return true;}
   if(entry.active){enterKey('Escape');return true;}
   return false;
  },

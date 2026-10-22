@@ -328,12 +328,17 @@ try{
    bad=(await movers([.1,.3,.5,.7,.9])).filter(b=>b.least<2);if(bad.length)throw Error('[1048575,1]: '+JSON.stringify(bad.slice(0,3)));
   },{width:w,height:h});
  }
- await check('machine 7: at 360×740 the six header buttons neither wrap nor overflow, in both styles',async()=>{
-  for(const style of ['sketchpad','cyber']){
-   await page.eval(`document.documentElement.dataset.style='${style}'`);await wait(100);
-   const r=await page.eval(`(()=>{const h=document.querySelector('header'),b=[...document.querySelectorAll('nav button')].map(x=>x.getBoundingClientRect());return {n:b.length,rows:new Set(b.map(x=>Math.round(x.top))).size,over:h.scrollWidth>h.clientWidth||document.documentElement.scrollWidth>innerWidth};})()`);
-   expect(JSON.stringify(r),JSON.stringify({n:6,rows:1,over:false}),style);
+ await check('machine 7: from 320 px phones to tablets the six header buttons neither wrap nor overflow, in both styles; Equation keeps its name',async()=>{
+  // the widths the first merge overflowed at (View off a landscape phone or an iPad mini), and the design's 360
+  for(const w of [320,360,390,482,500,540,701,720,744,768,800,834]){
+   await page.send('Emulation.setDeviceMetricsOverride',{width:w,height:w<700?740:1024,deviceScaleFactor:1,mobile:false});
+   for(const style of ['sketchpad','cyber']){
+    await page.eval(`document.documentElement.dataset.style='${style}'`);await wait(60);
+    const r=await page.eval(`(()=>{const h=document.querySelector('header'),b=[...document.querySelectorAll('nav button')].map(x=>x.getBoundingClientRect());return {n:b.length,rows:new Set(b.map(x=>Math.round(x.top))).size,over:h.scrollWidth>h.clientWidth||document.documentElement.scrollWidth>innerWidth||b.some(x=>x.right>innerWidth)};})()`);
+    expect(JSON.stringify(r),JSON.stringify({n:6,rows:1,over:false}),`${style} at ${w} px`);
+   }
   }
+  expect(await page.eval(`document.getElementById('open-equation').getAttribute('aria-label')`),'Equation','the accessible name is never the abbreviation');
  },{width:360,height:740});
  await mcheck('machine 8: emulated reduced motion plays the same beats',async()=>{
   const normal=await page.eval(`JSON.stringify(window.__machine.beats().map(b=>[b.kind,b.caption]))`);
@@ -441,6 +446,35 @@ try{
   await press('Tab');await wait(50);expect(await page.eval(`!!document.activeElement.closest('#machine-outline')`),true,'Tab goes into the outline');
   await page.eval(`document.getElementById('machine-stage').focus()`);await press('ArrowRight');await wait(150);expect((await mstate()).beat,0,'→ on the stage still plays beat 0');
  },{width:720,height:500});
+ await mcheck('machine 17: blocks hung but not yet planned keep their socket rings apart; a refusal is announced once, by the status',async()=>{
+  await mload({tree:{n1:{op:'add',parent:'io',socket:'C'},n3:{op:'sub',parent:'n1',socket:'L'},n2:{op:'mul',parent:'n1',socket:'R'}},input:'[16,7]'});await wait(300);
+  for(const s of ['n3.R','n2.L']){
+   const p=await box(`#machine-svg .m-scene circle[data-socket="${s}"]`);await page.mouse('mouseMoved',p.x,p.y,{buttons:0});await page.mouse('mousePressed',p.x,p.y);await page.mouse('mouseReleased',p.x,p.y);await wait(150);
+   expect(await page.eval(`document.querySelector('#machine-svg .m-hit-socket.selected')?.dataset.socket??null`),s,`a click on ${s}'s centre selects ${s}`);
+  }
+  expect(await page.eval(`(()=>{const r=[...document.querySelectorAll('#machine-svg .m-scene circle[data-socket^="n3.R"],#machine-svg .m-scene circle[data-socket^="n2.L"]')].map(c=>c.getBoundingClientRect());return r.length===2&&(r[0].right<=r[1].left||r[1].right<=r[0].left);})()`),true,'the two rings do not overlap');
+  await page.eval(`document.getElementById('machine-live').textContent='—'`);await page.eval(`document.getElementById('machine-input').focus()`);
+  await page.eval(`(()=>{const i=document.getElementById('machine-input');i.value='[1,2,3]';})()`);await press('Enter');await wait(200);
+  expect(JSON.stringify([await page.eval(`document.getElementById('machine-status').textContent`),await page.eval(`document.getElementById('machine-live').textContent`)]),JSON.stringify(['This machine takes 4 numbers','—']),'the status (role=status) speaks; the live region does not repeat it');
+  await page.eval(`document.getElementById('machine-stage').focus()`);await press('Escape');await wait(200);
+  expect(JSON.stringify([await page.eval(`document.getElementById('machine-mode').hidden`),await active()]),JSON.stringify([true,'open-machine']),'Esc on the stage leaves, and focus returns to the header button');
+ });
+ await mcheck('machine 18: on touch a selected block comes off with Take off; Android back closes the Steps sheet first, and leaving closes it',async()=>{
+  await touch();await reopen();
+  const p=await box('#machine-svg .m-hit-node[data-node="n1"]');await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:p.x,y:p.y}]});await wait(40);await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await wait(200);
+  expect(await page.eval(`document.getElementById('machine-remove').hidden`),false,'Take off shows for a selected block');
+  await page.eval(`document.getElementById('machine-remove').click()`);await wait(200);
+  expect(JSON.stringify([await page.eval(`JSON.stringify(window.__machine.plan().tree)`),await page.eval(`document.getElementById('machine-remove').hidden`)]),JSON.stringify(['{}',true]),'the block is off, and so is the button');
+  for(const id of ['machine-step','machine-auto','machine-back','machine-rebuild','machine-pause','machine-steps-toggle','machine-centre']){
+   const r=await box('#'+id);if(!r||r.x-r.w/2<0||r.x+r.w/2>390||r.y+r.h/2>844||r.h<43.5)throw Error(`${id} is not a full target on screen: ${JSON.stringify(r)}`);
+  }
+  await page.eval(`document.getElementById('machine-steps-toggle').click()`);await wait(100);
+  expect(await page.eval(`window.__native.back()`),true,'back is handled');await wait(100);
+  expect(JSON.stringify([await page.eval(`document.getElementById('machine-side').classList.contains('open')`),await page.eval(`document.getElementById('machine-mode').hidden`)]),'[false,false]','the sheet closed, the machine stays');
+  await page.eval(`document.getElementById('machine-steps-toggle').click()`);await wait(100);await page.eval(`window.__native.open('equation')`);await wait(300);
+  await page.eval(`window.__native.open('machine')`);await wait(500);
+  expect(await page.eval(`document.getElementById('machine-side').classList.contains('open')`),false,'the machine reopens without its sheet');
+ },{width:390,height:844});
  await mcheck('machine 16: a long run asks first; Play at 4× plays it at a quarter of the chosen beat length and keeps that length',async()=>{
   await mload({op:'mul',input:'[65535,65535]',pace:'level',sp:2,auto:1});await wait(200);
   const n=(await mstate()).beats;if(!(n>400))throw Error('not a long run: '+n+' beats');

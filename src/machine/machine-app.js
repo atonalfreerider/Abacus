@@ -38,7 +38,7 @@ const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
 // its own message instead of promising an answer that Output does not show; one with an
 // answer says whether it was too big or (past base e's rail) too small to animate.
 const refusalText = r => r.reason === 'tooBig' ? (r.result ? r.message || TOO_BIG : r.message || 'Too big to animate step by step.') : r.message;
-const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
+const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, LEVEL_BEATS = 1000, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
 const AUTO_KEY = 'abacus-machine-auto', REDUCED_KEY = 'abacus-machine-reduced', REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 // When Steps and Parts are a sheet: exactly style.css's phone portrait and phone landscape
 // queries (elsewhere the side panel is always on screen).
@@ -192,7 +192,10 @@ export class MachineView extends EventTarget {
     else this.stage.focus({ preventScroll: true });
     this.sync(this.clock.t(performance.now()), true);
   }
-  hide() { this.visible = false; this.hidePeek(); this.endDrag(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
+  // Leaving closes the Steps/Parts sheet too, so the mode never reopens under it.
+  hide() { this.visible = false; this.hidePeek(); this.endDrag(); this.closeSheet(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
+  // Android's back closes an open sheet before it leaves the mode, as Esc does: true if it did.
+  closeSheet() { if (!$('machine-side').classList.contains('open')) return false; this.sheet(false); return true; }
   // {tree?|op?|expression?, base, input, sp, pace, auto}: resolves once the machine is planned.
   async load(p = {}) {
     if (p.base && p.base !== this.base) { const r = await this.setBase(p.base, { force: !!(p.tree || p.op || p.expression), plan: false }); if (!r.ok) return r; }
@@ -286,8 +289,11 @@ export class MachineView extends EventTarget {
     else {
       const ask = pace => { try { return planMachine({ tree: this.tree, inputs: this.inputs, base: this.base, pace }); } catch (error) { console.error(error); return { ok: false, reason: 'input', message: error.message }; } };
       r = ask(this.pace);
-      // Level pace that would run too long falls back to carries together (design 6.10).
-      if (!r.ok && r.reason === 'tooBig' && this.pace === 'level') { const again = ask('together'); if (again.ok) r = again; }
+      // Level pace that would run too long falls back to carries together (design 6.10), and
+      // so does one past LEVEL_BEATS: (2³² − 1)² is 1649 beats a level at a time, which froze
+      // the page for over a second to lay out and held 60 MB of scenes, for a run that takes
+      // minutes even at 4× (161 beats together). Below it the soft limit still asks at Enter.
+      if (this.pace === 'level' && (!r.ok && r.reason === 'tooBig' || r.ok && r.plan.beats.length > LEVEL_BEATS)) { const again = ask('together'); if (again.ok) r = again; }
       if (r.ok && r.plan.pace !== this.pace) r.note = 'Carries play together: one level at a time would be too long for this run.';
     }
     if (r.ok) { this.answer = r.plan.result; this.use(r.plan); }
@@ -316,8 +322,10 @@ export class MachineView extends EventTarget {
     this.stepMode = step || !this.auto; this.manual = null;
     this.clock.setSpeed(this.sp / this.boost, now); this.clock.start(now); this.rewound(); return { ok: true };
   }
+  // #machine-status is role=status (6.7), a polite live region of its own: what it shows is
+  // announced from there, never written to #machine-live as well (4.9: nothing twice).
   refuse(message, r = {}) {
-    this.status(message, 'refuse'); this.announce(message);
+    this.status(message, 'refuse');
     const pill = this.$input; pill.classList.remove('shake'); void pill.offsetWidth; pill.classList.add('shake');
     this.dirty = true; this.hitKey = null; return { ok: false, message, reason: r.reason, node: r.node };
   }
@@ -360,7 +368,6 @@ export class MachineView extends EventTarget {
     this.plan();
     if (this.refusal?.reason === 'arity' || this.refusal?.reason === 'empty') message = `${message} ${this.refusal.message}.`;
     if (!this.refusal || this.refusal.reason === 'arity' || this.refusal.reason === 'empty') this.status(message);
-    this.announce(message);
   }
   tapBlock(op) {
     let target = this.selected;
@@ -370,7 +377,8 @@ export class MachineView extends EventTarget {
   }
   select(target) {
     this.selected = this.selected === target ? null : target; this.dirty = true; this.outline();
-    if (this.selected) this.status(this.tree[this.selected] ? `${OPS[this.tree[this.selected].op][1]} block selected: Backspace takes it off; a palette block goes above it.` : 'Socket selected: tap a block in the palette to hang it there.');
+    if (this.selected) this.status(this.tree[this.selected] ? `${OPS[this.tree[this.selected].op][1]} block selected: ${touchFirst() ? 'Take off removes it' : 'Backspace or Take off removes it'}; a palette block goes above it.` : 'Socket selected: tap a block in the palette to hang it there.');
+    $('machine-remove').hidden = !this.tree[this.selected];
   }
   // Enter in the expression field builds the tree, fills Input and starts the run.
   expression() {
@@ -481,7 +489,8 @@ export class MachineView extends EventTarget {
       svg += `<circle class="m-hit m-hit-socket${this.selected === s ? ' selected' : ''}${this.drag?.socket === s ? ' target' : ''}" data-socket="${s}" cx="${p.x}" cy="${p.y}" r="${s === 'io' ? 70 : 46}"/>`;
     }
     if (this.drag?.socket && this.drag.at) { const p = this.socketPoint(this.drag.socket) ?? this.drag.at; svg += `<path class="m-preview" d="M${p.x} ${p.y}L${this.drag.at.x} ${this.drag.at.y}"/>`; }
-    const note = this.outputText(t);
+    // a long exact answer is elided on the stage only: Output below holds every digit
+    let note = this.outputText(t); if (note.length > 48) note = `${note.slice(0, 22)}…${note.slice(-22)}`;
     if (this.refusal && note) svg += `<text class="m-output-note" x="162" y="-86" text-anchor="middle">${esc(note)}</text>`;
     this.$hits.innerHTML = svg;
   }
@@ -512,7 +521,13 @@ export class MachineView extends EventTarget {
     if (this.refusal?.reason === 'empty') return 'Tap the triangle, then a block in the palette (or drag one under it).';
     return this.refusal ? '' : touchFirst() ? 'Tap Run' : 'Press Enter';
   }
-  status(text, tone = '') { const el = $('machine-status'); el.textContent = text; el.dataset.tone = tone; }
+  // The same refusal twice (Enter again on [1,2,3]) is cleared first, so it is heard again.
+  status(text, tone = '') {
+    const el = $('machine-status'); el.dataset.tone = tone;
+    if (text && el.textContent === text && tone === 'refuse') { el.textContent = ''; requestAnimationFrame(() => { if (!el.textContent) el.textContent = text; }); }
+    else el.textContent = text;
+    $('machine-remove').hidden = !this.tree[this.selected];
+  }
   announce(text) { if (!text) return; const el = $('machine-live'); el.textContent = ''; requestAnimationFrame(() => { el.textContent = text; }); }
   hud() {
     $('machine-hud-base').textContent = BASE_SHORT[this.base];
@@ -599,6 +614,8 @@ export class MachineView extends EventTarget {
     $('machine-centre').onclick = () => this.centre();
     $('machine-overview').onclick = () => this.overview();
     $('machine-rebuild').onclick = () => this.rebuild();
+    // Take off: the touch path to Backspace, shown while a block is selected
+    $('machine-remove').onclick = () => { if (this.tree[this.selected]) this.remove(this.selected); };
     $('machine-to-cards').onclick = () => { const v = this.answer?.values?.[0]; if (v != null && !$('machine-to-cards').disabled) this.dispatchEvent(new CustomEvent('cards', { detail: { value: String(v), base: this.base } })); };
     $('machine-steps-toggle').onclick = () => this.sheet(!$('machine-side').classList.contains('open'));
     $('machine-sheet-close').onclick = () => { this.sheet(false); $('machine-steps-toggle').focus(); };
