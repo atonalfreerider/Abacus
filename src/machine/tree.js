@@ -174,9 +174,11 @@ export function compose(op, parts) {
 
 // ── exact evaluation ────────────────────────────────────────────
 // Every node's operands and results, depth-first, left first. At the root DIV, MOD and SHR
-// give [q, r]; below it DIV and SHR pass q up and MOD passes r.
+// give [q, r]; below it DIV and SHR pass q up and MOD passes r. `limits: false` asks the
+// base for the exact value even past its reach (planMachine's tooBig answer); a base that
+// has no such limit ignores it.
 export const QUOTIENT_OPS = ['div', 'mod', 'shr'];
-export function evaluateNodes(tree, inputs, base) {
+export function evaluateNodes(tree, inputs, base, {limits = true} = {}) {
   const spec = getBase(base), root = rootOf(tree), nodes = {};
   if (!root) return {ok: false, reason: 'arity', node: null, message: 'Hang a block under the triangle first: drag one from the palette, or tap the triangle\'s socket and then a block'};
   let next = 0;
@@ -188,7 +190,7 @@ export function evaluateNodes(tree, inputs, base) {
       if (c) { const r = visit(c); if (!r.ok) return r; args.push(r.value); parts.push(r.part); }
       else { if (next >= inputs.length) return {ok: false, reason: 'arity', node: id, message: 'Not enough numbers for the machine'}; const v = inputs[next++]; args.push(v); parts.push(show(v)); }
     }
-    const res = spec.evaluate(node.op, args);
+    const res = spec.evaluate(node.op, args, {limits});
     if (!res.ok) return {ok: false, reason: res.reason, node: id, message: explain(node.op, res, parts, args)};
     nodes[id] = {args, values: res.values};
     const value = QUOTIENT_OPS.includes(node.op) ? res.values[node.op === 'mod' ? 1 : 0] : res.values[0];

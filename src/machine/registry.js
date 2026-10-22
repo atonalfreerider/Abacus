@@ -5,7 +5,10 @@
 // spec = {
 //   id, palette: OpId[],
 //   parseValue(text)              → {ok:true, value} | {ok:false, error},
-//   evaluate(op, args)            → {ok:true, values} | {ok:false, reason:'zeroDivision'|'domain', message},
+//   evaluate(op, args, {limits = true} = {})
+//                                 → {ok:true, values} | {ok:false, reason:'zeroDivision'|'domain'|'tooBig', message},
+//       'tooBig' (6.10) is a computed value past the base's reach; with limits false a base
+//       that can still give the exact value does (planMachine's answer, evaluateScene's I1)
 //   display(value, {form})        → {text, approx?, digits?, reading?},
 //   checkLimits(value)            → null | message,
 //   validateTower(scene, towerId) → string[]            (I2 and I3 for this base)

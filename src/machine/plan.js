@@ -45,11 +45,16 @@ export function planMachine({tree, inputs, base, pace = 'together'}) {
   for (const id of ids) if (!spec.palette.includes(tree[id].op)) return fail('input', `${BASE_NAMES[base] ?? base} has no ${BLOCKS[tree[id].op] ?? tree[id].op}.`, {node: id});
   const open = openSockets(tree).length;
   if (values.length !== open) return fail('arity', takes(open));
-  // 2. the exact pre-check
+  // 2. the exact pre-check. A computed value past the base's reach (base e's e²⁰) is tooBig,
+  // and the exact answer still comes with it when the base can give one without its limits.
   const pre = evaluateNodes(tree, values, base);
-  if (!pre.ok) return fail(pre.reason, pre.message, pre.node ? {node: pre.node} : {});
-  const result = {values: pre.values, text: pre.text};
-  if (QUOTIENT_OPS.includes(tree[root].op)) result.label = `q ${fmt(pre.values[0])} · r ${fmt(pre.values[1])}`;
+  const answer = r => ({values: r.values, text: r.text, ...QUOTIENT_OPS.includes(tree[root].op) ? {label: `q ${fmt(r.values[0])} · r ${fmt(r.values[1])}`} : {}});
+  if (!pre.ok) {
+    const exact = pre.reason === 'tooBig' ? evaluateNodes(tree, values, base, {limits: false}) : null;
+    if (exact?.ok) return fail('tooBig', TOO_BIG, {node: pre.node, result: answer(exact)});
+    return fail(pre.reason, pre.message, pre.node ? {node: pre.node} : {});
+  }
+  const result = answer(pre);
   // 3. limits on the machine and on computed values
   if (ids.length > LIMITS.blocks || values.length > LIMITS.inputs || tooTall(tree, pre, base)) return fail('tooBig', TOO_BIG, {result});
   // 4. the run; level pace that overflows first retries together
@@ -180,22 +185,30 @@ function finish(b, id, {result, other}) {
 // ── evaluateScene ───────────────────────────────────────────────
 // The exact value of the machine at a beat boundary: the tree read with the towers in its
 // sockets and the inputs still in flight filling the open ones. A spent node (glyph 0, or a
-// two-socket node with a tower at its centre) is its result tower; DIV and MOD in progress
-// are Q + R/arg; a shift's count is a count until it expands, then the multiplier `arg`.
+// two-socket node with a tower at its centre) is its result tower; DIV, MOD and SHR in
+// progress are Q + R/arg; a shift's count is a count until it expands, then the multiplier
+// `arg`. What has no number yet stays symbolic, `shl(5, 7/2)`: a count that a running
+// division below it still reads as a fraction, a negative one, or one past the tower.
 const gcd = (a, b) => { a = abs(a); b = abs(b); while (b) [a, b] = [b, a % b]; return a; };
 const Q = (n, d = 1n) => { if (d < 0n) { n = -n; d = -d; } const g = gcd(n, d) || 1n; return {n: n / g, d: d / g}; };
-const isQ = x => typeof x === 'object';
+// A symbolic part is {sym, refused}; `refused` marks one the base would not evaluate at all
+// (a base-e value past the rail), where I1 cannot be read exactly.
+const sym = (text, refused = false) => ({sym: text, refused});
+const isSym = x => typeof x === 'object' && x.sym !== undefined;
+const isQ = x => typeof x === 'object' && x.sym === undefined;
 const qadd = (x, y) => Q(x.n * y.d + y.n * x.d, x.d * y.d), qmul = (x, y) => Q(x.n * y.n, x.d * y.d), qdiv = (x, y) => Q(x.n * y.d, x.d * y.n);
-const qstr = x => isQ(x) ? (x.d === 1n ? String(x.n) : `${x.n}/${x.d}`) : x;
+const qstr = x => isSym(x) ? x.sym : isQ(x) ? (x.d === 1n ? String(x.n) : `${x.n}/${x.d}`) : x;
 // Free towers (the Input, the triangle, Output and coins riding a wire) sort by their slot.
 const freeSlot = at => {
   const k = at.lastIndexOf(':'); if (k < 0) return -1;
   const head = at.slice(0, k);
   return head === 'in' || head === 'io' || head === 'out' || head.endsWith('.C') ? Number(at.slice(k + 1)) : -1;
 };
-export function evaluateScene(scene, base) {
-  const spec = getBase(base), radix = RADIX[base], at = new Map(), free = [], kids = new Map();
-  let root = null;
+export function evaluateScene(scene, base) { return sceneValue(scene, base).values; }
+// evaluateScene, and whether a part of it was refused by its base (validatePlan skips I1 there).
+function sceneValue(scene, base) {
+  const spec = getBase(base), radix = RADIX[base], cap = BigInt(LIMITS[base]?.levels ?? 0), at = new Map(), free = [], kids = new Map();
+  let root = null, refused = false;
   for (const id in scene.towers) {
     const t = scene.towers[id]; if (t.ghost) continue;
     at.set(t.at, t);
@@ -204,15 +217,27 @@ export function evaluateScene(scene, base) {
   free.sort((x, y) => freeSlot(x.at) - freeSlot(y.at));
   for (const id in scene.nodes) { const n = scene.nodes[id]; if (n.parent === 'io') root = id; else kids.set(`${n.parent}.${n.socket}`, id); }
   const nodes = scene.nodes;
-  if (!root) return free.map(t => t.value);
+  if (!root) return {values: free.map(t => t.value), refused};
   const coins = free.filter(t => !t.at.startsWith('out:'));
   let next = 0;
   const lift = v => radix ? {n: BigInt(v), d: 1n} : v;
-  const symbolic = (op, args) => `${op}(${args.map(qstr).join(', ')})`;
+  const symbolic = (op, args, no = false) => {
+    if (no) refused = true;
+    return sym(`${op}(${args.map(qstr).join(', ')})`);
+  };
+  // b^k for a whole count 0 ≤ k ≤ the tower cap; anything else is not a count yet
+  const power = x => isQ(x) && x.d === 1n && x.n >= 0n && x.n <= cap ? Q(radix ** x.n) : null;
+  // base e evaluates through the registry, unlimited where the base allows it (a split's
+  // partial product may lie below the rail even though the whole product does not)
+  const exact = (op, args) => {
+    if (args.some(isSym)) return symbolic(op, args);
+    const r = spec.evaluate(op, args, {limits: false});
+    return r.ok ? r.values[0] : symbolic(op, args, r.reason === 'tooBig');
+  };
   const operand = (id, s) => {
     const c = kids.get(`${id}.${s}`); if (c) return value(c);
     const t = at.get(`${id}.${s}`) ?? coins[next++];
-    return t ? lift(t.value) : '?';
+    return t ? lift(t.value) : sym('?');
   };
   const value = id => {
     const node = nodes[id], op = node.op, C = at.get(`${id}.C`), sockets = socketsOf(op);
@@ -222,16 +247,18 @@ export function evaluateScene(scene, base) {
       if (op === 'shr' && node.glyph === 0) return qadd(lift(at.get(`${id}.L`).value), qdiv(lift(at.get(`${id}.R`).value), lift(node.arg)));
       const [a, d] = sockets.map(s => operand(id, s));
       if (!isQ(a) || !isQ(d)) return symbolic(op, [a, d]);
-      const divisor = op !== 'shr' ? d : node.arg ? lift(node.arg) : Q(radix ** d.n);
-      return divisor.n === 0n ? symbolic(op, [a, d]) : qdiv(a, divisor);
+      const divisor = op !== 'shr' ? d : node.arg ? lift(node.arg) : power(d);
+      return !divisor || divisor.n === 0n ? symbolic(op, [a, d]) : qdiv(a, divisor);
     }
     if (C && (node.glyph === 0 || sockets.length === 2)) return lift(C.value);
     const args = sockets.map(s => operand(id, s));
     if (COUNT_OPS[op]) {
-      const m = node.arg ? lift(node.arg) : radix ? (isQ(args[1]) ? Q(radix ** args[1].n) : null) : powerValue(base, Number(args[1]));
-      if (radix) return m && isQ(args[0]) ? qmul(args[0], m) : symbolic(op, args);
-      const r = spec.evaluate('mul', [args[0], m]);
-      return r.ok ? r.values[0] : symbolic(op, args);
+      if (radix) {
+        const m = node.arg ? lift(node.arg) : power(args[1]);
+        return m && isQ(args[0]) ? qmul(args[0], m) : symbolic(op, args);
+      }
+      if (node.arg) return exact('mul', [args[0], node.arg]);
+      return typeof args[1] === 'string' && /^-?\d+$/.test(args[1]) ? exact('mul', [args[0], powerValue(base, Number(args[1]))]) : symbolic(op, args);
     }
     if (radix) {
       if (!args.every(x => isQ(x) && x.d === 1n)) {
@@ -243,10 +270,10 @@ export function evaluateScene(scene, base) {
       const r = oracle(op, base, args.map(x => x.n));
       return r.error ? symbolic(op, args) : Q(r.value);
     }
-    const r = spec.evaluate(op, args);
-    return r.ok ? r.values[0] : symbolic(op, args);
+    return exact(op, args);
   };
-  return [qstr(value(root))];
+  const out = qstr(value(root));
+  return {values: [out], refused};
 }
 
 // ── validatePlan ────────────────────────────────────────────────
@@ -267,7 +294,8 @@ export function validatePlan(plan) {
   for (const t in scene.towers) for (const e of spec.validateTower(scene, t, listOf(t))) errs.push(`start ${e}`);
   const seen = {nodes: new Set(Object.keys(scene.nodes)), towers: new Set(Object.keys(scene.towers)), bulbs: new Set(Object.keys(scene.bulbs))};
   const facts = {first: new Map(), work: new Map(), collide: new Map()};
-  let value = evaluateScene(scene, base).join(' | ');
+  const initial = sceneValue(scene, base);
+  let value = initial.values.join(' | '), refused = initial.refused;
   const old = {nodes: new Map(), towers: new Map(), bulbs: new Map()}, touched = new Set();
   for (let i = 0; i < plan.beats.length; i++) {
     const beat = plan.beats[i], err = (inv, msg) => errs.push(`beat ${i} ${inv}: ${msg}`);
@@ -312,11 +340,11 @@ export function validatePlan(plan) {
     // a tower that only moved keeps its validity, unless it left a quotient register's place
     for (const [id, prev] of old.towers) if (!touched.has(id) && !(prev && !prev.at.endsWith('.Q') && Object.keys(set.towers[id] ?? {}).every(f => f === 'at' || f === 'note'))) touched.add(id);
     for (const t of touched) if (scene.towers[t]) for (const e of spec.validateTower(scene, t, listOf(t))) errs.push(`beat ${i} ${e}`);
-    // I1: the tree's value reads only nodes and towers
+    // I1: the tree's value reads only nodes and towers (not where its base refused a part)
     if (set.nodes || set.towers) {
-      const after = evaluateScene(scene, base).join(' | '), law = beat.ledger?.law;
-      if (after !== value && !VALUE_LAWS.includes(law) && !(law === 'power' && beat.kind === 'fanout')) err('I1', `the machine's value changed from ${value} to ${after}`);
-      value = after;
+      const now = sceneValue(scene, base), after = now.values.join(' | '), law = beat.ledger?.law;
+      if (after !== value && !refused && !now.refused && !VALUE_LAWS.includes(law) && !(law === 'power' && beat.kind === 'fanout')) err('I1', `the machine's value changed from ${value} to ${after}`);
+      value = after; refused = now.refused;
     }
     for (const e of ledgerErrors(beat.ledger, base)) err('I4', e);
     for (const e of motionErrors(beat, old.bulbs, scene, base)) err('I5', e);
@@ -348,10 +376,13 @@ function ledgerErrors(L, base) {
   if (!L || typeof L.law !== 'string') return ['the beat has no ledger'];
   const radix = RADIX[base], out = [], B = BigInt;
   if (!radix) {
-    // base e: the laws that are plain arithmetic, checked through the registry
-    const ev = (op, args) => { const r = getBase(base).evaluate(op, args); return r.ok ? r.values[0] : null; };
-    if (L.law === 'sum' && ev('add', [L.a, L.b]) !== L.out) out.push(`sum: ${L.a} + ${L.b} is not ${L.out}`);
-    if (L.law === 'shift' && ev('mul', [L.a, L.m]) !== L.out) out.push(`shift: ${L.a} × ${L.m} is not ${L.out}`);
+    // base e: the laws that are plain arithmetic, checked through the registry, unlimited (a
+    // split's partial product may lie below the rail); one the base still refuses as tooBig
+    // cannot be read here, as in I1
+    const ev = (op, args) => { const r = getBase(base).evaluate(op, args, {limits: false}); return r.ok ? r.values[0] : r.reason === 'tooBig' ? undefined : null; };
+    const differs = (v, want) => v !== undefined && v !== want;
+    if (L.law === 'sum' && differs(ev('add', [L.a, L.b]), L.out)) out.push(`sum: ${L.a} + ${L.b} is not ${L.out}`);
+    if (L.law === 'shift' && differs(ev('mul', [L.a, L.m]), L.out)) out.push(`shift: ${L.a} × ${L.m} is not ${L.out}`);
     if (L.law === 'zero' && (L.out !== '0' || L.a !== '0' && L.b !== '0')) out.push('zero: no zero operand');
     return out;
   }

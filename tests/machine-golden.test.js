@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync, readFileSync} from 'node:fs';
-import {planMachine, validatePlan} from '../src/machine/plan.js';
+import {planMachine, validatePlan, evaluateScene} from '../src/machine/plan.js';
 import {snapshotAt} from '../src/machine/scene.js';
 import {parseExpression, parseInput, defaultMachine} from '../src/machine/tree.js';
 import {twos, digits} from '../src/machine/bigmath.js';
@@ -238,6 +238,18 @@ test('domain errors are caught before planning and name their block', () => {
   const typed = one('shl', ['5', '-2']);
   assert.equal(typed.reason, 'domain');
 });
+// A count fed by a division is a fraction (Q + R/arg) until the division's RETURN, and a
+// fraction, or a negative one, is no count: the shift stays symbolic, constant, till then.
+test('evaluateScene keeps a shift symbolic while a running division feeds its count', () => {
+  const p = expression('shl(5, 7/2)').plan;
+  const seen = [...new Set(Array.from({length: p.beats.length + 1}, (_, i) => evaluateScene(snapshotAt(p, i), 'binary')[0]))];
+  assert.deepEqual(seen, ['shl(5, 7/2)', '40']);
+  assert.deepEqual(validatePlan(p), []);
+  for (const [text, base, values] of [['shr(-5, 2/(-11))', 'ternary', ['-5', '0']], ['shr(shl(16,3), 4%(-12))', 'binary', ['8', '0']]]) {
+    const r = expression(text, base);
+    assert.deepEqual(r.plan.result.values, values, text); assert.deepEqual(validatePlan(r.plan), [], text);
+  }
+});
 test('COMPLEMENT ends in lamp normal form for −1, −2, −4 and −2^62; NOT 0 = −1 and NOT −1 = 0', () => {
   for (const v of [-1n, -2n, -4n, -(2n ** 62n), -6n, -5n]) {
     const p = plan('and', [String(v), String(v)]);
@@ -307,6 +319,38 @@ test('a base registered from outside plays through the flow beats exactly as the
   assert.ok(r.ok, r.message);
   for (const want of fixture('e-measure-3', PLAN_E_MEASURE_3)) assert.deepEqual(JSON.parse(JSON.stringify(r.plan)), want);
   assert.deepEqual(validatePlan(r.plan), []);
+});
+// 6.10: a computed value past a base's reach is tooBig before planning, and the exact answer
+// comes with it when the base can still give it with {limits: false} (base e's e²⁰, as
+// binary's shl(5, 70) does through its tower cap). A base that ignores the option refuses
+// without an answer.
+test('a computed value past a base\'s reach is tooBig, with the exact answer when the base gives it unlimited', async () => {
+  const {registerBase} = await import('../src/machine/registry.js');
+  const capped = honours => ({
+    id: 'capped', palette: ['add', 'mul'],
+    parseValue: text => /^-?\d+$/.test(text) ? {ok: true, value: text} : {ok: false, error: 'not whole'},
+    evaluate(op, args, {limits = true} = {}) {
+      const v = op === 'add' ? BigInt(args[0]) + BigInt(args[1]) : BigInt(args[0]) * BigInt(args[1]);
+      return v > 100n && (limits || !honours) ? {ok: false, reason: 'tooBig', message: `${v} is past 100`} : {ok: true, values: [String(v)]};
+    },
+    display: value => ({text: value}), checkLimits: () => null, validateTower: () => [], place() {}, ops: {},
+  });
+  const tree = {n1: {op: 'add', parent: 'io', socket: 'C'}, n2: {op: 'mul', parent: 'n1', socket: 'L'}};
+  registerBase('capped', capped(true));
+  assert.deepEqual(planMachine({tree, inputs: ['20', '6', '1'], base: 'capped'}),
+    {ok: false, reason: 'tooBig', message: 'Too big to animate step by step; here is the exact answer.', node: 'n2', result: {values: ['121'], text: '[121]'}});
+  registerBase('capped', capped(false));
+  assert.deepEqual(planMachine({tree, inputs: ['20', '6', '1'], base: 'capped'}), {ok: false, reason: 'tooBig', message: '120 is past 100', node: 'n2'});
+});
+// A split's partial product may lie past the base's reach though the whole product does not:
+// 1/1000000 × e⁻³ is below base e's rail. validatePlan must still return its findings, not throw.
+test('validatePlan reads a base-e plan whose split makes a part the base will not evaluate', async () => {
+  await import('../src/machine/e-base.js');
+  for (const text of ['1/1000000*(e+e^-3)', '1/100000*(e^2+e^-3)', '1/1000000*(-e-e^-3)']) {
+    const e = parseExpression(text, 'e'), r = planMachine({tree: e.tree, inputs: e.inputs, base: 'e'});
+    assert.ok(r.ok, r.message);
+    assert.deepEqual(validatePlan(r.plan), [], text);
+  }
 });
 test('PRIME regressions: 7 + 5 = 12, 9 + 5 = 14, the 40 + 15 label on top, 257, 1024, 0 + 0, [5, 3]', () => {
   assert.equal(plan('add', ['7', '5']).result.text, '[12]');
