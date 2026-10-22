@@ -50,6 +50,7 @@ export const overlay = `(() => {
   #rec .chip{position:absolute;left:50%;top:var(--chip-top);transform:translateX(-50%);background:#3b6c78;color:#fff;font-size:var(--chip-size);padding:.18em .75em .24em;border-radius:1em;opacity:0;white-space:nowrap}
   #rec .label{position:absolute;transform:translate(-50%,0);font-size:var(--label-size);color:#3b6c78;font-variant:small-caps;letter-spacing:.04em;white-space:nowrap;opacity:0}
   #rec .label::before{content:'';position:absolute;left:50%;top:-.35em;width:1.6em;margin-left:-.8em;border-top:2px solid #3b6c78}
+  #rec .caption{text-wrap:var(--caption-wrap,wrap)}
   #rec .caption.top{bottom:auto;top:var(--caption-top,12px)}
   #rec .key{position:absolute;right:var(--key-right,36px);top:var(--key-top,120px);bottom:var(--key-bottom,auto);min-width:1.6em;padding:.2em .55em .28em;border:2px solid #25241e;border-bottom-width:5px;border-radius:.32em;background:#fbf6e8;color:#25241e;font:600 var(--key-size,30px)/1.1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.02em;text-align:center;box-shadow:0 6px 16px #0003;opacity:0;white-space:nowrap}
   #rec .card .kicker{font-size:calc(var(--title-size)*.2);letter-spacing:.22em;text-transform:uppercase;color:#6d6858;margin-top:-.2em}

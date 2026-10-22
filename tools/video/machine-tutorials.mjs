@@ -9,8 +9,8 @@
 // the layout does not depend on the viewport.
 
 // Recording mode hides the controls the studio's default portrait band keeps clear of, so
-// machine captions sit low (design 5.2).
-const overlay = {portrait: {'caption-bottom': '40px'}};
+// machine captions sit low (design 5.2); a caption that wraps is balanced over its lines.
+const overlay = {landscape: {'caption-wrap': 'balance'}, portrait: {'caption-bottom': '40px', 'caption-wrap': 'balance'}};
 // The page to open: a ?machine preset (4.1) plus the automation hook and recording mode.
 const page = (preset = {}) => '/?' + [...Object.entries(preset).map(([k, v]) => `${k}=${encodeURIComponent(v)}`), 'automation', 'recording', 'auto=1'].join('&');
 const top = {at: 'top'};
@@ -56,9 +56,12 @@ async function expression(ctx, text, caption) {
     await M.chrome('build');
     await ctx.eval(`__rec.below(['.machine-bar'])`);
   });
-  if (caption) ctx.caption(caption, Math.max(5, .45 + text.length * .07 + 3.2), top);
+  const shown = caption && ctx.caption(caption, null, top);
   await ctx.type('#machine-expr', text, {per: .07});
+  if (shown) await ctx.until(shown.end - .3);
   await ctx.hold(.6);
+  // the numbers come in at the top: the top band clears as Enter is pressed
+  if (shown) shown.stop();
   await ctx.key('Enter');
   await M.until(1, {speed: 1.5});
   await M.chrome('run');
@@ -86,19 +89,22 @@ export const machineTutorials = {
         await ctx.eval(`__rec.below(['.machine-bar'])`);
       });
       await M.note('A function machine: numbers in, numbers out.', top);
-      ctx.caption('Hang a × block under the triangle.', 3.4, top);
+      const hang = ctx.caption('Hang a × block under the triangle.', null, top);
       await ctx.tap(() => ctx.element('#machine-svg [data-socket="io"]'));
       await ctx.hold(.5);
       await ctx.tap(() => ctx.element('#machine-palette button[data-op="mul"]'));
-      await ctx.hold(1.3);
-      ctx.caption('Type the two numbers: [16,7].', 3, top);
+      await ctx.until(hang.end);
+      const typed = ctx.caption('Type the two numbers: [16,7].', null, top);
       await ctx.type('#machine-input', '[16,7]');
-      await ctx.hold(1.2);
+      await ctx.until(typed.end);
       // Hanging the block selected its first open socket; committing the numbers clears that.
       await M.load({});
-      ctx.caption('Press Enter. The numbers drop down the wire.', 3.6, top);
-      await ctx.hold(.6);
+      // From here on the captions sit at the bottom, over the palette: the numbers come in at
+      // the top, where the top band would cover them.
+      ctx.caption('Press Enter.', 1.4);
+      await ctx.hold(1);
       await M.start({field: '#machine-input'});
+      ctx.caption('The numbers drop down the wire.', 2.6);
       await M.until(1);
       await M.chrome('run');
       await digits(ctx);

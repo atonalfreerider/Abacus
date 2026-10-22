@@ -126,9 +126,11 @@ export async function record({origin, format: formatName, script, out, fps = 30,
       const words = text.split(/\s+/).filter(Boolean), total = words.reduce((n, w) => n + w.length + 1, 0);
       let chars = 0;
       const timed = words.map(w => { const s = start + length * chars / total; chars += w.length + 1; return {text: w, start: s, end: start + length * chars / total}; });
-      for (const c of chunk(timed, format.captionChars)) captions.push({text: c.text, start: c.start, end: c.end, at});
+      const mine = chunk(timed, format.captionChars).map(c => ({text: c.text, start: c.start, end: c.end, at}));
+      captions.push(...mine);
       captions.sort((a, b) => a.start - b.start);
-      return {start, end, done: (pad = .2) => ctx.until(end + pad)};
+      // stop() takes the caption down now (a chunk not yet shown is dropped).
+      return {start, end, done: (pad = .2) => ctx.until(end + pad), stop: () => { for (const c of mine) c.end = Math.max(c.start, Math.min(c.end, time)); }};
     },
     // Hold the picture: video time passes while the app's clock stands still.
     async freeze(seconds) { const previous = rate; rate = 0; await ctx.hold(seconds); rate = previous; },
