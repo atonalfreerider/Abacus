@@ -2,7 +2,8 @@
 // The native runtime injects window.Capacitor; the plugin proxies come from the vendored
 // @capacitor/core module, which the app build copies to vendor/capacitor/core.js.
 // Home-screen quick actions (iOS, from a firm press or long press on the icon) and app
-// shortcuts (Android, long press on the icon) open abacus://open/<place>.
+// shortcuts (Android, long press on the icon) open abacus://open/<place>: graph, numbers,
+// lessons, pemdas, equation, or machine (a link only; the quick actions are unchanged).
 const cap = globalThis.Capacitor;
 export const isNative = !!cap?.isNativePlatform?.();
 
