@@ -34,6 +34,9 @@ const E_MISSING = { div: 'A quotient of e-numerals is usually not an e-numeral.'
   xor: 'Logic needs whole-number levels; base e has none.', not: 'Logic needs whole-number levels; base e has none.' };
 const EMPTY = 'Hang a block under the triangle first: drag one from the palette, or tap the triangle\'s socket and then a block';
 const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
+// A tooBig with no answer (a shift count or power past what any tower could hold) says why
+// in its own message instead of promising an answer that Output does not show.
+const refusalText = r => r.reason === 'tooBig' ? (r.result ? TOO_BIG : r.message || 'Too big to animate step by step.') : r.message;
 const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
 const AUTO_KEY = 'abacus-machine-auto', REDUCED_KEY = 'abacus-machine-reduced', REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 // When Steps and Parts are a sheet: exactly style.css's phone portrait and phone landscape
@@ -292,7 +295,7 @@ export class MachineView extends EventTarget {
       if (r.reason === 'zeroDivision' || r.reason === 'domain') { this.highlight = r.node ?? null; this.answer = null; }
       if (r.reason === 'tooBig' && r.result) this.answer = r.result;
     }
-    this.status(r.ok ? r.note ?? '' : ['zeroDivision', 'domain', 'tooBig'].includes(r.reason) ? (r.reason === 'tooBig' ? TOO_BIG : r.message) : '', r.ok ? '' : 'refuse');
+    this.status(r.ok ? r.note ?? '' : ['zeroDivision', 'domain', 'tooBig'].includes(r.reason) ? refusalText(r) : '', r.ok ? '' : 'refuse');
     if (this.highlight) haptic('thud');
     this.cards();
   }
@@ -307,7 +310,7 @@ export class MachineView extends EventTarget {
     if (!parsed.ok) return this.refuse(parsed.error);
     if (!sameList(parsed.values, this.inputs) || this.refusal) { this.inputs = parsed.values; this.planText = text; this.plan(); }
     else this.planText = text;
-    if (this.refusal) return this.refuse(this.refusal.reason === 'tooBig' ? TOO_BIG : this.refusal.message, this.refusal);
+    if (this.refusal) return this.refuse(refusalText(this.refusal), this.refusal);
     if (this.planned.beats.length > SOFT_BEATS && !this.longOK) { this.ask(true); return { ok: false, message: 'long' }; }
     this.stepMode = step || !this.auto; this.manual = null;
     this.clock.setSpeed(this.sp / this.boost, now); this.clock.start(now); this.rewound(); return { ok: true };
@@ -445,7 +448,8 @@ export class MachineView extends EventTarget {
   // The node at work: the beat in motion's, else the one just finished (while it stands),
   // else the next one's. The renderer draws place values and digits beside it.
   active(t) {
-    const beats = this.planned.beats, n = beats.length; if (!n || t <= 0) return 'io';
+    // (t within 1e-9 of 0 is the opening too, and so is a NaN: beats[-1] would throw)
+    const beats = this.planned.beats, n = beats.length; if (!n || !(t > 1e-9)) return 'io';
     const i = Math.min(n - 1, Math.ceil(t - 1e-9) - 1), here = beats[i].node;
     if (Math.abs(t - Math.round(t)) > 1e-9 || here === 'io' || snapshotAt(this.planned, i + 1).nodes[here]) return here;
     return beats[i + 1]?.node ?? 'io';
