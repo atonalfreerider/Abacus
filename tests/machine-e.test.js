@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { E, sign, compare, greedy, isLegalNumeral, approx, height, lnText, digitsText, top, ln, foldHeight, meetHeight, PrecisionError } from '../src/machine/e-exact.js';
-import { eSpec, unfoldPlan, readingOf, validateTower, evaluate, parseValue, display, checkLimits } from '../src/machine/ops/e.js';
+import { eSpec, unfoldPlan, validateTower, evaluate, parseValue, display, checkLimits } from '../src/machine/ops/e.js';
 import { digitsOf } from '../src/mvc/bases.js';
 import '../src/machine/e-base.js';
 import { PlanBuilder } from '../src/machine/builder.js';
