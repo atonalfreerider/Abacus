@@ -365,6 +365,39 @@ test('a viewport: the camera\'s viewBox, culling off-camera towers, coins far aw
   assert.ok(bulbsIn(corner).length < near.length);
 });
 
+// Legibility (1.3): with view.minFont, a label whose text would draw under minFont px grows
+// into free space. On a landscape phone's stage (536 × 332 under a 20 px band, the camera at
+// its 18/74 floor, pills at 6.6 px) the pills reach 10 px where there is room; at every beat
+// boundary no grown pill meets another tower's bulb, a block or another pill, and none leaves
+// the framed area; between boundaries pills still never meet. Without minFont nothing changes.
+test('legible labels: pills grow to 10 px into free space only (view.minFont)', () => {
+  const viewport = {width: 536, height: 332}, top = 20;
+  const pillsIn = svg => [...svg.matchAll(/<g class="pill" data-t="([^"]+)"[^>]*>(?:<path[^>]*\/>)?(?:<g transform="matrix\(([^ ]+) 0 0 [^ ]+ ([^ ]+) ([^)]+)\)">)?<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)]
+    .map(([, t, k = 1, tx = 0, ty = 0, x, y, w, h]) => ({t, k: +k, x0: +x * k + +tx, y0: +y * k + +ty, x1: (+x + +w) * k + +tx, y1: (+y + +h) * k + +ty}));
+  const bulbsAt = svg => [...svg.matchAll(/<g class="mb" data-(?:b|was)="[^"]+" data-s="[^"]+" data-l="[^"]+" data-t="([^"]+)" transform="translate\(([^ ]+) ([^)]+?)\)(?: scale\(([^)]+)\))?"(?: opacity="([^"]+)")?/g)]
+    .filter(q => !(+q[5] < .05)).map(([, t, x, y, s = 1]) => ({t, x0: +x - 37 * s, y0: +y - 37 * s, x1: +x + 37 * s, y1: +y + 37 * s}));
+  const meets = (p, q) => p.x0 < q.x1 - 1e-3 && q.x0 < p.x1 - 1e-3 && p.y0 < q.y1 - 1e-3 && q.y0 < p.y1 - 1e-3;
+  let grown = 0, readable = 0;
+  for (const inputs of [['16', '7'], ['255', '255']]) {
+    const plan = planMachine({tree: {n1: {op: 'mul', parent: 'io', socket: 'C'}}, inputs, base: 'binary'}).plan, L = layoutPlan(plan);
+    for (let t = 0; t <= plan.beats.length; t += .5) {
+      const active = t > 0 ? plan.beats[Math.ceil(t) - 1].node : 'io', view = {viewport, inset: {top}, active};
+      const out = renderMachine(plan, t, L, ink, {...view, minFont: 10}), [cx, cy, cw, ch] = out.viewBox.split(' ').map(Number), s = viewport.width / cw;
+      if (t === 3) assert.equal(renderMachine(plan, t, L, ink, {...view, minFont: 0}).svg, renderMachine(plan, t, L, ink, view).svg, 'minFont 0 draws the frame as before');
+      const pills = pillsIn(out.svg), where = `[${inputs}] t ${t}`;
+      for (const p of pills) if (p.k > 1) {
+        grown++; if (27 * p.k * s >= 9.95) readable++;
+        assert.ok(p.x0 >= cx - 1e-3 && p.x1 <= cx + cw + 1e-3 && p.y0 >= cy + top / s - 1e-3 && p.y1 <= cy + ch + 1e-3, `${where}: pill ${p.t} grows out of the framed area`);
+        for (const q of pills) if (q !== p && q.t !== p.t) assert.ok(!meets(p, q), `${where}: pills ${p.t} and ${q.t} meet`);
+        if (t % 1) continue;
+        for (const b of bulbsAt(out.svg)) if (b.t !== p.t) assert.ok(!meets(p, b), `${where}: pill ${p.t} over a bulb of ${b.t}`);
+        for (const id of Object.keys(sceneAt(plan, t).nodes)) { const n = L.nodeBox(id); assert.ok(!meets(p, {x0: n.x, y0: n.y, x1: n.x + n.w, y1: n.y + n.h}), `${where}: pill ${p.t} over block ${id}`); }
+      }
+    }
+  }
+  assert.ok(grown > 100 && readable > grown / 2, `${grown} grown pills, ${readable} of them at 10 px`);
+});
+
 test('frames are fast enough to animate', () => {
   const plan = fixture('plan-5x11-binary'), L = layoutPlan(plan), start = performance.now();
   for (let k = 0; k < 400; k++) renderMachine(plan, (k % 160) / 10, L, ink, {viewport: {width: 1280, height: 720}, digits: true, active: 'n1'});

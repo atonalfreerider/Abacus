@@ -38,7 +38,7 @@ const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
 // its own message instead of promising an answer that Output does not show; one with an
 // answer says whether it was too big or (past base e's rail) too small to animate.
 const refusalText = r => r.reason === 'tooBig' ? (r.result ? r.message || TOO_BIG : r.message || 'Too big to animate step by step.') : r.message;
-const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, LEVEL_BEATS = 1000, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
+const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, LEVEL_BEATS = 1000, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4, MIN_FONT = 10;
 const AUTO_KEY = 'abacus-machine-auto', REDUCED_KEY = 'abacus-machine-reduced', REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 // When Steps and Parts are a sheet: exactly style.css's phone portrait and phone landscape
 // queries (elsewhere the side panel is always on screen).
@@ -449,7 +449,10 @@ export class MachineView extends EventTarget {
     return inset;
   }
   draw(t) {
-    const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset(), active: this.active(t) };
+    // minFont: value pills whose text would draw under 10 px (on a phone at the camera's
+    // smallest scale, 6.6 px) grow into the free space around them (render.js, design 1.3);
+    // the recording keeps the layout's sizes, which its 1280 × 720 frames read at
+    const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset(), active: this.active(t), minFont: this.recording ? 0 : MIN_FONT };
     if (this.manual) view.camera = this.fit(this.manual);
     const out = renderMachine(this.planned, t, this.layout, ink, view);
     this.cam = parseBox(out.viewBox) ?? view.camera;

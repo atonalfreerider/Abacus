@@ -149,6 +149,14 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
   const base = layout.base, P = view.prefix ?? 'm-', m = palette.machine, motions = beat?.motion || {};
   const reduced = view.motion === 'reduced' && beat !== null, v = reduced ? win(u, [.45, .55]) : null;
   const digits = !!view.digits, cull = far?.rect;
+  // Legibility (1.3): with view.minFont, a value pill whose text would draw under minFont px
+  // (and an INPUT or OUTPUT caption under 0.8 of it) grows into the free space around it, up
+  // to that size: never over a bulb (where it starts or ends this beat), a block, IO, a
+  // static tower's furniture, another label or the edge of the framed area. The layout's
+  // sizes are untouched, so 6.3b holds; what is drawn only uses room that is empty.
+  const legible = far?.legible && (far.legible.minFont > 27 * far.legible.scale || .8 * far.legible.minFont > 14 * far.legible.scale) ? far.legible : null;
+  const obst = legible ? [] : null;
+  const keep = (x, y, rad, t, k) => { if (obst && !culled(x, y)) obst.push({x0: x - rad, y0: y - rad - (k === 'lamp' ? FURNITURE.ghosts[1][0] : 0), x1: x + rad + (digits ? UNITS.gutter : 0), y1: y + rad, t}); };
   const parts = {wires: [], io: [], blocks: [], furniture: [], removed: [], resting: [], moving: [], edigits: [], column: [], bursts: [], marks: [], beads: [], pills: [], arrows: [], hud: []};
   const collapsedT = t => isCollapsed(t) || !!far?.collapse(t);
   const offsetOf = (t, b) => !isCollapsed(t) && far?.collapse(t) ? {x: 0, y: -UNITS.coin * (b.k === 'light' ? 0 : b.l), scale: base === 'e' ? UNITS.eScale : 1} : bulbOffset(base, t, b);
@@ -232,6 +240,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     if (reduced) {
       // hold, crossfade, hold: never between levels
       const pa = ba && posIn(a, ba), pz = bz && posIn(z, bz);
+      if (obst) { if (pa) keep(pa.x, pa.y, R * pa.scale, ba.t, ba.k); if (pz) keep(pz.x, pz.y, R * pz.scale, bz.t, bz.k); }
       const same = pa && pz && r(pa.x) === r(pz.x) && r(pa.y) === r(pz.y) && pa.scale === pz.scale && ba.s === bz.s && ba.k === bz.k && ba.o === bz.o;
       if (same) {
         const item = bulbItem({id, x: pz.x, y: pz.y, scale: pz.scale, level: bz.l, layers: [{s: bz.s, o: 1}], opacity: lerp(ghostOf(a.towers[ba.t]), ghostOf(z.towers[bz.t]), v), k: bz.k, slot: bz.slot, owed: bz.o, tower: bz.t, glyph: glyphFor(z.towers[bz.t], bz, bz.s)});
@@ -248,6 +257,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     }
     if (ba && bz) {
       const pa = posIn(a, ba), pz = posIn(z, bz); if (!pa || !pz) continue;
+      if (obst) { keep(pa.x, pa.y, R * pa.scale, ba.t, ba.k); keep(pz.x, pz.y, R * pz.scale, bz.t, bz.k); }
       const e = E(u, mo.move || [0, 1]);
       let x = lerp(pa.x, pz.x, e), y = lerp(pa.y, pz.y, e), level = lerp(ba.l, bz.l, e);
       const scale = lerp(pa.scale, pz.scale, e);
@@ -267,6 +277,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       let tgt = pa;
       if (mo.to) tgt = posIn(z.towers[mo.to.t] ? z : a, {t: mo.to.t, l: mo.to.l, slot: mo.to.slot, k: ba.k}) || pa;
       else if (z.towers[ba.t]) tgt = posIn(z, ba);
+      if (obst) { keep(pa.x, pa.y, R * pa.scale, ba.t, ba.k); if (tgt !== pa && !mo.burst && !mo.dissolve) keep(tgt.x, tgt.y, R * tgt.scale, ba.t, ba.k); }
       const e = E(u, mo.move || [0, 1]);
       let x = lerp(pa.x, tgt.x, e), y = lerp(pa.y, tgt.y, e), level = lerp(ba.l, mo.to ? mo.to.l : ba.l, e);
       if (mo.path) { level = pathLevel(mo.path, u); y = lerp(pa.oy, tgt.oy, e) - tgt.pitch * level + lerp(pa.perch, tgt.perch, e); }
@@ -287,6 +298,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const t = z.towers[bz.t]; if (!t) continue;
       const o = originOf(bz.t), off = offsetOf(t, bz), pz = {x: o.x + off.x, y: o.y + off.y, scale: off.scale};
       const src = mo.from ? posIn(a.towers[mo.from.t] ? a : z, {t: mo.from.t, l: mo.from.l, slot: mo.from.slot, k: bz.k}) : null;
+      if (obst) { keep(pz.x, pz.y, R * pz.scale, bz.t, bz.k); if (src) keep(src.x, src.y, R * src.scale, bz.t, bz.k); }
       const e = E(u, mo.move || [0, 1]), grow = E(u, mo.in || [0, .3]);
       const x = src ? lerp(src.x, pz.x, e) : pz.x, y = src ? lerp(src.y, pz.y, e) : pz.y;
       const scale = (src ? lerp(src.scale, pz.scale, e) : pz.scale) * (mo.grow ? .25 + .75 * grow : 1);
@@ -317,6 +329,8 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const reach = Math.max(400, ...[ta, tz].filter(Boolean).map(t => { const w = pillWidth(pillLines(t, digits)); return Math.abs(layout.pillCentre(t.at, w) - o.x) + w / 2 + (t.note ? 6 + textWidth(t.note) : 0); }));
       if (!(o.x + reach > cull.x && o.x - reach < cull.x + cull.w)) continue;
     }
+    // a tower that stays put this beat: its whole shape (rail, dust, sockets, ghosts) for the labels
+    if (obst && ta && tz && ta.at === tz.at) for (const [s, t] of [[a, ta], [z, tz]]) if (!collapsedT(t)) { const q = layout.towerParts(s, tid, {gutter: digits})[0]; if (q) obst.push({x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h, t: tid}); }
     // base-e furniture: two sockets and the sliver per level, the radix line, the floor
     const fa = ta && !collapsedT(ta) ? furnitureOf(base, ta, bulbsA) : null, fz = tz && !collapsedT(tz) ? furnitureOf(base, tz, bulbsZ) : null;
     if (fa || fz) {
@@ -374,15 +388,20 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const cx = at ?? (ta && tz && !reduced ? lerp(layout.pillCentre(ta.at, wa), layout.pillCentre(tz.at, wz), E(u, [0, 1])) : layout.pillCentre(t.at, w));
       const lift = layout.pillLift(scene, tid, digits), bottom = topY - (UNITS.labelGap - R) + lift, top = bottom - h, place = parsePlace(t.at);
       // a pill that climbed over its neighbours hangs a leader down to its tower
-      let svg = lift < 0 ? `<path d="M${r(cx)} ${r(bottom)}V${r(bottom - lift)}" stroke="${m.label}" stroke-width="1.5" stroke-dasharray="3 4" opacity=".6"/>` : '';
-      svg += `<rect x="${r(cx - w / 2)}" y="${r(top)}" width="${w}" height="${h}" rx="18" fill="${m.labelFill}" fill-opacity=".85" stroke="${m.label}" stroke-width="1.2"/>`;
+      const lead = lift < 0 ? `<path d="M${r(cx)} ${r(bottom)}V${r(bottom - lift)}" stroke="${m.label}" stroke-width="1.5" stroke-dasharray="3 4" opacity=".6"/>` : '';
+      let svg = `<rect x="${r(cx - w / 2)}" y="${r(top)}" width="${w}" height="${h}" rx="18" fill="${m.labelFill}" fill-opacity=".85" stroke="${m.label}" stroke-width="1.2"/>`;
       lines.forEach((line, j) => { svg += `<text x="${r(cx)}" y="${r(top + UNITS.pillLine * (j + .5) + 1)}" font-size="${j ? 22 : 27}" text-anchor="middle" dominant-baseline="central" fill="${m.label}"${j ? ' opacity=".8"' : ''}>${esc(line)}</text>`; });
       const noteOp = gliding.has(tid) && u < .9 ? 1 - E(u, [0, .1]) : 1;
+      let x0 = cx - w / 2, x1 = cx + w / 2;
       if (t.note && r(noteOp) > 0) {
         const nw = textWidth(t.note), left = place.socket === 'L' && place.i === null ? cx - w / 2 - 6 - nw : cx + w / 2 + 6;
+        x0 = Math.min(x0, left); x1 = Math.max(x1, left + nw);
         svg += `<g class="note"${attr('opacity', noteOp)}><rect x="${r(left)}" y="${r(bottom - UNITS.pillLine)}" width="${nw}" height="${UNITS.pillLine}" rx="18" fill="${m.labelFill}" fill-opacity=".6" stroke="${m.label}" stroke-width="1" stroke-dasharray="4 3"/><text x="${r(left + nw / 2)}" y="${r(bottom - UNITS.pillLine / 2 + 1)}" font-size="22" text-anchor="middle" dominant-baseline="central" fill="${m.label}">${esc(t.note)}</text></g>`;
       }
-      return `<g class="pill" data-t="${tid}"${attr('opacity', opacity)}>${svg}</g>`;
+      const wrap = body => `<g class="pill" data-t="${tid}"${attr('opacity', opacity)}>${lead}${body}</g>`;
+      // legible: a label that grows about its foot (centred, or from a corner) once resolved
+      if (legible) return {t: tid, prio: atActive(t) ? 0 : 2, font: 27, inner: svg, wrap, box: {x0, y0: top, x1, y1: bottom}, anchors: [[cx, bottom], [x0, bottom], [x1, bottom]]};
+      return wrap(svg);
     };
     const top = (() => {
       const mine = (tz ? topsBy.ending : topsBy.leaving).get(tid) || [];
@@ -427,6 +446,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       let svg = '';
       for (let l = lo; l <= hi; l++) svg += `<text x="${r(left - UNITS.placeCol / 2)}" y="${r(y0 - PITCH * l)}" font-size="22" text-anchor="middle" dominant-baseline="central" fill="${m.glyph}">${b}${sup(l)}</text>`;
       parts.column.push(`<g class="place-values" opacity=".55">${svg}</g>`);
+      if (obst) obst.push({x0: left - UNITS.placeCol, y0: y0 - PITCH * hi - 14, x1: left, y1: y0 - PITCH * lo + 14, t: null});
     }
   }
 
@@ -458,6 +478,8 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     let body = blockSVG(opChange ? nz.op : n.op, palette, base, {glyph: alive * fadeGlyph * (opChange ? swap : 1), oldOp: opChange ? na.op : null, oldGlyph: alive * (1 - swap), tilt, sx: layout.socketX, w: layout.blockW, q, id: nid});
     // outlines round the whole block, its socket rings included
     const span = UNARY.has(n.op) ? layout.blockW / 2 : Math.max(layout.blockW / 2, layout.socketX + 44), ring = (g, extra) => `<rect x="${-span - g}" y="${-44 - g}" width="${2 * (span + g)}" height="${88 + 2 * g}" rx="${44 + g}" fill="none" ${extra}/>`;
+    // the block with its socket rings and hub, for the labels to keep clear of
+    if (obst) obst.push({x0: centre.x - span, y0: centre.y - 44 - UNITS.hub, x1: centre.x + span, y1: centre.y + 44, t: null});
     if (view.highlight === nid) body += ring(8, `stroke="${m.error}" stroke-width="5" class="error"`);
     if (view.selected === nid) body += ring(16, `stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"`);
     const sel = typeof view.selected === 'string' && view.selected.startsWith(nid + '.') ? view.selected.slice(nid.length + 1) : null;
@@ -475,12 +497,21 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     parts.io.push(`<path d="M${-IO.half} ${IO.top}H${IO.half}L0 ${IO.tip}ZM${IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${-IO.eye} 0A${IO.eye} ${IO.eye} 0 1 0 ${IO.eye} 0Z" fill="${m.block}" fill-rule="evenodd" stroke="${m.blockEdge}" stroke-width="2.5" stroke-linejoin="round"/><circle r="${IO.eye}" fill="${palette.bulb.off.fill}" stroke="${m.blockEdge}" stroke-width="1.5" data-socket="io"/>`);
     if (view.selected === 'io') parts.io.push(`<circle r="52" fill="none" stroke="${m.wireActive}" stroke-width="3" stroke-dasharray="8 6"/>`);
     const shown = Object.values(labelScene.towers).some(t => t.at.startsWith('out:'));
+    if (obst) { const q = layout.ioBoxes[0]; obst.push({x0: q.x, y0: q.y, x1: q.x + q.w, y1: q.y + q.h, t: null}); }
     for (const [key, p] of Object.entries(pills)) {
       const lines = key === 'in' ? p.lines : shown ? p.lines : [''], h = UNITS.pillLine * lines.length, top = p.bottom - h;
       let svg = `<rect x="${r(p.x - p.w / 2)}" y="${r(top)}" width="${p.w}" height="${h}" rx="18" fill="${m.labelFill}" stroke="${m.label}" stroke-width="1.2"/>`;
       lines.forEach((line, j) => { if (line) svg += `<text x="${p.x}" y="${r(top + UNITS.pillLine * (j + .5) + 1)}" font-size="${j ? 22 : 27}" text-anchor="middle" dominant-baseline="central" fill="${m.label}">${esc(line)}</text>`; });
-      const caption = key === 'in' ? 'INPUT' : 'OUTPUT', cx = key === 'in' ? p.x - p.w / 2 - 10 : p.x + p.w / 2 + 10;
-      svg += `<text x="${r(cx)}" y="${r(p.bottom - UNITS.pillLine / 2 + 1)}" font-size="14" letter-spacing="2" text-anchor="${key === 'in' ? 'end' : 'start'}" dominant-baseline="central" fill="${m.label}" opacity=".5">${caption}</text>`;
+      const caption = key === 'in' ? 'INPUT' : 'OUTPUT', cx = key === 'in' ? p.x - p.w / 2 - 10 : p.x + p.w / 2 + 10, cy = p.bottom - UNITS.pillLine / 2 + 1;
+      const label = `<text x="${r(cx)}" y="${r(cy)}" font-size="14" letter-spacing="2" text-anchor="${key === 'in' ? 'end' : 'start'}" dominant-baseline="central" fill="${m.label}" opacity=".5">${caption}</text>`;
+      if (legible) {
+        // the pill grows about its foot, its top or its middle; the caption from its inner end
+        const cw = 11 * caption.length, box = {x0: p.x - p.w / 2, y0: top, x1: p.x + p.w / 2, y1: p.bottom};
+        parts.io.push({io: key, labels: [{t: `io:${key}`, prio: 1, font: 27, inner: svg, box, anchors: [[p.x, p.bottom], [p.x, top], [p.x, (top + p.bottom) / 2]]},
+          {t: `caption:${key}`, prio: 3, font: 14, min: .8, inner: label, box: {x0: key === 'in' ? cx - cw : cx, y0: cy - 9, x1: key === 'in' ? cx : cx + cw, y1: cy + 9}, anchors: [[cx, cy]]}]});
+        continue;
+      }
+      svg += label;
       parts.io.push(`<g class="io-pill" data-io="${key}">${svg}</g>`);
     }
   }
@@ -525,11 +556,56 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     const b = layout.nodeBox(view.active), g = 14, L = 22, x0 = b.x - g, y0 = b.y - g, x1 = b.x + b.w + g, y1 = b.y + b.h + g;
     parts.hud.push(`<path class="hud" d="M${r(x0)} ${r(y0 + L)}V${r(y0)}H${r(x0 + L)}M${r(x1 - L)} ${r(y0)}H${r(x1)}V${r(y0 + L)}M${r(x1)} ${r(y1 - L)}V${r(y1)}H${r(x1 - L)}M${r(x0 + L)} ${r(y1)}H${r(x0)}V${r(y1 - L)}" fill="none" stroke="${m.wireActive}" stroke-width="2.5"/>`);
   }
+  if (legible) {
+    resolveLabels([...parts.pills.filter(q => q && typeof q === 'object'), ...parts.io.flatMap(q => q?.labels || [])], obst, legible);
+    // k is rounded down, and the translation follows the rounded k, so the anchor stays put
+    const grown = q => { const k = Math.floor(q.k * 1000) / 1000; return k > 1 ? `<g transform="matrix(${k} 0 0 ${k} ${r(q.a[0] * (1 - k))} ${r(q.a[1] * (1 - k))})">${q.inner}</g>` : q.inner; };
+    parts.pills = parts.pills.map(q => q && typeof q === 'object' ? q.wrap(grown(q)) : q);
+    parts.io = parts.io.map(q => q?.labels ? `<g class="io-pill" data-io="${q.io}">${q.labels.map(grown).join('')}</g>` : q);
+  }
   const order = ['io', 'wires', 'blocks', 'furniture', 'removed', 'resting', 'moving', 'edigits', 'column', 'bursts', 'marks', 'beads', 'pills', 'arrows', 'hud'];
   // the horizon lies behind everything, the triangle over its wires
   const io = parts.io.shift() || '';
   const drawn = {removed: withGlyphs(parts.removed), resting: withGlyphs(parts.resting), moving: withGlyphs(parts.moving)};
   return `<g class="machine" font-family="${esc(m.font)}">${io}${parts.wires.join('')}${parts.io.join('')}` + order.slice(2).map(k => (drawn[k] || parts[k]).join('')).join('') + '</g>';
+}
+// ---- legible labels (view.minFont) ----
+// Scaled by k about an anchor (ax, ay) on or in its box, a label's box meets an obstacle once
+// k passes, on each axis, the factor at which its edge reaches the obstacle's near side, so
+// the largest free k is a closed form per obstacle (touching is free). An obstacle the label
+// already meets at k = 1 leaves it at its own size.
+const reachK = (b0, b1, a, o0, o1) => o0 >= a ? (b1 > a ? (o0 - a) / (b1 - a) : Infinity) : o1 <= a ? (b0 < a ? (a - o1) / (a - b0) : Infinity) : 0;
+const freeK = (B, [ax, ay], O) => Math.max(1, reachK(B.x0, B.x1, ax, O.x0, O.x1), reachK(B.y0, B.y1, ay, O.y0, O.y1));
+const scaleBox = (B, [ax, ay], k) => ({x0: ax + k * (B.x0 - ax), y0: ay + k * (B.y0 - ay), x1: ax + k * (B.x1 - ax), y1: ay + k * (B.y1 - ay)});
+const meets = (p, q) => p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1;
+// Each label in turn (the active node's pills, IO's, the others, IO's captions; then in drawing
+// order) takes the largest k up to its target, from the first anchor that reaches it (else the
+// one that goes furthest), clear of the obstacles but its own tower's, of the labels already
+// placed as placed and of the rest at their own size, 2 px apart, inside the framed area.
+// Sets k and a (the anchor) on every label.
+function resolveLabels(labels, obstacles, {scale, minFont, frame: F}) {
+  const gap = 2 / scale, big = 1e9, pad = O => ({x0: O.x0 - gap, y0: O.y0 - gap, x1: O.x1 + gap, y1: O.y1 + gap});
+  const edges = F ? [{x0: -big, y0: -big, x1: F.x0, y1: big}, {x0: F.x1, y0: -big, x1: big, y1: big}, {x0: -big, y0: -big, x1: big, y1: F.y0}, {x0: -big, y0: F.y1, x1: big, y1: big}] : [];
+  const order = labels.map((q, i) => [q, i]).sort((p, q) => p[0].prio - q[0].prio || p[1] - q[1]).map(([q]) => q);
+  for (const L of order) {
+    L.k = 1; L.a = L.anchors[0];
+    const target = (L.min ?? 1) * minFont / (L.font * scale);
+    if (target > 1 + 1e-3) {
+      let reach = null;
+      for (const a of L.anchors) { const b = scaleBox(L.box, a, target); reach = reach ? {x0: Math.min(reach.x0, b.x0), y0: Math.min(reach.y0, b.y0), x1: Math.max(reach.x1, b.x1), y1: Math.max(reach.y1, b.y1)} : b; }
+      reach = pad(reach);
+      const near = [...edges];
+      for (const o of obstacles) if (o.t !== L.t && meets(o, reach)) near.push(pad(o));
+      for (const M of labels) if (M !== L && M.t !== L.t) { const b = M.placed || M.box; if (meets(b, reach)) near.push(pad(b)); }
+      for (const a of L.anchors) {
+        let k = target;
+        for (const o of near) { k = Math.min(k, freeK(L.box, a, o)); if (k <= 1) break; }
+        if (k > L.k + 1e-6) { L.k = k; L.a = a; }
+        if (L.k >= target - 1e-9) break;
+      }
+    }
+    L.placed = scaleBox(L.box, L.a, L.k);
+  }
 }
 function arrowSVG(p, q, colour, opacity) {
   const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, ex = q.x - ux * 20, ey = q.y - uy * 20;
@@ -556,6 +632,8 @@ export function renderMachine(plan, t, layout, palette = ink, view = {}) {
     const collapse = scale * 2 * R < 12 ? t => { const p = parsePlace(t.at); return node === 'io' ? !p.io : p.node !== node; } : () => false;
     const m = 2 * R + 200;
     far = {collapse, rect: {x: cam.x - m, y: cam.y - m, w: cam.w + 2 * m, h: cam.h + 2 * m}};
+    // view.minFont (CSS px): labels may grow to it within the framed area (inset excluded)
+    if (view.minFont > 0) { const i = view.inset || {}; far.legible = {scale, minFont: view.minFont, frame: {x0: cam.x + (i.left || 0) / scale, y0: cam.y + (i.top || 0) / scale, x1: cam.x + cam.w - (i.right || 0) / scale, y1: cam.y + cam.h - (i.bottom || 0) / scale}}; }
   }
   const svg = tt <= 0 ? frame(layout, plan.start, plan.start, null, 1, palette, view, far) : frame(layout, scenes[i], scenes[i + 1], plan.beats[i], u, palette, view, far);
   return {svg, viewBox: `${r(cam.x)} ${r(cam.y)} ${r(cam.w)} ${r(cam.h)}`, beat: i, u};
