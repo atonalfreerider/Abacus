@@ -7,7 +7,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {planMachine, validatePlan} from '../src/machine/plan.js';
 import {snapshotAt} from '../src/machine/scene.js';
 import {parseExpression, parseInput, defaultMachine} from '../src/machine/tree.js';
-import {twos} from '../src/machine/bigmath.js';
+import {twos, digits} from '../src/machine/bigmath.js';
 
 const one = (op, inputs, base = 'binary', pace = 'together') => planMachine({tree: {n1: {op, parent: 'io', socket: 'C'}}, inputs, base, pace});
 const plan = (...args) => { const r = one(...args); assert.ok(r.ok, r.message); assert.deepEqual(validatePlan(r.plan), []); return r.plan; };
@@ -193,6 +193,29 @@ test('balanced ternary division rounds to nearest, ties keeping the dividend\'s 
   // 100 ÷ 7: the remainders 100 → −89 → −26 → −5 → 2
   const kept = plan('div', ['100', '7'], 'ternary').beats.filter(b => b.kind === 'judge').map(b => b.ledger.r);
   assert.deepEqual(kept, ['-89', '-26', '-5', '2']);
+});
+test('ternary JUDGE scans |G| against |R| (a red-topped tower flipped) and stops where they first differ', () => {
+  // the stop, read independently: the top level where the trits of |R| and |G| differ
+  const stopOf = (R, G) => {
+    const x = digits(R < 0n ? -R : R, 'ternary'), y = digits(G < 0n ? -G : G, 'ternary');
+    for (let l = Math.max(x.length, y.length) - 1; l >= 0; l--) if ((x[l] ?? 0) !== (y[l] ?? 0)) return l;
+    return null;
+  };
+  let judges = 0;
+  for (let a = -60; a <= 60; a++) for (let d = -7; d <= 7; d++) {
+    if (!d) continue;
+    const beats = one('div', [String(a), String(d)], 'ternary').plan.beats;
+    beats.forEach((beat, i) => {
+      if (beat.kind !== 'judge') return;
+      const {a: R, r: G} = beats[i - 1].ledger, scan = beat.marks.find(m => m.k === 'scan');
+      assert.equal(scan.stop, stopOf(BigInt(R), BigInt(G)), `${a} ÷ ${d}: R ${R}, G ${G}`);
+      judges++;
+    });
+  }
+  assert.ok(judges > 3000, `${judges} judges`);
+  // R = −60 (T1T10) against G = 48 (1TT10): flipped, R reads 1T1T0, and the scan stops at level 2
+  const judge = one('div', ['-60', '4'], 'ternary').plan.beats.find(b => b.kind === 'judge');
+  assert.deepEqual(judge.marks, [{k: 'scan', node: 'n1', from: 4, stop: 2}]);
 });
 test('SHR truncates like ÷ in binary: [−13,2] → [−3, −1] and [5,4] → [0, 5]', () => {
   assert.deepEqual(plan('shr', ['-13', '2']).result.values, ['-3', '-1']);

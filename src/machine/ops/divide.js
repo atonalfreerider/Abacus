@@ -14,9 +14,14 @@ const abs = v => v < 0n ? -v : v;
 export const div = (b, node, towers) => divide(b, node, towers, 'div');
 export const mod = (b, node, towers) => divide(b, node, towers, 'mod');
 
-// The first level, from the top, where two magnitude columns differ (null when equal).
-function scanStop(x, y) {
-  for (let l = Math.max(x.length, y.length) - 1; l >= 0; l--) if (Math.abs(x[l]?.s ?? 0) !== Math.abs(y[l]?.s ?? 0)) return l;
+// The scan's stop: the first level, from the top, where two columns differ (null when they
+// agree everywhere). Binary COMPARE reads magnitudes, which sign-magnitude bits show directly.
+// Ternary JUDGE flips a red-topped tower for the scan (2.6) and then compares trits with
+// T < 0 < 1, so the stop is where |G| and |R| first part; |trit| alone cannot see that.
+function scanStop(x, y, {flip = false} = {}) {
+  const sign = c => flip && (c.at(-1)?.s ?? 0) < 0 ? -1 : 1, sx = sign(x), sy = sign(y);
+  const read = (c, l, s) => flip ? s * (c[l]?.s ?? 0) : Math.abs(c[l]?.s ?? 0);
+  for (let l = Math.max(x.length, y.length) - 1; l >= 0; l--) if (read(x, l, sx) !== read(y, l, sy)) return l;
   return null;
 }
 function divide(b, node, [A, B], op) {
@@ -60,7 +65,7 @@ function divide(b, node, [A, B], op) {
       const tie = abs(G) === abs(Rv), keep = abs(G) < abs(Rv) || tie && signOf(G) === signOf(a);
       b.begin('judge', node, {caption: caption.judge(Rv, G, k, t, keep, tie), ledger: keep ? ledger : {law: 'divstep', a: String(Rv), b: String(d * radix ** BigInt(k)), q: '0', r: String(Rv)}});
       const Gc = column(b, ghost);
-      b.mark({k: 'scan', node, from: Math.max(Rc.length, Gc.length) - 1, stop: scanStop(Rc, Gc)});
+      b.mark({k: 'scan', node, from: Math.max(Rc.length, Gc.length) - 1, stop: scanStop(Rc, Gc, {flip: true})});
       if (keep) {
         b.dropTower(R);
         b.tower(ghost, {at: `${node}.L`, ghost: null});
