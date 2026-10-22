@@ -63,11 +63,49 @@ export function patch(old, next) {
     if (o.nodeName !== n.nodeName) { old.replaceChild(n, o); continue; }
     if (n.nodeType === 3) { if (o.data !== n.data) o.data = n.data; continue; }
     if (n.nodeType !== 1) continue;
-    for (const { name, value } of n.attributes) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
-    if (o.attributes.length !== n.attributes.length) for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+    setAttributes(o, n);
     if (n.firstChild || o.firstChild) patch(o, n);
   }
   while (a.length > b.length) old.lastChild.remove();
+}
+const setAttributes = (o, n) => {
+  for (const { name, value } of n.attributes) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+  if (o.attributes.length !== n.attributes.length) for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+};
+// Most frames change only the attributes of the few bulbs in motion (9 of 512 elements at
+// the widest ADD of (2³² − 1)²). So a frame is first compared with the last one, tag by tag:
+// when the only differences are start tags that kept their name and shape, just those tags
+// are parsed and their attributes set, and the elements are found by position. Any other
+// change (text, structure, or markup the tokens do not cover) parses and patches in full.
+const TOKENS = /<\/?[a-zA-Z][^>]*>|[^<]+/g, tagName = tag => /^<\/?([a-zA-Z][\w:-]*)/.exec(tag)[1];
+export class FramePatcher {
+  constructor(root) { this.root = root; this.tokens = null; this.els = null; }
+  apply(markup) {
+    const tokens = markup.match(TOKENS) ?? [];
+    if (!this.quick(tokens, markup.length)) {
+      parser.innerHTML = `<svg>${markup}</svg>`; patch(this.root, parser.content.firstChild);
+      this.els = [...this.root.querySelectorAll('*')];
+    }
+    this.tokens = tokens;
+  }
+  quick(tokens, length) {
+    const prev = this.tokens; if (!prev || prev.length !== tokens.length) return false;
+    const at = [], tags = []; let size = 0, el = -1;
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i], p = prev[i], start = t[0] === '<' && t[1] !== '/';
+      size += t.length; if (start) el++;
+      if (t === p) continue;
+      if (!start || p[0] !== '<' || p[1] === '/' || tagName(t) !== tagName(p) || t.endsWith('/>') !== p.endsWith('/>') || at.length >= 256) return false;
+      at.push(el); tags.push(t.endsWith('/>') ? t : `${t}</${tagName(t)}>`);
+    }
+    if (size !== length) return false;
+    if (!at.length) return true;
+    parser.innerHTML = `<svg>${tags.join('')}</svg>`;
+    const fresh = parser.content.firstChild.children;
+    if (fresh.length !== at.length || at.some((k, j) => this.els[k]?.localName !== fresh[j].localName)) return false;
+    at.forEach((k, j) => setAttributes(this.els[k], fresh[j]));
+    return true;
+  }
 }
 // A plan with no beats draws a machine that cannot run yet: the tree hangs under IO with
 // its sockets open, so it can still be built on.
@@ -129,7 +167,7 @@ export class MachineView extends EventTarget {
     this.auto = true; try { this.auto = localStorage.getItem(AUTO_KEY) !== '0'; } catch {}
     this.stepMode = !this.auto; this.visible = false; this.dirty = true; this.lastT = -1; this.lastDone = 0; this.lastStarted = -1; this.lastBoundary = -1;
     this.stage.insertAdjacentHTML('afterbegin', `<svg id="machine-svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet" viewBox="-400 -200 800 600"><defs class="m-defs"></defs><g class="m-scene"></g><g class="m-hits"></g></svg>`);
-    this.svg = $('machine-svg'); this.$defs = this.svg.querySelector('.m-defs'); this.$scene = this.svg.querySelector('.m-scene'); this.$hits = this.svg.querySelector('.m-hits');
+    this.svg = $('machine-svg'); this.$defs = this.svg.querySelector('.m-defs'); this.$scene = this.svg.querySelector('.m-scene'); this.frames = new FramePatcher(this.$scene); this.$hits = this.svg.querySelector('.m-hits');
     this.wire();
     this.restyle();
     this.plan();
@@ -398,7 +436,7 @@ export class MachineView extends EventTarget {
     if (this.manual) view.camera = this.fit(this.manual);
     const out = renderMachine(this.planned, t, this.layout, ink, view);
     this.cam = parseBox(out.viewBox) ?? view.camera;
-    parser.innerHTML = `<svg>${inner(out.svg)}</svg>`; patch(this.$scene, parser.content.firstChild);
+    this.frames.apply(inner(out.svg));
     if (this.cam) this.svg.setAttribute('viewBox', boxText(this.cam));
     this.lastT = t; this.dirty = false; this.hits(t);
   }
