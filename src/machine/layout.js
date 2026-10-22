@@ -206,22 +206,24 @@ export function layoutPlan(plan) {
     return Math.max(px, (rRight.get(id) ?? 14) + 8 + w / 2);
   };
 
+  // The Input and Output pills (their x is settled below, once IO's towers are known).
+  const inputsText = '[' + Object.entries(plan.start.towers).filter(([, t]) => t.at.startsWith('in:')).sort((a, b) => parsePlace(a[1].at).i - parsePlace(b[1].at).i).map(([, t]) => t.text).join(', ') + ']';
+  const result = plan.result || {values: [], text: ''};
+  const inW = Math.max(...[inputsText, 'Input'].map(textWidth)), outW = Math.max(...[result.text, result.label || '', 'Output'].map(textWidth));
+  const ioPills = {
+    in: {x: -IO.pillX, lines: [inputsText], w: inW},
+    out: {x: IO.pillX, lines: result.label ? [result.text, result.label] : [result.text], w: outW},
+  };
+  for (const p of Object.values(ioPills)) { p.bottom = IO.pillY + UNITS.pillLine / 2; p.top = p.bottom - UNITS.pillLine * p.lines.length; }
   // IO's coin rows: io:0 sits in the eye, so a single result stands in it; the rest take
   // turns right and left. in:i and out:i stand on their pills, never across the centre line.
   const ioGap = rowGap('io'), ioX = i => i === 0 ? 0 : ioGap * Math.ceil(i / 2) * (i % 2 ? 1 : -1);
-  const pillRow = (key, sign) => {
+  const pillRow = (key, pill, sign) => {
     const n = rowCount(key), g = rowGap(key);
-    const centre = sign * Math.max(IO.pillX, g * (n - 1) / 2 + g / 2 + 10);
+    const centre = sign * Math.max(sign * pill.x, g * (n - 1) / 2 + g / 2 + 10);
     return i => centre + g * (i - (n - 1) / 2);
   };
-  const inX = pillRow('in', -1), outX = pillRow('out', 1);
-  const inputsText = '[' + Object.entries(plan.start.towers).filter(([, t]) => t.at.startsWith('in:')).sort((a, b) => parsePlace(a[1].at).i - parsePlace(b[1].at).i).map(([, t]) => t.text).join(', ') + ']';
-  const result = plan.result || {values: [], text: ''};
-  const ioPills = {
-    in: {x: -IO.pillX, lines: [inputsText], w: Math.max(...[inputsText, 'Input'].map(textWidth))},
-    out: {x: IO.pillX, lines: result.label ? [result.text, result.label] : [result.text], w: Math.max(...[result.text, result.label || '', 'Output'].map(textWidth))},
-  };
-  for (const p of Object.values(ioPills)) { p.bottom = IO.pillY + UNITS.pillLine / 2; p.top = p.bottom - UNITS.pillLine * p.lines.length; }
+  let inX, outX;
   const standY = pill => pill.top - 8 - R;
   // A place relative to its node's centre (IO's places are relative to IO, at the origin).
   const relPlace = at => {
@@ -268,6 +270,23 @@ export function layoutPlan(plan) {
     const pill = relPill(scene, id, digits), w = textWidth(t.note), p = parsePlace(t.at), left = p.socket === 'L' && p.i === null ? pill.x - 6 - w : pill.x + pill.w + 6;
     return {x: left, y: pill.y + pill.h - UNITS.pillLine, w, h: UNITS.pillLine};
   };
+  // The Input and Output pills stand at ∓162 while nothing is in their way, and shift outward
+  // (6.3b rule 3, as .L and .R pills do) past IO's own towers wherever those reach the pills'
+  // height: numbers riding in, a result standing in the eye, results beside it. They never
+  // meet each other, and Input stays clear of the place values left of the eye.
+  let inRight = -(R + UNITS.placeCol), outLeft = R + UNITS.gutter;
+  for (const scene of scenes) for (const [id, t] of Object.entries(scene.towers)) {
+    if (parsePlace(t.at).io !== 'io') continue;
+    const o = relPlace(t.at), shape = towerShape(base, t, bulbsOf(scene, id));
+    for (const box of [boxOf(o.x + shape.left, o.y + shape.top, o.x + shape.right, o.y + shape.bottom), relPill(scene, id), relNote(scene, id)]) {
+      if (!box) continue;
+      if (box.x < 0 && box.y < ioPills.in.bottom && box.y + box.h > ioPills.in.top) inRight = Math.min(inRight, box.x - 12);
+      if (box.x + box.w > 0 && box.y < ioPills.out.bottom && box.y + box.h > ioPills.out.top) outLeft = Math.max(outLeft, box.x + box.w + 12);
+    }
+  }
+  ioPills.in.x = -Math.max(IO.pillX, inW / 2 - inRight);
+  ioPills.out.x = Math.max(IO.pillX, outLeft + outW / 2);
+  inX = pillRow('in', ioPills.in, -1); outX = pillRow('out', ioPills.out, 1);
 
   // 3. Extents per node over every scene: half-width W (with the place-value column left of
   // the leftmost tower), up above the centre line and down below it.

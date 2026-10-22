@@ -21,7 +21,9 @@ function tallAdd(n = 20) {
       flow(4, 'return', 'n1', {nodes: {n1: null}, towers: {t1: {at: 'io:0'}}}), flow(5, 'output', 'io', {towers: {t1: {at: 'out:0', form: 'coin'}}})],
     stats: {beats: 6, nodes: 1, maxLevels: n + 1, maxBulbs: n + 1}};
 }
-const all = [...scenes.map(s => [s.name, s.plan]), ['tall-add', tallAdd()]];
+const all = [...scenes.map(s => [s.name, s.plan]), ['tall-add', tallAdd()],
+  // wide pills at IO: the 6.9 perf inputs, and two results standing in IO
+  ['add-4294967295-4294967295', planned('add', ['4294967295', '4294967295'])], ['divmod-9223372036854775807-3', planned('div', ['9223372036854775807', '3'])]];
 
 test('the layout keeps towers, blocks, wires and pills apart at every beat boundary', () => {
   for (const [name, plan] of all) {
@@ -51,7 +53,12 @@ test('the layout keeps towers, blocks, wires and pills apart at every beat bound
       }
       const pills = Object.keys(scene.towers).flatMap(id => [[id, layout.pillBox(scene, id)], [`${id} note`, layout.noteBox(scene, id)]]).filter(([, box]) => box);
       for (const [j, [a, pa]] of pills.entries()) for (const [b, pb] of pills.slice(j + 1)) assert.ok(!intersects(pa, pb), `${where}: pills ${a} and ${b} overlap`);
-      for (const [a, pa] of pills) for (const box of layout.ioBoxes) assert.ok(!intersects(pa, box) || a.startsWith('t') && scene.towers[a.split(' ')[0]].at.startsWith('io:'), `${where}: pill ${a} covers the IO furniture`);
+      for (const [a, pa] of pills) for (const box of layout.ioBoxes) assert.ok(!intersects(pa, box) || box === layout.ioBoxes[0] && scene.towers[a.split(' ')[0]].at.startsWith('io:'), `${where}: pill ${a} covers the IO furniture`);
+      // the Input and Output pills: apart, and clear of every part of IO's own towers (a
+      // tower may stand in the triangle's eye, never on a pill)
+      const [, input, output] = layout.ioBoxes;
+      assert.ok(!intersects(input, output), `${where}: the Input and Output pills overlap`);
+      for (const t of towers) if (t.at.io === 'io') for (const part of layout.towerParts(scene, t.id)) for (const pill of [input, output]) assert.ok(!intersects(part, pill), `${where}: tower ${t.id} at ${scene.towers[t.id].at} meets an IO pill`);
     });
   }
 });
