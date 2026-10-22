@@ -3,7 +3,7 @@
 // this file knows no base; the sentence line reads only Tower.text.
 import {getBase} from './registry.js';
 import {fmt} from './bigmath.js';
-import {BLOCKS} from './captions.js';
+import {BLOCKS, sup} from './captions.js';
 
 export const ARITY = {add: 2, sub: 2, mul: 2, div: 2, mod: 2, cmp: 2, shl: 2, shr: 2, and: 2, or: 2, xor: 2, not: 1,
   min: 2, max: 2, sum: 2, cons: 2, neg: 1, mule: 2, measure: 1, ln: 1};
@@ -163,10 +163,16 @@ export function parseExpression(text, base) {
 }
 
 // ── algebra text ────────────────────────────────────────────────
-const INFIX = {add: ['+', 2], sub: ['−', 2], mul: ['×', 3], div: ['÷', 3], mod: ['mod', 3], cmp: ['<=>', 0], and: ['AND', 1], or: ['OR', 1], xor: ['XOR', 1]};
-const NAMED = {min: 'MIN', max: 'MAX', sum: 'SUM', cons: 'CONS', shl: 'shl', shr: 'shr', mule: 'mule', measure: 'measure', ln: 'ln'};
+// Blocks are written as the palette names them (COMP, MEASURE), never by their op ids; ×eᵏ
+// is written as the product it is, with its count as the power.
+const INFIX = {add: ['+', 2], sub: ['−', 2], mul: ['×', 3], div: ['÷', 3], mod: ['mod', 3], and: ['AND', 1], or: ['OR', 1], xor: ['XOR', 1]};
+const NAMED = {min: 'MIN', max: 'MAX', sum: 'SUM', cons: 'CONS', cmp: 'COMP', shl: 'shl', shr: 'shr', measure: 'MEASURE', ln: 'ln'};
 export const leafText = text => ({text, prec: / [+−×÷] /.test(text) ? 2 : 9, neg: text.startsWith('−')});
 export function compose(op, parts) {
+  if (op === 'mule') {
+    const [a, k] = parts, whole = /^−?\d+$/.test(k.text);
+    return {text: `${a.prec < 3 ? `(${a.text})` : a.text} × e${whole ? sup(k.text.replace('−', '-')) : `^(${k.text})`}`, prec: 3};
+  }
   if (INFIX[op]) {
     const [sym, p] = INFIX[op], [l, r] = parts;
     return {text: `${l.prec < p ? `(${l.text})` : l.text} ${sym} ${r.prec <= p || r.neg ? `(${r.text})` : r.text}`, prec: p};
@@ -194,7 +200,7 @@ export function evaluateNodes(tree, inputs, base, {limits = true} = {}) {
       else { if (next >= inputs.length) return {ok: false, reason: 'arity', node: id, message: 'Not enough numbers for the machine'}; const v = inputs[next++]; args.push(v); parts.push(show(v)); }
     }
     const res = spec.evaluate(node.op, args, {limits});
-    if (!res.ok) return {ok: false, reason: res.reason, node: id, message: explain(node.op, res, parts, args)};
+    if (!res.ok) return {ok: false, reason: res.reason, node: id, message: explain(node.op, res, parts, args, v => spec.display(v, {form: 'coin'}).text)};
     nodes[id] = {args, values: res.values};
     const value = QUOTIENT_OPS.includes(node.op) ? res.values[node.op === 'mod' ? 1 : 0] : res.values[0];
     return {ok: true, value, part: compose(node.op, parts)};
@@ -204,10 +210,11 @@ export function evaluateNodes(tree, inputs, base, {limits = true} = {}) {
   const op = tree[root].op, values = QUOTIENT_OPS.includes(op) ? nodes[root].values : [r.value];
   return {ok: true, values, text: `[${values.map(v => spec.display(v, {form: 'coin'}).text).join(', ')}]`, nodes, root};
 }
-// A domain error names its cause, with the subexpression that produced the bad operand.
+// A domain error names its cause, with the subexpression that produced the bad operand,
+// written as its base writes a coin (base e's value keys are no text for a reader).
 // ×eᵏ keeps its base's own message: its k may be negative, and only a k that is not whole fails.
-function explain(op, res, parts, args) {
-  const said = (part, v) => { const shown = fmt(v); return part.text === shown ? shown : `${part.text} = ${shown}`; };
+function explain(op, res, parts, args, write) {
+  const said = (part, v) => { const shown = write(v); return part.text === shown ? shown : `${part.text} = ${shown}`; };
   if (res.reason === 'zeroDivision') return `Nothing fits into zero: the ${BLOCKS[op]}'s divisor is ${said(parts[1], args[1])}`;
   if (res.reason === 'domain' && ['shl', 'shr'].includes(op)) return `A shift needs a whole number of levels ≥ 0: the ${BLOCKS[op]}'s count is ${said(parts[1], args[1])}`;
   if (res.reason === 'domain' && op === 'ln') return `ln needs a positive number: ${said(parts[0], args[0])} has no logarithm; its light would fall forever.`;
@@ -233,7 +240,9 @@ export function sentence(scene) {
   const nodes = scene.nodes, towers = Object.values(scene.towers).filter(t => !t.ghost);
   const at = new Map(towers.map(t => [t.at, t])), root = rootOf(nodes);
   const free = towers.filter(t => isFree(t.at)).sort((x, y) => placeIndex(x.at) - placeIndex(y.at));
-  const text = t => t.reading ?? t.text;
+  // A tower's text is its value; a light's reading is only the height it stands at (ln 16 ≈
+  // 2.7726 beside 16), so the algebra never reads it. An LN result's text is its reading.
+  const text = t => t.text ?? t.reading;
   if (!root) return free.map(text).join(', ');
   let next = 0;
   const visit = id => {
@@ -252,7 +261,7 @@ export function sentence(scene) {
       const t = at.get(`${id}.${s}`) ?? free[next++];
       return leafText(t ? text(t) : '?');
     });
-    if (node.arg && node.op === 'shl') return compose('mul', parts);
+    if (node.arg && (node.op === 'shl' || node.op === 'mule')) return compose('mul', parts);
     if (node.arg && node.op === 'shr') return compose('div', parts);
     return compose(node.op, parts);
   };

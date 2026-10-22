@@ -19,7 +19,7 @@ const ZERO = E.of(0);
 function reach(h) {
   const k = Math.floor(h);
   if (k > CEILING) throw new LimitError(`a base-e tower stands at most up to level ${CEILING}`);
-  if (k < RAIL) throw new LimitError(`a light's rail reaches down to level ${s2(RAIL)}`);
+  if (k < RAIL) throw new LimitError(`a light's rail reaches down to level ${s2(RAIL)}`, { small: true });
   return h;
 }
 // Every base-e beat closes here: what the scene holds is checked against the caps first.
@@ -400,8 +400,10 @@ function deposits(b, t, s, u0, u1, h0, h1, k, d) {
 function unfold(b, node, t) {
   const x = val(b, t), s = sign(x), light = bulbsOf(b, t).find(([, q]) => isLight(q))[0];
   const { g, events, end } = unfoldPlan(x), n = events.length;
-  // the light falls to the dust's height before it fades: that too is on the rail
-  const hs = [...events.map(e => e.h), reach(end)];
+  // The light falls to the dust's height before it fades, but never past the rail's end
+  // (6.10): a value just off a numeral (9545/25946 = 0.100…ₑ) leaves dust at height −21,
+  // and that fading tail is no reason to refuse a run whose every tower fits.
+  const hs = [...events.map(e => e.h), Math.max(end, RAIL)];
   const caption = n ? fit(`The light falls and leaves the bulbs that fit: ${x.text()} = ${digitsText(x)}.`, `The light falls and leaves the bulbs that fit: ${digitsText(x)}.`)
     : fit(`${x.text()} has no bulb above the floor: the light falls and fades into dust. ${digitsText(x)}`, `The light fades into dust: ${digitsText(x)}`);
   const finish = () => b.tower(t, { form: 'tower', pending: null, dust: g.exact ? null : true, note: null });
@@ -560,16 +562,21 @@ function multiply(b, node, ta, tb) {
   if (count <= 6) { expand(b, node, [ta, tb]); return split(b, node, ta, tb).result; }
   return slide(b, node, ta, tb).result;
 }
+// A height in hundredths, rounded once (half away from zero) from its four exact decimals,
+// and the same integer written out. A caption that adds heights prints these very integers
+// and their sum, so what it shows always adds up (toFixed on the float and Math.round on
+// v·100 disagree at a 5 in the third decimal: 0.7050 printed 0.70 but was added as 0.71).
+const cents = h => { const t = Math.round(h * 1e4), c = Math.floor((Math.abs(t) + 50) / 100); return t < 0 ? -c : c; };
+const centsText = c => `${c < 0 ? MINUS : ''}${Math.floor(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, '0')}`;
 // The slide rule: FOLD both, then B's light flies onto A's rail and dissolves while A's
 // light rises by B's height, to height(ab): logarithms add. The planner stores height(ab),
 // never a sum of rounded heights; the caption adds the displayed two-decimal values.
 function slide(b, node, ta, tb) {
   const a = val(b, ta), m = val(b, tb), out = a.mul(m);
   const [ga] = fold(b, node, [ta, tb], fit(`Fold both: ${lnText(a.abs())} and ${lnText(m.abs())}.`, 'Fold both into lights.'))[0];
-  const lb = bulbsOf(b, tb)[0][0], ha = height(a), hb = height(m), h = height(out);
-  const cents = v => Math.round(v * 100), add2 = (cents(ha) + cents(hb)) / 100;
+  const lb = bulbsOf(b, tb)[0][0], hb = height(m), h = height(out), ca = cents(height(a)), cb = cents(hb);
   const carried = topOf(out) > topOf(a) + topOf(m);
-  const say = `Multiplying adds heights: ${s2(ha.toFixed(2))} + ${s2(hb.toFixed(2))} = ${s2(add2.toFixed(2))}`;
+  const say = `Multiplying adds heights: ${centsText(ca)} + ${centsText(cb)} = ${centsText(ca + cb)}`;
   b.begin('slide', node, {
     caption: fit(carried ? `${say}; levels ${s2(topOf(a))} + ${s2(topOf(m))} = ${s2(topOf(a) + topOf(m))}, yet ${out.text()} stands at level ${s2(topOf(out))}.` : `${say}.`, `${say}.`),
     ledger: { law: 'slide', a: a.key(), b: m.key(), out: out.key() },

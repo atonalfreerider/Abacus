@@ -23,6 +23,7 @@ export const LIMITS = {
   blocks: 24, inputs: 8, nodes: 256, softBeats: 400, beats: 2000, frameBulbs: 1500, coinPx: 12,
 };
 export const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
+export const TOO_SMALL = 'Too small to animate step by step; here is the exact answer.';
 const EMPTY = 'Hang a block under the triangle first: drag one from the palette, or tap the triangle\'s socket and then a block';
 const fail = (reason, message, extra = {}) => ({ok: false, reason, message, ...extra});
 const abs = v => v < 0n ? -v : v;
@@ -66,7 +67,7 @@ export function planMachine({tree, inputs, base, pace = 'together'}) {
   catch (e) {
     if (!(e instanceof LimitError)) throw e;
     if (pace === 'level') return planMachine({tree, inputs: values, base, pace: 'together'});
-    return fail('tooBig', TOO_BIG, {result});
+    return fail('tooBig', e.small ? TOO_SMALL : TOO_BIG, {result});
   }
 }
 // Any computed value or shift count past the tower cap is refused before planning (b^k

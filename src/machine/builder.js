@@ -8,7 +8,8 @@
 import {getBase} from './registry.js';
 
 export class LimitError extends Error {
-  constructor(message) { super(message); this.name = 'LimitError'; }
+  // small: the cap passed is a floor (base e's rail), so the run is too small, not too big
+  constructor(message, { small = false } = {}) { super(message); this.name = 'LimitError'; this.small = small; }
 }
 const RADIX = {binary: 2n, ternary: 3n}, POWERS = {binary: [1n], ternary: [1n]};
 const SMALL_LEVEL = {binary: 50, ternary: 31};    // towers this low sum exactly in a Number

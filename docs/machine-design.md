@@ -1361,7 +1361,7 @@ export function diffScenes(a, b) { /* inverse of applyDiff: new ids full, change
 **Light paths and deposits (normative; the planner writes them and the renderer only interpolates):**
 - With n deposit events (levels with d_k > 0, top down to the floor):
   - keyframe j (0 ≤ j ≤ n) sits at u_j = 0.9·j/n, at height h_j = height(remainder before event j);
-  - the final keyframe h_n is height(dust), or, when the result is exact, the level of the last deposit.
+  - the final keyframe h_n is height(dust), but never below the rail's end at −14 (6.10: the fading tail of a value just off a numeral, such as 9545/25946 = 0.100…ₑ with dust at −21, is no reason to refuse the run), or, when the result is exact, the level of the last deposit.
   - In level pace, each deposit is its own beat with n = 1.
 - Within segment j, the light's height is h_j + (h_{j+1} − h_j)·ease((u − u_j)/Δ), with Δ = u_{j+1} − u_j.
 - Deposit j at level k_j crosses at f_j = (h_j − k_j)/(h_j − h_{j+1}). Its bulbs are born with **`in` = [c_j, c_j + 0.081]**, where **c_j = u_j + Δ·(1 − √(1 − f_j))**, the inverse of the ease. Every bulb is therefore born within 0.05 level of the light (tested).

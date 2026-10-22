@@ -34,9 +34,10 @@ const E_MISSING = { div: 'A quotient of e-numerals is usually not an e-numeral.'
   xor: 'Logic needs whole-number levels; base e has none.', not: 'Logic needs whole-number levels; base e has none.' };
 const EMPTY = 'Hang a block under the triangle first: drag one from the palette, or tap the triangle\'s socket and then a block';
 const TOO_BIG = 'Too big to animate step by step; here is the exact answer.';
-// A tooBig with no answer (a shift count or power past what any tower could hold) says why
-// in its own message instead of promising an answer that Output does not show.
-const refusalText = r => r.reason === 'tooBig' ? (r.result ? TOO_BIG : r.message || 'Too big to animate step by step.') : r.message;
+// A tooBig with no answer (a value past what even the exact pre-check works out) says why in
+// its own message instead of promising an answer that Output does not show; one with an
+// answer says whether it was too big or (past base e's rail) too small to animate.
+const refusalText = r => r.reason === 'tooBig' ? (r.result ? r.message || TOO_BIG : r.message || 'Too big to animate step by step.') : r.message;
 const SAFE = 9007199254740991n, MAX_BLOCKS = 24, SOFT_BEATS = 400, DRAG_RADIUS = 250, MIN_SCALE = .05, MAX_SCALE = 2.4;
 const AUTO_KEY = 'abacus-machine-auto', REDUCED_KEY = 'abacus-machine-reduced', REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 // When Steps and Parts are a sheet: exactly style.css's phone portrait and phone landscape

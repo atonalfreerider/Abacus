@@ -8,7 +8,7 @@ import '../src/machine/e-base.js';
 import { PlanBuilder } from '../src/machine/builder.js';
 import { planMachine, validatePlan } from '../src/machine/plan.js';
 import { applyDiff } from '../src/machine/scene.js';
-import { evaluateTree, openSockets, ARITY } from '../src/machine/tree.js';
+import { evaluateTree, openSockets, ARITY, parseExpression, sentence } from '../src/machine/tree.js';
 import { powerValue } from '../src/machine/ops/shift.js';
 
 const here = p => new URL(p, import.meta.url);
@@ -497,10 +497,18 @@ test('past a cap the run is tooBig, and the exact answer comes with it (6.10)', 
   // range never leaves FANOUT without a value; the explanation of a bad count is ×eᵏ's own
   assert.equal(powerValue('e', 25), 'e^25'); assert.equal(powerValue('e', -8), 'e^-8');
   assert.equal(evaluateTree(one('mule'), ['3', 'e'], 'e').message, '×eᵏ needs a whole k from −6 to 12: e is not a whole number');
-  // a light below the rail's reach: 10⁻¹² is a slide-rule light at −27.6, and the fall of
-  // 1 + e⁻⁶/10⁶ to its dust ends at −19.8
+  // a light below the rail's reach: 10⁻¹² is a slide-rule light at −27.6, too small to animate
   big(chain('measure', 'mul'), ['1/1000000', '1/1000000'], ['1/1000000000000']);
-  big('measure', ['1+e^-6/1000000'], ['1+e^-6/1000000']);
+  assert.equal(planMachine({ tree: chain('measure', 'mul'), inputs: ['1/1000000', '1/1000000'], base: 'e' }).message, 'Too small to animate step by step; here is the exact answer.');
+  // but the fall of a near-numeral to its dust is only a fading tail: 1 + e⁻⁶/10⁶ (dust at
+  // −19.8) and 9545/25946 = 0.100…ₑ (dust at −21.0) are legal inputs, and their light fades
+  // at the rail's end
+  for (const [op, inputs] of [['measure', ['1+e^-6/1000000']], ['measure', ['9545/25946']], ['add', ['566827/104262', '-e']], ['mul', ['9545/25946', '-2e']]]) for (const pace of ['together', 'level']) {
+    const p = plan(op, inputs, pace), falls = p.beats.filter(b => b.kind === 'unfold').flatMap(b => Object.values(b.motion || {}).filter(m => m.path).map(m => m.path.at(-1)[1]));
+    check(p);
+    assert.ok(falls.length && falls.every(h => h >= -14), `${inputs}: the light ends at ${falls}`);
+    assert.ok(falls.includes(-14), `${inputs}: the light fades at the rail's end`);
+  }
   assert.equal(planMachine({ tree: one('mul'), inputs: ['e^12', 'e^12'], base: 'e' }).result.text, '[e²⁴]');
 });
 
@@ -595,6 +603,55 @@ test('the base-e plan fixtures are what the planner makes', () => {
     assert.ok(existsSync(file), `${name}.json is missing: run node tools/make-e-fixture.mjs --plans`);
     assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), p, `${name}.json is stale: regenerate it with node tools/make-e-fixture.mjs --plans`);
   }
+});
+
+// The slide rule's caption adds the heights it prints: each is rounded to hundredths once,
+// so the sum printed is the sum of the terms printed (0.7050 is 0.71 in both, −0.6850 −0.69).
+test('a slide caption adds up, ties at a 5 in the third decimal included', () => {
+  const read = s => Math.round(Number(s.replace('−', '-')) * 100);
+  let seen = 0, rng = 7;
+  const rand = n => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng % n; };
+  const cases = [['-157', '-495/982'], ['85/42', '3-e']];
+  for (let i = 0; i < 400; i++) cases.push([`${rand(1999) - 999}/${1 + rand(999)}`, `${rand(1999) - 999}/${1 + rand(999)}`]);
+  for (const inputs of cases) {
+    const r = planMachine({ tree: one('mul'), inputs, base: 'e' });
+    const slide = r.ok && r.plan.beats.find(bt => bt.kind === 'slide');
+    if (!slide) continue;
+    const m = /adds heights: (−?\d+\.\d\d) \+ (−?\d+\.\d\d) = (−?\d+\.\d\d)/.exec(slide.caption);
+    assert.ok(m, slide.caption);
+    assert.equal(read(m[1]) + read(m[2]), read(m[3]), `${inputs}: ${slide.caption}`);
+    seen++;
+  }
+  assert.ok(seen > 100, `${seen} slides`);
+  assert.match(plan('mul', ['-157', '-495/982']).beats.find(bt => bt.kind === 'slide').caption, /5\.06 \+ −0\.69 = 4\.37/);
+});
+
+// A domain error writes the bad operand as a pill does, and the blocks by their palette names.
+test('base-e refusals read as text, and past the tower an answer still comes when it is small', () => {
+  const run = text => { const p = parseExpression(text, 'e'); return planMachine({ tree: p.tree, inputs: p.inputs, base: 'e' }); };
+  assert.equal(run('ln(e^-2 - e^-1 - e^3)').message, 'ln needs a positive number: e⁻² − e⁻¹ − e³ = e⁻² − e³ − e⁻¹ has no logarithm; its light would fall forever.');
+  assert.equal(run('ln(mule(7*comp(50/33,22),-168))').message, 'ln needs a positive number: 7 × COMP(50/33, 22) × e⁻¹⁶⁸ = −7e⁻¹⁶⁸ has no logarithm; its light would fall forever.');
+  // 5e⁻⁴⁰⁰ is past every tower, yet the comparator above it answers −1
+  const small = run('mule(5, -20*20) <=> 3');
+  assert.equal(small.reason, 'tooBig'); assert.deepEqual(small.result.values, ['-1']);
+  assert.deepEqual(run('mule(5, -20*20)').result.text, '[5e⁻⁴⁰⁰]');
+  // out there a negative operand of LN is still the domain error it is, on its block
+  const neg = run('ln(mule(-5, -20*20))');
+  assert.equal(neg.reason, 'domain'); assert.equal(neg.node, 'n1');
+  // past e^±2048 (unlimited) nothing is worked out, and the refusal says which way
+  assert.deepEqual([run('mule(5, -60*60)').message, run('mule(5, 60*60)').message], ['That number is too small for a tower.', 'That number is too big for a tower.']);
+  assert.equal(evaluate('mule', ['3', '400'], { limits: false }).values[0], '3e^400');
+});
+
+// The sentence line is algebra on values: a light's reading (ln 16 ≈ 2.7726 beside 16) is
+// where it stands, not what it is, and blocks are written as the palette names them.
+test('the sentence line reads base-e values, ×eᵏ as a product, and COMP by name', () => {
+  const lines = (text, base = 'e') => { const e = parseExpression(text, base), r = planMachine({ tree: e.tree, inputs: e.inputs, base }); return [...new Set(scenesOf(r.plan).map(sentence))]; };
+  assert.deepEqual([lines('16+7')[0], lines('16+7').at(-1)], ['16 + 7', '23']);
+  assert.deepEqual([lines('ln(112)')[0], lines('ln(112)').at(-1)], ['ln(112)', 'ln 112 ≈ 4.7185']);
+  assert.deepEqual(lines('mule(5,3)'), ['5 × e³', '5e³']);
+  assert.equal(lines('measure(3)')[0], 'MEASURE(3)');
+  assert.deepEqual(lines('7<=>9', 'binary'), ['COMP(7, 9)', '−1']);
 });
 
 // Reported, never fixed here (6.11): bases.js computes base e in floats.
