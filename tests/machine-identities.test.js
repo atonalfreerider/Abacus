@@ -86,6 +86,20 @@ test('a = q·b + r with each convention\'s bounds, and SHR(a, k) = DIV(a, b^k)',
   assert.deepEqual(evaluate('shl', 'binary', [1n, 20000n]), {error: 'tooBig'}, 'a count past the size budget');
   assert.deepEqual(evaluate('shl', 'ternary', [1n, 1n << 62n]), {error: 'tooBig'}, 'an absurd count costs nothing');
   assert.deepEqual(evaluate('mul', 'binary', [1n << 9000n, 1n << 9000n]), {error: 'tooBig'});
+  // the budget is 2¹⁴ bits in both bases, exactly: the largest value it holds is worked out,
+  // the next is refused, and a ternary shift is measured, not guessed at 2 bits a trit
+  // (3⁹⁰⁰⁰ has 14 265 bits; 3¹⁰³⁶⁸ has 16 433)
+  const top = (1n << 16384n) - 1n;
+  assert.deepEqual(evaluate('add', 'binary', [top, 0n]), {value: top});
+  assert.deepEqual(evaluate('add', 'binary', [top, 1n]), {error: 'tooBig'});
+  assert.deepEqual(evaluate('shl', 'binary', [1n, 16383n]), {value: 1n << 16383n});
+  assert.deepEqual(evaluate('shl', 'binary', [1n, 16384n]), {error: 'tooBig'});
+  assert.deepEqual(evaluate('shl', 'ternary', [1n, 9000n]), {value: 3n ** 9000n});
+  assert.deepEqual(evaluate('shl', 'ternary', [-2n, 10336n]), {value: -2n * 3n ** 10336n}, '16 384 bits: the last size that fits');
+  assert.deepEqual(evaluate('shl', 'ternary', [1n, 10337n]), {value: 3n ** 10337n}, '16 384 bits');
+  assert.deepEqual(evaluate('shl', 'ternary', [2n, 10337n]), {error: 'tooBig'}, '16 385 bits');
+  assert.deepEqual(evaluate('shl', 'ternary', [1n, 10368n]), {error: 'tooBig'});
+  assert.deepEqual(evaluate('shl', 'ternary', [1n, 10370n]), {error: 'tooBig'});
   assert.equal(evaluate('mod', 'ternary', [19n, 5n]).value, -1n, '19 mod 5 = −1');
   assert.equal(evaluate('mod', 'ternary', [14n, 4n]).value, 2n, '14 mod 4 = 2');
   for (const base of ['binary', 'ternary']) for (const a of span(-300, 300)) for (let k = 0n; k <= 8n; k++) {

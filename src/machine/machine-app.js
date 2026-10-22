@@ -298,9 +298,12 @@ export class MachineView extends EventTarget {
     }
     if (r.ok) { this.answer = r.plan.result; this.use(r.plan); }
     else {
-      this.refusal = r; this.use(displayPlan(this.tree, this.base, this.pace));
-      if (r.reason === 'zeroDivision' || r.reason === 'domain') { this.highlight = r.node ?? null; this.answer = null; }
+      // the refusal, its highlight and a tooBig's answer are known before use() draws Output
+      // and the outline (Output was left empty after a load, an expression or an Enter)
+      this.refusal = r;
+      if (r.reason === 'zeroDivision' || r.reason === 'domain') this.highlight = r.node ?? null;
       if (r.reason === 'tooBig' && r.result) this.answer = r.result;
+      this.use(displayPlan(this.tree, this.base, this.pace));
     }
     this.status(r.ok ? r.note ?? '' : ['zeroDivision', 'domain', 'tooBig'].includes(r.reason) ? refusalText(r) : '', r.ok ? '' : 'refuse');
     if (this.highlight) haptic('thud');
