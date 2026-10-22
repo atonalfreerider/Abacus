@@ -699,6 +699,58 @@ try{
    }
   }
  },{width:568,height:320});
+ // ---------- phase 5 (design 4.6, 5.4): the row form of the split, and Machine lessons ----------
+ const numerals=id=>page.eval(`(()=>{const s=document.getElementById('numerals');s.value='${id}';s.dispatchEvent(new Event('change'));})()`);
+ const tapTerm=async()=>{const [t]=await terms();await page.mouse('mousePressed',t.x,t.y);await page.mouse('mouseReleased',t.x,t.y);};
+ await check('phase 5: in base 2 and balanced ternary a tapped × or ÷ plays PRIME\'s split in rows and settles on the exact answer; decimal keeps its copies',async()=>{
+  await numerals('binary');await wait(300);await load('16*7');await tapTerm();await wait(200);
+  expect(await page.eval(`document.querySelector('.operation-animation')?.dataset.operation`),'rows-multiply','the row form');
+  let rows=0;for(let t=0;t<60&&rows<3;t++){rows=await page.eval(`document.querySelectorAll('#equation-svg .row-label').length`);await wait(50);}
+  expect(rows,3,'a row per lit bulb of 7: 16 × 4, 16 × 2, 16 × 1');
+  expect(await page.eval(`[...document.querySelectorAll('#equation-svg .row-label')].map(t=>t.textContent).join(', ')`),'16 × 4, 16 × 2, 16 × 1','the rows');
+  await idle();expect(await status(),'112 = 1110000₂','16 × 7 in base 2');
+  await numerals('ternary');await wait(300);await load('19÷5');await tapTerm();await wait(200);
+  expect(await page.eval(`document.querySelector('.operation-animation')?.dataset.operation`),'rows-divide','the row form of ÷');
+  let quotient=false;for(let t=0;t<120&&!quotient;t++){quotient=await page.eval(`!!document.querySelector('#equation-svg [data-quotient]')`);await wait(50);}
+  expect(quotient,true,'a quotient trit lights');
+  await idle();if(!/^3\.8\b/.test(await status()))throw Error('19 ÷ 5: '+await status());
+  await numerals('decimal');await wait(200);await load('23*4');await tapTerm();await wait(200);
+  expect(await page.eval(`document.querySelector('.operation-animation')?.dataset.operation`),'multiply','decimal is unchanged');
+ });
+ const lessonState=()=>page.eval(`window.__machine?.lesson?.()`);
+ const lessonUntil=async(pred,what,limit=30000)=>{for(let t=0;t<limit;t+=100){const l=await lessonState();if(l&&pred(l))return l;await wait(100);}throw Error(`timed out waiting for ${what}: ${JSON.stringify(await lessonState())}`);};
+ // Answer every stop by clicking the right choice, until the run is over.
+ // (byKey: the first answer is a digit key on the stage, the choice's number)
+ const predictAll=async(end,byKey=false)=>{for(let n=0;n<12;n++){const l=await lessonUntil(l=>l.question||end.test(l.prompt),'a question or the end');if(!l.question)return l;
+  if(byKey&&!n){const d=String(l.question.choices.map(String).indexOf(String(l.question.answer))+1);await page.eval(`document.getElementById('machine-stage').focus()`);await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:d,code:'Digit'+d,text:d,windowsVirtualKeyCode:48+Number(d)});await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:d,code:'Digit'+d,windowsVirtualKeyCode:48+Number(d)});}
+  else await click(`#mlesson-choices button[data-value="${l.question.answer}"]`);await wait(150);}throw Error('too many stops');};
+ async function lessonFlow(viewport){
+  await numerals('ternary');await wait(200);
+  await page.eval(`document.getElementById('open-tutor').click()`);
+  for(let t=0;t<50&&!(await page.eval(`!!document.querySelector('[data-machine-lesson="machine-carry"]')`));t++)await wait(100);
+  expect(await page.eval(`[...document.querySelectorAll('#lessons h2')].at(-1).textContent`),'Machine','a Machine heading in the lesson dialog');
+  await page.eval(`document.querySelector('[data-machine-lesson="machine-carry"]').click()`);await ready();
+  let l=await lessonUntil(l=>l.phase==='watch','the lesson');
+  expect(await page.eval(`!document.getElementById('machine-lesson').hidden&&!document.getElementById('machine-mode').hidden`),true,'the lesson bar in the machine');
+  expect(await page.eval(`document.getElementById('numerals').value`),'ternary','a Machine lesson leaves the cards\' base alone');
+  expect(l.problem,'13 + 9','the worked example');
+  await click('#machine-run');await until(s=>s.output==='[22]','the example to play out');
+  await lessonUntil(l=>/worked example/.test(l.prompt),'the end of the example');
+  await click('#mlesson-predict');l=await predictAll(/Your turn/,!viewport);
+  if(!(l.asked>=2&&l.right===l.asked))throw Error('predictions: '+JSON.stringify(l));
+  if(viewport){const q=await page.eval(`(()=>{const b=document.getElementById('mlesson-turn').getBoundingClientRect(),s=document.getElementById('machine-stage').getBoundingClientRect();return {h:b.height,bottom:b.bottom,stage:s.height,vh:innerHeight};})()`);
+   if(q.h<44||q.bottom>q.vh)throw Error('Your turn on a phone: '+JSON.stringify(q));if(q.stage<240)throw Error(`the stage is ${q.stage} px tall in a lesson`);}
+  await click('#mlesson-turn');l=await lessonUntil(l=>l.phase==='turn','Your turn');
+  const [a,b]=l.problem.split(' + ');
+  await page.eval(`document.querySelector('#machine-palette [data-op=add]').click()`);await wait(200);
+  await page.eval(`document.getElementById('machine-input').focus()`);await page.send('Input.insertText',{text:`[${a},${b}]`});await press('Enter');
+  l=await predictAll(/Well done|but the problem/);
+  if(!/^Well done/.test(l.prompt))throw Error('your turn: '+l.prompt);
+  await click('#mlesson-close');await wait(200);
+  expect(await page.eval(`document.getElementById('machine-lesson').hidden`),true,'× leaves the lesson');
+ }
+ await check('phase 5: a Machine lesson from the Tutor: watch the example, predict at its stops, then build one yourself',async()=>lessonFlow(null),undefined,'/?examples=written&automation');
+ await check('phase 5: a Machine lesson on a 390 × 844 phone, by touch',async()=>{await touch();await lessonFlow({width:390,height:844});},{width:390,height:844},'/?examples=written&automation');
 }finally{server.kill();}
 for(const [name,error] of results)console.log(`${error?'FAIL':'ok  '} ${name}${error?`\n     ${error}`:''}`);
 const failed=results.filter(r=>r[1]).length;

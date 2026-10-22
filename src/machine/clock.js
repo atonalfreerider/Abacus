@@ -28,6 +28,9 @@ export class BeatClock {
   constructor(plan, { sp = 1, auto = true, readAlong = false } = {}) {
     this.plan = plan; this.n = plan.beats.length; this.sp = sp; this.auto = auto; this.readAlong = readAlong;
     this.pos = 0; this.run = null; this.wait = null; this.paused = false; this.started = false;
+    // Lessons (lessons.js) stop before chosen beats to ask a question: AUTO rests at those
+    // boundaries until Step or Enter plays the beat.
+    this.holds = new Set();
   }
   // run: the beat in motion {i, from (u when it was last anchored), at (ms), secs}. Its
   // length is fixed when it starts, so a speed change applies from the next beat.
@@ -43,7 +46,7 @@ export class BeatClock {
         if (u < 1) { this.pos = i + u; return; }
         const end = at + (1 - from) * length;
         this.run = null; this.pos = i + 1;
-        if (!this.auto || once || i + 1 >= this.n) return;
+        if (!this.auto || once || i + 1 >= this.n || this.holds.has(i + 1)) return;
         // secs is the beat's own length, fixed when it began (dur · sp), as schedule() counts it.
         const gap = this.readAlong ? gapAfter(this.plan.beats[i], secs) : 0;
         if (gap > 0) this.wait = { next: i + 1, until: end + gap * 1000 }; else this.begin(i + 1, end);

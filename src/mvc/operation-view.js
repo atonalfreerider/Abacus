@@ -7,6 +7,7 @@ import {numberSpec,placeOffset} from './numbers.js';
 import {ease,clamp} from './animation.js';
 import {unitFrame} from './units.js';
 import {math} from './model.js';
+import {rowStage} from './operations.js';
 
 const lerp=(a,b,q)=>a+(b-a)*q;
 const grid=cell=>cell<9?{x:cell%3*47,y:Math.floor(cell/3)*47}:{x:47+(cell-9)*6,y:47+(cell-9)*6};
@@ -41,7 +42,7 @@ export function renderOperation(plan,t,options){
  // The last quarter second crossfades into the settled result, which sits exactly where the cards end.
  const finish=clamp((time-(op.duration-.3))/.3);
  const context={op,S,R,slot,time,camera:options.camera,orientation:options.orientation,finish};
- const stage=op.kind==='flip'?{art:'',bounds:null,term:flipArt(context)}:op.kind==='multiply'?multiplyStage(context):divideStage(context);
+ const stage=op.kind==='flip'?{art:'',bounds:null,term:flipArt(context)}:op.kind==='multiply'?multiplyStage(context):op.kind.startsWith('rows-')?rowStage(context):divideStage(context);
  // A longer chain keeps its remaining factors: the old ones fade out, the new ones fade in.
  let art=stage.term??'';
  if(op.kind!=='flip'){

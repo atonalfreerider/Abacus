@@ -1,7 +1,7 @@
 import { math } from './model.js';
 import {numberSpec} from './numbers.js';
 import {unitPlan} from './units.js';
-import {operationPlan} from './operations.js';
+import {operationPlan,rowPlan} from './operations.js';
 import {numeral,bases,baseSpec} from './bases.js';
 export const clamp=t=>Math.max(0,Math.min(1,t));
 export const ease=t=>{t=clamp(t);return t*t*(3-2*t);};
@@ -20,7 +20,8 @@ export function regroup(a,b) {
   return events;
 }
 // Cards regroup in the base the trays are drawn in. Outside decimal, base 2 and balanced
-// ternary combine card by card; base e (no whole-card carries) and × ÷ cross-fade.
+// ternary combine card by card and work × and ÷ out in rows (operations.js); base e (no
+// whole-card carries) cross-fades.
 function baseTransition(transaction,base){
   const {before,after,command}=transaction;let units=null;
   if(command.type==='combine'&&!bases[base].irrational){
@@ -30,7 +31,9 @@ function baseTransition(transaction,base){
      if(aa<=limit&&aa>=-limit&&bb<=limit&&bb>=-limit){units=unitPlan(Number(bb),Number(aa),b.id,a.id,base);if(precision)units.placeShift=-precision;}}
   }
   const events=command.type==='move'?[{type:'cross',id:command.id}]:command.type==='operate'?[{type:command.operation,amount:math.parseScalar(command.amount)}]:command.type==='evaluate'?[{type:'evaluate'}]:[];
-  if(command.type==='evaluate'){const term=[...before.left,...before.right].find(t=>t.id===command.id),next=[...after.left,...after.right].find(t=>t.id===command.id);if(term?.expr&&math.pemdasRank(term)<2)return {before,after,command,events,units:null,caption:math.stepCaption(term,next),duration:1700};}
+  if(command.type==='evaluate'){const term=[...before.left,...before.right].find(t=>t.id===command.id),next=[...after.left,...after.right].find(t=>t.id===command.id);if(term?.expr&&math.pemdasRank(term)<2)return {before,after,command,events,units:null,caption:math.stepCaption(term,next),duration:1700};
+   // Bulbs: × and ÷ of whole numbers play PRIME's split in rows; anything else cross-fades.
+   const op=bases[base].bulbs?rowPlan(transaction,base):null;if(op)return {before,after,command,events:[],units:null,op,duration:Math.round(op.duration*1000)};}
   return {before,after,command,events,units,duration:units?Math.max(900,units.duration*1000+200):events.length?1200:650};
 }
 export function planTransition(transaction,base=numeral.id) {

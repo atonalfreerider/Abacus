@@ -106,3 +106,11 @@ export function operationPlan(transaction) {
   const first = next.expr ? { ...next, value: next.expr.operands[0].value, notation: next.expr.operands[0].notation, expr: undefined } : next;
   return (term.expr.ops[0] === '×' ? multiplicationPlan(term) : divisionPlan(term, first)) || null;
 }
+
+// The row form of × and ÷ in the bulb bases (row-split.js), handed over by app.js with the
+// Machine's planner after a dynamic import; until then they cross-fade.
+let rows = null;
+export const useRowForm = form => { rows = form; };
+export const hasRowForm = () => !!rows;
+export const rowPlan = (transaction, base) => rows?.plan(transaction, base) ?? null;
+export const rowStage = context => rows.stage(context);

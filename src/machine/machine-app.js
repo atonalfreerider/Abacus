@@ -194,7 +194,7 @@ export class MachineView extends EventTarget {
     this.sync(this.clock.t(performance.now()), true);
   }
   // Leaving closes the Steps/Parts sheet too, so the mode never reopens under it.
-  hide() { this.visible = false; this.hidePeek(); this.endDrag(); this.closeSheet(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
+  hide() { this.endLesson(); this.visible = false; this.hidePeek(); this.endDrag(); this.closeSheet(); const now = performance.now(); if (this.clock.playing) this.clock.pause(now); this.sync(this.clock.t(now), true); }
   // Android's back closes an open sheet before it leaves the mode, as Esc does: true if it did.
   closeSheet() { if (!$('machine-side').classList.contains('open')) return false; this.sheet(false); return true; }
   // {tree?|op?|expression?, base, input, sp, pace, auto}: resolves once the machine is planned.
@@ -226,6 +226,8 @@ export class MachineView extends EventTarget {
     this.hidePeek(); this.ask(false);
     const now = performance.now(), text = this.$input.value.trim();
     if (enterAction(this.clock, { changed: text !== this.planText.trim() || !!this.refusal }) === 'step') {
+      // a lesson's question waits for an answer (or Show me) before its beat plays
+      if (this.lessons?.waiting()) return { ok: false, message: 'question' };
       if (step || !this.auto) this.stepMode = true;
       this.clock.step(now); this.manual = null; this.sync(this.clock.t(now)); return { ok: true };
     }
@@ -313,6 +315,7 @@ export class MachineView extends EventTarget {
   use(plan) {
     this.planned = plan; this.planId = (this.planId ?? 0) + 1; this.layout = layoutPlan(plan);
     this.clock = new BeatClock(plan, { sp: this.sp / this.boost, auto: this.auto, readAlong: this.readAlong });
+    this.lessons?.planned();
     this.manual = null; this.steps(); this.rewound(); this.hud();
   }
   rewound() { const t = this.clock.t(performance.now()); this.lastDone = Math.floor(t + 1e-9); this.lastStarted = -1; this.lastBoundary = -1; this.dirty = true; this.hidePeek(); this.sync(t, true); }
@@ -408,6 +411,7 @@ export class MachineView extends EventTarget {
     const done = Math.floor(t + 1e-9);
     if (done > this.lastDone) for (let k = Math.max(0, this.lastDone); k < done; k++) this.ended(k);
     this.lastDone = done;
+    this.lessons?.frame(t);
     // The text and the run's fold first, so the frame is drawn for the stage it is shown in: a
     // caption or sentence that takes another line resizes it, and so does the phone layout's fold.
     this.sync(t);
@@ -428,6 +432,7 @@ export class MachineView extends EventTarget {
     if (beat.kind === 'output' || i === n - 1) {
       if (!this.stepMode && !this.readAlong) this.announce(`Output ${plan.result.text}${plan.result.label ? `: ${plan.result.label}` : ''}.`);
       haptic('success'); this.dispatchEvent(new CustomEvent('done', { detail: { result: plan.result } }));
+      this.lessons?.done();
     } else if (['collide', 'carry', 'addone'].includes(beat.kind) && this.grew(i)) haptic('thud');
   }
   // A carry that lands above a tower's top grows the column.
@@ -696,6 +701,7 @@ export class MachineView extends EventTarget {
     // them: the base radios, the Steps/Parts tabs, the palette, the Steps list and the outline.
     if (NAV_KEYS.includes(e.key)) { const group = e.target.closest('#machine-base,#machine-palette,[role=tablist],#machine-steps,#machine-outline'); if (group) return this.groupKey(e, group); }
     if (e.target.closest('#machine-outline') && ['Backspace', 'Delete'].includes(e.key)) return;
+    if (this.lessons?.key(e.key)) { e.preventDefault(); return; }
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, now = performance.now();
     const act = {
       Enter: () => this.enter(), ArrowRight: () => this.enter(), ArrowDown: () => this.enter(), ArrowLeft: () => this.back(), ArrowUp: () => this.back(),
@@ -759,6 +765,7 @@ export class MachineView extends EventTarget {
     const up = e => {
       const p = pts.get(e.pointerId); if (!p) return; pts.delete(e.pointerId); if (pts.size < 2) this.pinch = null;
       if (p.moved || e.type === 'pointercancel') return;
+      if (this.lessons?.tap(e.clientX, e.clientY)) return;
       const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-socket],[data-node],[data-tower]') ?? p.target.closest?.('[data-socket],[data-node],[data-tower]');
       if (hit?.dataset.socket) this.select(hit.dataset.socket);
       else if (hit?.dataset.node) this.select(hit.dataset.node);
@@ -823,6 +830,15 @@ export class MachineView extends EventTarget {
   dropDrag() { const d = this.drag; const target = d?.socket; const op = d?.op; this.endDrag(); if (target) this.attachAt(target, op); else this.status('Drop a block near an open socket to hang it there.'); }
   endDrag() { if (this.press) clearTimeout(this.press.timer); this.press = null; if (this.drag) { this.drag.ghost.remove(); this.drag = null; this.hitKey = null; this.dirty = true; document.body.classList.remove('machine-dragging'); } }
 
+  // ---------- lessons (design 5.4) ----------
+  // The lesson mode (lesson-mode.js, with lessons.js and lessons.css) loads with the first
+  // lesson; the mode itself only calls into it: planned, frame, done, enter, a stage tap and a key.
+  async startLesson(lesson, options) {
+    this.lessons = await (this.lessonMode ??= import('./lesson-mode.js').then(m => m.LessonMode.create(this)));
+    return this.lessons.start(lesson, options);
+  }
+  endLesson() { this.lessons?.end(); }
+
   // ---------- automation (tests and videos only: &automation) ----------
   hook() {
     window.__machine = {
@@ -834,6 +850,10 @@ export class MachineView extends EventTarget {
       load: async params => { await this.load(presetOf(params)); },
       seek: t => this.seek(t),
       chrome: mode => this.chrome(mode),
+      // lessons: the lesson in play (its phase, the question waiting, the stops), an answer, a start
+      lesson: () => this.lessons?.state() ?? null,
+      answer: value => this.lessons?.answer(value),
+      startLesson: async (id, seed) => this.startLesson((await import('./lessons.js')).lessons.find(l => l.id === id), { seed }),
     };
   }
 }
