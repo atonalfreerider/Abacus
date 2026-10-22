@@ -426,7 +426,9 @@ export class MachineView extends EventTarget {
   inset() {
     const { width, height } = this.viewport(), band = this.recording ? (height > width ? 170 : 120) : 0;
     const p = $('machine-palette').getBoundingClientRect(), st = this.stage.getBoundingClientRect(), hud = $('machine-hud').getBoundingClientRect();
-    const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0, inset = {};
+    // The palette counts only where it lies over the stage: in the phone landscape rail it is
+    // beside the stage, level with it, and covers none of it.
+    const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 && p.left < st.right && p.right > st.left ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0, inset = {};
     if (band || over) inset.bottom = Math.max(band, Math.round(over));
     if (hud.width && hud.height) { const top = Math.round(hud.bottom - st.top), left = Math.round(hud.right - st.left); if (top / height <= left / width) inset.top = top; else inset.left = left; }
     return inset;
