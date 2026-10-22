@@ -6,7 +6,7 @@
 // itself, which keeps the two drawings from drifting apart.
 import { ink } from '../mvc/theme.js';
 import { bulb, socket, round as r, esc } from '../mvc/view.js';
-import { UNITS, IO, FURNITURE, scenesOf, parsePlace, isCollapsed, bulbOffset, pillLines, pillWidth, textWidth, railOf, furnitureOf, dustBox, cameraAt } from './layout.js';
+import { UNITS, IO, FURNITURE, scenesOf, parsePlace, isCollapsed, bulbOffset, bulbsOf, pathLevel, pillLines, pillWidth, textWidth, railOf, furnitureOf, dustBox, cameraAt } from './layout.js';
 
 export const easeOut = u => 1 - (1 - u) ** 2;
 const win = (u, [a, b]) => u <= a ? 0 : u >= b ? 1 : (u - a) / (b - a);
@@ -101,14 +101,6 @@ export function blockGlyphSVG(op, palette = ink, base = 'binary') {
 }
 
 // ---- motion helpers ----
-function pathLevel(path, u) {
-  if (u <= path[0][0]) return path[0][1];
-  for (let j = 0; j < path.length - 1; j++) {
-    const [u0, l0] = path[j], [u1, l1] = path[j + 1];
-    if (u <= u1) return u1 <= u0 ? l1 : l0 + (l1 - l0) * easeOut((u - u0) / (u1 - u0));
-  }
-  return path.at(-1)[1];
-}
 // [from, to, f]: the state crossfades from → to by f; via lights a dark climber first.
 function stateAt(sa, sz, m, u) {
   if (m.via) { const w = m.via.at || [0, .3]; if (u <= w[1]) return [sa, m.via.s, E(u, w)]; }
@@ -141,6 +133,16 @@ function cutPath(pts, f) {
 const polyline = (pts, stroke, width, extra = '') => pts.length > 1 && polyLength(pts) > 1e-6 ? `<polyline points="${pts.map(([x, y]) => `${r(x)},${r(y)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${extra}/>` : '';
 const symbolOf = (s, k) => k === 'light' ? (s < 0 ? 'bulb-red' : 'bulb-amber') : s > 0 ? 'bulb-blue' : s < 0 ? 'bulb-red' : 'socket';
 
+// Every bulb id of a beat, in natural order, kept per pair of bulb sets (a beat's frames all
+// draw the same pair).
+const idLists = new WeakMap();
+function idsOf(a, z) {
+  let byZ = idLists.get(a);
+  if (!byZ) idLists.set(a, byZ = new WeakMap());
+  let ids = byZ.get(z);
+  if (!ids) byZ.set(z, ids = [...new Set([...Object.keys(a), ...Object.keys(z)])].sort(natural));
+  return ids;
+}
 // ---- one frame: beat `beat` from scene a to scene z at u (a static frame: a = z, no beat) ----
 function frame(layout, a, z, beat, u, palette, view, far = null) {
   const base = layout.base, P = view.prefix ?? 'm-', m = palette.machine, motions = beat?.motion || {};
@@ -175,9 +177,10 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
 
   // -- bulbs --
   const bursts = new Map();
+  // off camera (with a viewport): not drawn at all
+  const culled = (x, y) => !!cull && (x + R * 2 < cull.x || x - R * 2 > cull.x + cull.w || y + R * 2 < cull.y || y - R * 2 > cull.y + cull.h);
   const bulbItem = ({id, was = false, x, y, scale, level, layers, opacity, k, slot, owed, dissolve = 0, tower, glyph}) => {
-    if (r(opacity) === 0) return null;
-    if (cull && (x + R * 2 < cull.x || x - R * 2 > cull.x + cull.w || y + R * 2 < cull.y || y - R * 2 > cull.y + cull.h)) return null;
+    if (r(opacity) === 0 || culled(x, y)) return null;
     let body = '';
     if (k === 'light') body += `<use href="#${P}halo"/>`;
     for (const {s, o} of layers) if (r(o) > 0) body += `<use href="#${P}${symbolOf(s, k)}"${attr('opacity', o)}/>`;
@@ -191,20 +194,32 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     return {x, y, scale, o: opacity, glyph, svg: show => head + body + (show && glyph ? glyph : '') + '</g>'};
   };
   // A digit glyph stays hidden where it would land on another bulb (the towers of one block
-  // share the space between them: COMP's verdict stands in .L's gutter).
-  const withGlyphs = list => list.map(item => {
-    if (!item.glyph) return item.svg(false);
-    const gx = item.x + (R + UNITS.gutter / 2) * item.scale, gy = item.y;
-    const covered = [parts.removed, parts.resting, parts.moving].some(l => l.some(other => other !== item && r(other.o) > .05 && Math.abs(other.x - gx) < R * other.scale + 12 * item.scale && Math.abs(other.y - gy) < R * other.scale * .8));
-    return item.svg(!covered);
-  });
+  // share the space between them: COMP's verdict stands in .L's gutter). Bulbs are bucketed
+  // in cells wider than any bulb's reach, so only the neighbouring cells are searched.
+  let grid = null;
+  const CELL = 128, cellOf = v => Math.floor(v / CELL);
+  const covered = (item, gx, gy) => {
+    if (!grid) {
+      grid = new Map();
+      for (const l of [parts.removed, parts.resting, parts.moving]) for (const other of l) if (r(other.o) > .05) {
+        const key = cellOf(other.x) + ',' + cellOf(other.y), cell = grid.get(key);
+        if (cell) cell.push(other); else grid.set(key, [other]);
+      }
+    }
+    const cx = cellOf(gx), cy = cellOf(gy);
+    for (let i = cx - 1; i <= cx + 1; i++) for (let j = cy - 1; j <= cy + 1; j++) for (const other of grid.get(i + ',' + j) || []) {
+      if (other !== item && Math.abs(other.x - gx) < R * other.scale + 12 * item.scale && Math.abs(other.y - gy) < R * other.scale * .8) return true;
+    }
+    return false;
+  };
+  const withGlyphs = list => list.map(item => item.glyph ? item.svg(!covered(item, item.x + (R + UNITS.gutter / 2) * item.scale, item.y)) : item.svg(false));
   // the digit glyph right of a column bulb (T is a barred 1)
   const glyphFor = (t, b, s) => {
     if (!digits || !t || t.form !== 'tower' || collapsedT(t) || t.pending || base === 'e' || (b.slot ?? 0) !== 0) return '';
     const g = m.glyph, x = R + UNITS.gutter / 2, ch = b.k === 'lamp' ? `…${s ? 1 : 0}` : s ? '1' : '0';
     return `<text class="digit" x="${x}" y="2" font-size="${b.k === 'lamp' ? 30 : 40}" text-anchor="middle" dominant-baseline="central" fill="${g}">${ch}</text>` + (base === 'ternary' && s < 0 ? `<path d="M${x - 11} -24h22" stroke="${g}" stroke-width="5" stroke-linecap="round"/>` : '');
   };
-  const ids = [...new Set([...Object.keys(a.bulbs), ...Object.keys(z.bulbs)])].sort(natural);
+  const ids = idsOf(a.bulbs, z.bulbs);
   for (const id of ids) {
     const ba = a.bulbs[id], bz = z.bulbs[id], mo = motions[id] || {};
     if (reduced) {
@@ -230,6 +245,9 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       let x = lerp(pa.x, pz.x, e), y = lerp(pa.y, pz.y, e), level = lerp(ba.l, bz.l, e);
       const scale = lerp(pa.scale, pz.scale, e);
       if (mo.path && u < 1) { level = pathLevel(mo.path, u); y = lerp(pa.oy, pz.oy, e) - pz.pitch * level + lerp(pa.perch, pz.perch, e); }
+      towerTop(ba.t, bz.t, topOf(y, scale, bz.k), 1, true);
+      (drawnAt.get(bz.t) || drawnAt.set(bz.t, []).get(bz.t)).push({x: x - R * scale, level});
+      if (culled(x, y)) continue;
       const [s0, s1, f] = stateAt(ba.s, bz.s, mo, u);
       const layers = s0 === s1 || f <= 0 ? [{s: f >= 1 ? s1 : s0, o: 1}] : f >= 1 ? [{s: s1, o: 1}] : [{s: s0, o: Math.min(1, 2 * (1 - f))}, {s: s1, o: f}];
       const opacity = lerp(ghostOf(a.towers[ba.t]), ghostOf(z.towers[bz.t]), E(u, mo.state || [.6, 1]));
@@ -237,8 +255,6 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const shown = layers.reduce((p, q) => q.o > p.o ? q : p).s;
       const item = bulbItem({id, x, y, scale, level, layers, opacity, k: bz.k ?? ba.k, slot: bz.slot, owed: u < .9 ? ba.o : bz.o, tower: bz.t, glyph: glyphFor(z.towers[bz.t], bz, shown)});
       if (item) (moving ? parts.moving : parts.resting).push(item);
-      towerTop(ba.t, bz.t, topOf(y, scale, bz.k), 1, true);
-      (drawnAt.get(bz.t) || drawnAt.set(bz.t, []).get(bz.t)).push({x: x - R * scale, level});
     } else if (ba) {
       const pa = posIn(a, ba); if (!pa) continue;
       let tgt = pa;
@@ -249,15 +265,16 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       if (mo.path) { level = pathLevel(mo.path, u); y = lerp(pa.oy, tgt.oy, e) - tgt.pitch * level + lerp(pa.perch, tgt.perch, e); }
       const fade = mo.fade || (mo.dissolve ? [0, 1] : mo.burst ? [.6, 1] : [.3, 1]);
       const opacity = (1 - E(u, fade)) * ghostOf(a.towers[ba.t]);
-      const [s0, s1, f] = mo.via ? stateAt(ba.s, mo.via.s, {via: mo.via, state: [2, 3]}, u) : [ba.s, ba.s, 0];
-      const layers = s0 === s1 || f <= 0 ? [{s: s0, o: 1}] : f >= 1 ? [{s: s1, o: 1}] : [{s: s0, o: Math.min(1, 2 * (1 - f))}, {s: s1, o: f}];
-      const item = bulbItem({id, x, y, scale: lerp(pa.scale, tgt.scale, e), level, layers, opacity, k: ba.k, slot: ba.slot, owed: ba.o, dissolve: mo.dissolve ? E(u, [0, .5]) : 0, tower: ba.t, glyph: glyphFor(a.towers[ba.t], ba, layers.at(-1).s)});
-      if (item) parts.removed.push(item);
       towerTop(ba.t, null, topOf(y, pa.scale, ba.k), opacity, false);
       if (mo.burst) {
         const key = `${mo.to ? mo.to.t : ba.t}:${mo.to ? mo.to.l : ba.l}`;
         if (!bursts.has(key)) bursts.set(key, tgt);
       }
+      if (culled(x, y)) continue;
+      const [s0, s1, f] = mo.via ? stateAt(ba.s, mo.via.s, {via: mo.via, state: [2, 3]}, u) : [ba.s, ba.s, 0];
+      const layers = s0 === s1 || f <= 0 ? [{s: s0, o: 1}] : f >= 1 ? [{s: s1, o: 1}] : [{s: s0, o: Math.min(1, 2 * (1 - f))}, {s: s1, o: f}];
+      const item = bulbItem({id, x, y, scale: lerp(pa.scale, tgt.scale, e), level, layers, opacity, k: ba.k, slot: ba.slot, owed: ba.o, dissolve: mo.dissolve ? E(u, [0, .5]) : 0, tower: ba.t, glyph: glyphFor(a.towers[ba.t], ba, layers.at(-1).s)});
+      if (item) parts.removed.push(item);
     } else {
       // a bulb born without a source appears in its tower, and travels with it
       const t = z.towers[bz.t]; if (!t) continue;
@@ -267,17 +284,22 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       const x = src ? lerp(src.x, pz.x, e) : pz.x, y = src ? lerp(src.y, pz.y, e) : pz.y;
       const scale = (src ? lerp(src.scale, pz.scale, e) : pz.scale) * (mo.grow ? .25 + .75 * grow : 1);
       const opacity = (src ? 1 : grow) * ghostOf(z.towers[bz.t]);
+      towerTop(null, bz.t, topOf(y, scale, bz.k), src ? 1 : opacity, !!src);
+      (drawnAt.get(bz.t) || drawnAt.set(bz.t, []).get(bz.t)).push({x: x - R * scale, level: bz.l});
+      if (culled(x, y)) continue;
       const moving = u < 1 && (!!src && (r(src.x) !== r(pz.x) || r(src.y) !== r(pz.y)) || !!mo.grow && grow < 1);
       const item = bulbItem({id, x, y, scale, level: src ? lerp(mo.from.l, bz.l, e) : bz.l, layers: [{s: bz.s, o: 1}], opacity, k: bz.k, slot: bz.slot, owed: bz.o, tower: bz.t, glyph: glyphFor(z.towers[bz.t], bz, bz.s)});
       if (item) (moving ? parts.moving : parts.resting).push(item);
-      towerTop(null, bz.t, topOf(y, scale, bz.k), src ? 1 : opacity, !!src);
-      (drawnAt.get(bz.t) || drawnAt.set(bz.t, []).get(bz.t)).push({x: x - R * scale, level: bz.l});
     }
   }
   // a cancellation flashes where its partners meet, fading to nothing by the beat's end
   if (!reduced && u >= .6 && u < 1) for (const p of bursts.values()) { const e = E(u, [.6, 1]); parts.bursts.push(`<use href="#${P}burst" transform="translate(${r(p.x)} ${r(p.y)}) scale(${r(.6 + e)})"${attr('opacity', 1 - e)}/>`); }
 
   // -- towers: furniture, rails, dust, base-e digits, pills --
+  // each tower's bulb tops, in drawing order: a tower that ends the beat rides on the bulbs it
+  // ends with and those leaving it; a vanishing tower on the bulbs it had
+  const topsBy = {ending: new Map(), leaving: new Map()};
+  for (const q of tops) for (const [map, key] of [[topsBy.ending, q.tz ?? q.ta], [topsBy.leaving, q.ta]]) if (key !== null) { const list = map.get(key); if (list) list.push(q); else map.set(key, [q]); }
   const tids = [...new Set([...Object.keys(a.towers), ...Object.keys(z.towers)])].sort(natural);
   const fadeBoth = (inA, inZ, winIn, winOut) => inA && inZ ? 1 : inZ ? (reduced ? v : E(u, winIn)) : inA ? (reduced ? 1 - v : 1 - E(u, winOut)) : 0;
   for (const tid of tids) {
@@ -323,7 +345,7 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
     }
     // base-e digit glyphs, one per level, and a badge where a pile holds more than 6 bulbs
     if (base === 'e' && lt && lt.form === 'tower' && !collapsedT(lt)) {
-      const own = Object.values(labelScene.bulbs).filter(b => b.t === tid), f = furnitureOf(base, lt, own);
+      const own = bulbsOf(labelScene, tid), f = furnitureOf(base, lt, own);
       const op = reduced ? 1 : fadeBoth(!!ta, !!tz, [0, .3], [.3, 1]);
       let svg = '';
       for (let l = f.floor; l <= f.top; l++) {
@@ -351,19 +373,19 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       return `<g class="pill" data-t="${tid}"${attr('opacity', opacity)}>${svg}</g>`;
     };
     const top = (() => {
-      const mine = tz ? tops.filter(q => q.tz === tid || q.ta === tid && q.tz === null) : tops.filter(q => q.ta === tid);
+      const mine = (tz ? topsBy.ending : topsBy.leaving).get(tid) || [];
       const solid = mine.filter(q => q.solid).map(q => q.top);
       let t = solid.length ? Math.min(...solid) : null;
       for (const {top: y, o: op} of mine.filter(q => !q.solid).sort((p, q) => p.top - q.top)) {
         if (t === null) { if (r(op) > 0) t = y; continue; }
         if (y < t && r(op) > 0) { t = lerp(t, y, op); break; }
       }
-      const f = labelScene.towers[tid] && !collapsedT(labelScene.towers[tid]) ? furnitureOf(base, labelScene.towers[tid], Object.values(labelScene.bulbs).filter(b => b.t === tid)) : null;
+      const f = labelScene.towers[tid] && !collapsedT(labelScene.towers[tid]) ? furnitureOf(base, labelScene.towers[tid], bulbsOf(labelScene, tid)) : null;
       if (f) t = Math.min(t ?? Infinity, o.y - PITCH * f.top - R * UNITS.eScale);
       return t ?? o.y - R;
     })();
     if (reduced) {
-      const staticTop = (scene, t) => { const own = Object.values(scene.bulbs).filter(b => b.t === tid); let y = Infinity; for (const b of own) { const p = posIn(scene, b); if (p) y = Math.min(y, topOf(p.y, p.scale, b.k)); } const f = !collapsedT(t) && furnitureOf(base, t, own); if (f) y = Math.min(y, layout.placeOf(t.at).y - PITCH * f.top - R * UNITS.eScale); return y === Infinity ? layout.placeOf(t.at).y - R : y; };
+      const staticTop = (scene, t) => { const own = bulbsOf(scene, tid); let y = Infinity; for (const b of own) { const p = posIn(scene, b); if (p) y = Math.min(y, topOf(p.y, p.scale, b.k)); } const f = !collapsedT(t) && furnitureOf(base, t, own); if (f) y = Math.min(y, layout.placeOf(t.at).y - PITCH * f.top - R * UNITS.eScale); return y === Infinity ? layout.placeOf(t.at).y - R : y; };
       const same = ta && tz && ta.at === tz.at && pillLines(ta, digits).join('\n') === pillLines(tz, digits).join('\n') && ta.note === tz.note && staticTop(a, ta) === staticTop(z, tz);
       if (same) parts.pills.push(pill(tz, z, layout.pillCentre(tz.at, pillWidth(pillLines(tz, digits))), layout.placeOf(tz.at), staticTop(z, tz), ghostOf(tz)));
       else {

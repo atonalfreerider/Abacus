@@ -3,6 +3,7 @@
 // plan plays; the camera (cameraAt) is the only thing that knows about the screen.
 // Machine units, y down. A node's places hang off its centre; a tower stands up from its
 // place, level l at y − 84·l (6·l for a coin).
+import { snapshotAt } from './scene.js';
 export const UNITS = {block: [176, 88], socketX: {binary: 88, ternary: 88, e: 150}, pitch: 84, coin: 6,
   bulbR: 37, lane: 84, eScale: .8, eSlots: [-34, 34, 102], labelGap: 42, pillLine: 36, charW: 17,
   gutter: 48, placeCol: 56, wire: 2.5, hub: 25, bead: 9, rowGap: 36, qMinX: 264};
@@ -13,42 +14,56 @@ export const FURNITURE = {coinGap: 96, coinY: -88, perch: 30, perchScale: .7, gh
   floor: -3, sliver: .718, follow: 62, pad: 24, minScale: 18 / 74, maxScale: 1.2};
 const R = UNITS.bulbR;
 
-// ---- scenes: the reference replay of 6.2 (scene.js keeps the arithmetic side's copy; the
-// picture imports nothing from it, so it replays plans itself) ----
-export function applyDiff(scene, diff) {
-  const out = {nodes: scene.nodes, towers: scene.towers, bulbs: scene.bulbs};
-  for (const key of ['nodes', 'towers', 'bulbs']) {
-    const patch = diff[key]; if (!patch) continue;
-    const next = {...scene[key]};
-    for (const [id, p] of Object.entries(patch)) {
-      if (p === null) { delete next[id]; continue; }
-      next[id] = id in next ? {...next[id], ...p} : {...p};
-      for (const f in p) if (p[f] === null) delete next[id][f];
-    }
-    out[key] = next;
-  }
-  return out;
-}
+// ---- scenes: scene.js's replay of 6.2 (diffs only, no arithmetic), so the picture and the
+// mode share one set of scene objects and every cache keyed on them ----
 const replays = new WeakMap();
 // Every beat boundary: scenes[0] = plan.start, scenes[i + 1] = scenes[i] + beats[i].set.
 export function scenesOf(plan) {
   let list = replays.get(plan);
-  if (!list) {
-    list = [plan.start];
-    for (const beat of plan.beats) list.push(applyDiff(list.at(-1), beat.set));
-    replays.set(plan, list);
-  }
+  if (!list) replays.set(plan, list = Array.from({length: plan.beats.length + 1}, (_, i) => snapshotAt(plan, i)));
   return list;
 }
 export const sceneAt = (plan, i) => scenesOf(plan)[Math.max(0, Math.min(plan.beats.length, i))];
+// A scene's bulbs grouped by tower, in the scene's own order. Scenes share their bulbs object
+// while no bulb changes, so one index serves every scene between two bulb edits; without it
+// every tower box scans every bulb (seconds for a 64-level product).
+const NONE = Object.freeze([]);
+const indexes = new WeakMap();
+function indexOf(bulbs) {
+  let index = indexes.get(bulbs);
+  if (!index) {
+    index = {bulbs: new Map(), ids: new Map()};
+    for (const [id, b] of Object.entries(bulbs)) {
+      const list = index.bulbs.get(b.t);
+      if (list) { list.push(b); index.ids.get(b.t).push(id); } else { index.bulbs.set(b.t, [b]); index.ids.set(b.t, [id]); }
+    }
+    indexes.set(bulbs, index);
+  }
+  return index;
+}
+export const bulbsOf = (scene, id) => indexOf(scene.bulbs).bulbs.get(id) || NONE;
+export const bulbIdsOf = (scene, id) => indexOf(scene.bulbs).ids.get(id) || NONE;
+// A light's level along its keyframes, eased per segment (6.3).
+export function pathLevel(path, u) {
+  if (u <= path[0][0]) return path[0][1];
+  for (let j = 0; j < path.length - 1; j++) {
+    const [u0, l0] = path[j], [u1, l1] = path[j + 1];
+    if (u <= u1) return u1 <= u0 ? l1 : l0 + (l1 - l0) * (1 - (1 - (u - u0) / (u1 - u0)) ** 2);
+  }
+  return path.at(-1)[1];
+}
 
 // ---- places, bulbs, pills ----
+const parsed = new Map();
 export function parsePlace(at) {
+  let p = parsed.get(at);
+  if (p) return p;
   let m = /^(in|io|out):(\d+)$/.exec(at);
-  if (m) return {io: m[1], i: +m[2]};
-  m = /^([^.]+)\.([LRCQ])(?::(\d+))?$/.exec(at);
-  if (m) return {node: m[1], socket: m[2], i: m[3] === undefined ? null : +m[3]};
-  throw Error(`unknown place ${at}`);
+  if (m) p = {io: m[1], i: +m[2]};
+  else if ((m = /^([^.]+)\.([LRCQ])(?::(\d+))?$/.exec(at))) p = {node: m[1], socket: m[2], i: m[3] === undefined ? null : +m[3]};
+  else throw Error(`unknown place ${at}`);
+  parsed.set(at, Object.freeze(p));
+  return p;
 }
 export const isCoinPlace = at => { const p = parsePlace(at); return !!p.io || p.i !== null; };
 // A coin is a collapsed number; a base-e light rides the wires as an amber coin too.
@@ -96,11 +111,20 @@ export function furnitureOf(base, tower, bulbs) {
   if (floor === null) return null;
   return {floor, top: Math.max(0, ...digitBulbs(bulbs).map(b => Math.floor(b.l)))};
 }
-const bulbsOf = (scene, id) => Object.values(scene.bulbs).filter(b => b.t === id);
 
 // The extent of a tower about its place at a beat boundary: bulbs, lamp ghosts, lanes, the
-// digit gutter, base-e furniture, rail and dust. topEdge is what the pill stands on.
+// digit gutter, base-e furniture, rail and dust. topEdge is what the pill stands on. Shapes
+// are kept per (tower, bulb list): both are shared, unchanged, from scene to scene.
+const shapes = new WeakMap();
 export function towerShape(base, tower, bulbs, {gutter = true} = {}) {
+  let byBulbs = shapes.get(tower);
+  if (!byBulbs) shapes.set(tower, byBulbs = new WeakMap());
+  let pair = byBulbs.get(bulbs);
+  if (!pair) byBulbs.set(bulbs, pair = {});
+  const key = `${base}${gutter ? 1 : 0}`;
+  return pair[key] ??= shapeOf(base, tower, bulbs, gutter);
+}
+function shapeOf(base, tower, bulbs, gutter) {
   const box = {left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity};
   const add = (x, y, r) => { box.left = Math.min(box.left, x - r); box.right = Math.max(box.right, x + r); box.top = Math.min(box.top, y - r); box.bottom = Math.max(box.bottom, y + r); };
   const collapsed = isCollapsed(tower);
@@ -210,7 +234,17 @@ export function layoutPlan(plan) {
   // A tower's pill relative to its node: 42 above its top bulb, centred, shifted outward at
   // .L, .R and .Q. A .C pill that would meet a sibling tower or its pill (COMP's verdict and
   // DIV's ghost stand between A and B) climbs above them; the picture draws a leader.
+  // Pills are kept per scene: siblings ask for each other's, and the renderer asks every frame.
+  const pills = new WeakMap();
   function relPill(scene, id, digits = true) {
+    let memo = pills.get(scene);
+    if (!memo) pills.set(scene, memo = new Map());
+    const key = digits ? id : id + '\u0000';
+    let pill = memo.get(key);
+    if (!pill) memo.set(key, pill = pillOf(scene, id, digits));
+    return pill;
+  }
+  function pillOf(scene, id, digits) {
     const t = scene.towers[id], p = parsePlace(t.at), o = relPlace(t.at), shape = towerShape(base, t, bulbsOf(scene, id));
     const lines = pillLines(t, digits), w = pillWidth(lines), h = UNITS.pillLine * lines.length;
     const cx = p.io ? o.x : pillX(p.node, p.socket, p.i, o.x, w);

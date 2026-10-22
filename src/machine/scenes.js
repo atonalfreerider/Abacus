@@ -2,13 +2,18 @@
 // * the full-plan fixtures of 6.4 and 6.5 (tests/fixtures/machine);
 // * the golden beats of 6.5b, wrapped in the standard flow (INPUT, DELIVER, FANOUT … RETURN,
 //   OUTPUT) so that the picture of each edge case is pinned before and after the planner lands;
-// * base-e plans from tests/fixtures/machine/e-*.json, when present;
-// * the binary and ternary scenes 6.9 names, planned by planMachine once plan.js is present.
+// * base-e plans from tests/fixtures/machine/e-*.json;
+// * the binary and ternary scenes 6.9 names, planned by planMachine.
 // Every entry is {name, plan, beats, view}: beats are the beat indices to snapshot (each at
 // u ∈ {0, .25, .5, .75, 1}); view is merged into the renderer's view (highlight, active, digits).
-import { applyDiff } from './layout.js';
+import { applyDiff } from './scene.js';
+import { planMachine } from './plan.js';
+import { PlanBuilder } from './builder.js';
 
 export const FIXTURES = ['plan-5x11-binary', 'plan-5xm4-ternary', 'e-measure-3'];
+// B's base-e plans. Node lists the fixture folder itself; a browser cannot, so it asks for
+// these (tests/machine-render.test.js checks the list against the folder).
+export const E_FIXTURES = ['e-add-1-e', 'e-add-16-7', 'e-cmp-red', 'e-ln-112', 'e-measure-1-30', 'e-measure-112-level', 'e-mul-16-7', 'e-mul-e1-squared', 'e-mule-3-2', 'e-sub-7-16'];
 
 // A golden: the operands' towers as literal strings and bulbs [level, state], the golden
 // beats of 6.5b verbatim, the receiver that rides up, and the result.
@@ -99,14 +104,13 @@ async function listFixtures() {
     const fs = await import('node:fs');
     return fs.readdirSync(new URL('../../tests/fixtures/machine/', import.meta.url)).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5));
   }
-  return FIXTURES;
+  return [...FIXTURES, ...E_FIXTURES];
 }
 const every = plan => plan.beats.map((_, i) => i);
 const firstOf = (plan, kinds) => [...new Set(kinds.map(k => plan.beats.findIndex(b => b.kind === k)).filter(i => i >= 0))].sort((a, b) => a - b);
 
-// All scenes available here. Missing modules (the planner before it lands) are reported in
-// `skipped`, never thrown.
-export async function machineScenes({read = readFixture, list = listFixtures, planner} = {}) {
+// All scenes. A planner scene that cannot be planned is reported in `skipped`, never thrown.
+export async function machineScenes({read = readFixture, list = listFixtures, planner = {planMachine, PlanBuilder}} = {}) {
   const scenes = [], skipped = [];
   for (const name of FIXTURES) { const plan = await read(name); scenes.push({name, plan, beats: every(plan), view: {}, source: 'fixture'}); }
   for (const name of Object.keys(GOLDENS)) { const plan = goldenPlan(name); scenes.push({name, plan, beats: every(plan), view: {}, source: 'golden'}); }
@@ -114,11 +118,7 @@ export async function machineScenes({read = readFixture, list = listFixtures, pl
     const plan = await read(name);
     scenes.push({name, plan, beats: every(plan), view: {}, source: 'e-fixture'});
   }
-  let api = planner;
-  if (!api) {
-    try { api = {...await import('./plan.js'), ...await import('./builder.js')}; }
-    catch (error) { skipped.push(...PLANNED.map(([name]) => `${name} (planner not available: ${error.message.split('\n')[0]})`)); return {scenes, skipped}; }
-  }
+  const api = planner;
   for (const [name, base, tree, inputs, kinds, opt = {}] of PLANNED) {
     try {
       const out = api.planMachine({tree, inputs, base, pace: opt.pace || 'together'});
