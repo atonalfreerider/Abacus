@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ARITY, palette, defaultMachine, attach, detach, openSockets, parseInput, parseExpression, evaluateTree, sentence} from '../src/machine/tree.js';
 import {planMachine} from '../src/machine/plan.js';
-import {snapshotAt} from '../src/machine/scene.js';
+import {snapshotAt, applyDiff, diffScenes} from '../src/machine/scene.js';
 
 test('Input takes [16,7], 16,7 or 16 7, with U+2212 and base literals; [5, 3] is two numbers', () => {
   for (const text of ['[16,7]', '16,7', '16 7', ' [ 16 , 7 ] ']) assert.deepEqual(parseInput(text, 'binary'), {ok: true, values: ['16', '7']});
@@ -112,4 +112,17 @@ test('the sentence line reads the tree as algebra after every beat of [16,7]', (
   const seen = new Set(Array.from({length: d.beats.length + 1}, (_, i) => sentence(snapshotAt(d, i))));
   assert.ok(seen.has('100 = 7 × 12 + 16'), [...seen].join(' | '));
   assert.ok(seen.has('14, 2'));
+});
+
+// 6.2's diffScenes is applyDiff's inverse: a beat's diff, recomputed from the two scenes it
+// joins, rebuilds the second from the first (fields set to null, ids removed and born).
+test('diffScenes inverts applyDiff at every beat of whole plans', () => {
+  for (const [op, base, inputs, pace] of [['mul', 'binary', ['16', '7']], ['div', 'ternary', ['45', '6']], ['add', 'binary', ['13', '9'], 'level'], ['and', 'binary', ['-5', '3']], ['shr', 'binary', ['-13', '2']]]) {
+    const p = planMachine({tree: {n1: {op, parent: 'io', socket: 'C'}}, inputs, base, pace}).plan;
+    for (let i = 0; i < p.beats.length; i++) {
+      const a = snapshotAt(p, i), b = snapshotAt(p, i + 1);
+      assert.deepEqual(applyDiff(a, diffScenes(a, b)), b, `${op} ${inputs} beat ${i}`);
+    }
+    assert.deepEqual(diffScenes(p.start, p.start), {});
+  }
 });

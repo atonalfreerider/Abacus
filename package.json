@@ -19,7 +19,6 @@
     "perf": "node tools/perf.mjs",
     "swf:disasm": "node tools/swf-disasm.mjs",
     "videos": "node tools/make-videos.mjs",
-    "videos:machine": "node tools/make-videos.mjs --silent",
     "app:build": "node tools/build.mjs --app && npx cap sync",
     "android:debug": "npm run app:build && cd android && ./gradlew assembleDebug",
     "android:release": "npm run app:build && cd android && ./gradlew bundleRelease assembleRelease",

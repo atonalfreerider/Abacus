@@ -14,7 +14,6 @@ npm run test:visual:machine  # the Machine's SVG snapshots
 npm run test:browser      # real pointer/keyboard/tutor/machine checks in headless Chrome
 npm run perf              # frame times of heavy animations in headless Chrome
 npm run videos            # narrated tutorial videos (see Tutorial videos)
-npm run videos:machine    # the ten silent, captioned Machine explainers
 npm run build && npm run preview
 ```
 

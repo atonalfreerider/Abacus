@@ -1,4 +1,5 @@
-// Named machine plans for the snapshots (tools/machine-visual-tests.mjs) and the test bench.
+// Named machine plans for the snapshots (tools/machine-visual-tests.mjs) and the render and
+// layout tests. Only Node imports this file; the builds leave it out.
 // * the full-plan fixtures of 6.4 and 6.5 (tests/fixtures/machine);
 // * the golden beats of 6.5b, wrapped in the standard flow (INPUT, DELIVER, FANOUT … RETURN,
 //   OUTPUT) so that the picture of each edge case is pinned before and after the planner lands;
@@ -91,7 +92,8 @@ export const PLANNED = [
   ['div-by-zero-highlight', 'binary', chain('div', 'sub'), ['9', '3', '3'], [], {highlight: true}],
 ];
 
-// Reads a fixture: Node reads the file, a browser fetches it next to the app.
+// Reads a fixture: Node reads the file; a browser fetches it from the dev server, which serves
+// the repository (no build ships this file or the fixtures).
 async function readFixture(name) {
   if (typeof process !== 'undefined' && process.versions?.node) {
     const fs = await import('node:fs');
