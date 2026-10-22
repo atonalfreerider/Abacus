@@ -8,8 +8,10 @@ export const SPEEDS = [.25, .5, 1, 1.5, 2, 3];
 // One beat lasts sp seconds; a level-pace carry beat (dur 0.5) lasts half of that.
 export const beatSeconds = (beat, sp) => (beat.dur ?? 1) * sp;
 // Read along: after each beat, time to read its caption at about 15 characters a second,
-// less the time the beat itself took, capped so even a 110-character caption fits in 6 s.
-export const readGap = (beat, sp) => Math.min(6, Math.max(0, .8 + beat.caption.length / 15 - beatSeconds(beat, sp)));
+// less the time the beat itself took (`secs`: a level-pace carry lasts half a beat), capped
+// so even a 110-character caption fits in 6 s.
+export const gapAfter = (beat, secs) => Math.min(6, Math.max(0, .8 + beat.caption.length / 15 - secs));
+export const readGap = (beat, sp) => gapAfter(beat, beatSeconds(beat, sp));
 export function schedule(plan, sp, { readAlong = false } = {}) {
   const n = plan.beats.length, starts = new Float64Array(n), ends = new Float64Array(n);
   let at = 0;
@@ -42,7 +44,8 @@ export class BeatClock {
         const end = at + (1 - from) * length;
         this.run = null; this.pos = i + 1;
         if (!this.auto || once || i + 1 >= this.n) return;
-        const gap = this.readAlong ? readGap(this.plan.beats[i], secs) : 0;
+        // secs is the beat's own length, fixed when it began (dur · sp), as schedule() counts it.
+        const gap = this.readAlong ? gapAfter(this.plan.beats[i], secs) : 0;
         if (gap > 0) this.wait = { next: i + 1, until: end + gap * 1000 }; else this.begin(i + 1, end);
       } else if (this.wait) {
         if (now < this.wait.until) return;
@@ -65,6 +68,9 @@ export class BeatClock {
       return 'finish';
     }
     this.paused = false;
+    // At rest part-way into a beat (a seek to 7.4): that beat is mid-beat too, so Step
+    // finishes it and rests, as it does for a paused beat.
+    if (!this.wait && Math.abs(this.pos - Math.round(this.pos)) > 1e-9) { this.pos = Math.min(this.n, Math.ceil(this.pos)); return 'finish'; }
     const next = this.wait ? this.wait.next : Math.round(this.pos);
     if (next >= this.n) { this.wait = null; return 'done'; }
     this.begin(next, now, once); return 'play';
