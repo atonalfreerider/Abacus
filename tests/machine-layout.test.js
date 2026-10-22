@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutPlan, scenesOf, cameraAt, parsePlace, intersects, bulbOffset, FURNITURE, UNITS } from '../src/machine/layout.js';
+import { renderMachine } from '../src/machine/render.js';
 import { machineScenes } from '../src/machine/scenes.js';
+import { planMachine } from '../src/machine/plan.js';
 
 const { scenes } = await machineScenes();
+const planned = (op, inputs, base = 'binary', tree = {n1: {op, parent: 'io', socket: 'C'}}) => planMachine({tree, inputs, base}).plan;
 // A 20-level ADD whose carry runs the whole tower and grows it to 21 levels: 1048575 + 1.
 function tallAdd(n = 20) {
   const ones = Array.from({length: n}, (_, l) => [`b${l + 1}`, {t: 't1', l, s: 1}]);
@@ -18,7 +21,9 @@ function tallAdd(n = 20) {
       flow(4, 'return', 'n1', {nodes: {n1: null}, towers: {t1: {at: 'io:0'}}}), flow(5, 'output', 'io', {towers: {t1: {at: 'out:0', form: 'coin'}}})],
     stats: {beats: 6, nodes: 1, maxLevels: n + 1, maxBulbs: n + 1}};
 }
-const all = [...scenes.map(s => [s.name, s.plan]), ['tall-add', tallAdd()]];
+const all = [...scenes.map(s => [s.name, s.plan]), ['tall-add', tallAdd()],
+  // wide pills at IO: the 6.9 perf inputs, and two results standing in IO
+  ['add-4294967295-4294967295', planned('add', ['4294967295', '4294967295'])], ['divmod-9223372036854775807-3', planned('div', ['9223372036854775807', '3'])]];
 
 test('the layout keeps towers, blocks, wires and pills apart at every beat boundary', () => {
   for (const [name, plan] of all) {
@@ -48,7 +53,12 @@ test('the layout keeps towers, blocks, wires and pills apart at every beat bound
       }
       const pills = Object.keys(scene.towers).flatMap(id => [[id, layout.pillBox(scene, id)], [`${id} note`, layout.noteBox(scene, id)]]).filter(([, box]) => box);
       for (const [j, [a, pa]] of pills.entries()) for (const [b, pb] of pills.slice(j + 1)) assert.ok(!intersects(pa, pb), `${where}: pills ${a} and ${b} overlap`);
-      for (const [a, pa] of pills) for (const box of layout.ioBoxes) assert.ok(!intersects(pa, box) || a.startsWith('t') && scene.towers[a.split(' ')[0]].at.startsWith('io:'), `${where}: pill ${a} covers the IO furniture`);
+      for (const [a, pa] of pills) for (const box of layout.ioBoxes) assert.ok(!intersects(pa, box) || box === layout.ioBoxes[0] && scene.towers[a.split(' ')[0]].at.startsWith('io:'), `${where}: pill ${a} covers the IO furniture`);
+      // the Input and Output pills: apart, and clear of every part of IO's own towers (a
+      // tower may stand in the triangle's eye, never on a pill)
+      const [, input, output] = layout.ioBoxes;
+      assert.ok(!intersects(input, output), `${where}: the Input and Output pills overlap`);
+      for (const t of towers) if (t.at.io === 'io') for (const part of layout.towerParts(scene, t.id)) for (const pill of [input, output]) assert.ok(!intersects(part, pill), `${where}: tower ${t.id} at ${scene.towers[t.id].at} meets an IO pill`);
     });
   }
 });
@@ -111,13 +121,18 @@ test('cameraAt is pure, stays within the layout, and follows at a readable scale
       const scale = viewport.width / cam.w, cx = cam.x + cam.w / 2, cy = cam.y + cam.h / 2;
       assert.ok(scale >= FURNITURE.minScale - 1e-9 && scale <= FURNITURE.maxScale + 1e-4, `${name} t ${t}: scale ${scale}`);
       assert.ok(Math.abs(cam.h * scale - viewport.height) < .01, 'the viewBox keeps the viewport\'s aspect');
-      const b = L.bounds;
-      assert.ok(cx >= b.x - 1e-6 && cx <= b.x + b.w + 1e-6 && cy >= b.y - 1e-6 && cy <= b.y + b.h + 1e-6, `${name} ${viewport.width}×${viewport.height} t ${t}: centre (${cx}, ${cy}) outside the layout`);
+      // (the viewBox is rounded to 3 decimals)
+      const b = L.bounds, e = 2e-3;
+      assert.ok(cx >= b.x - e && cx <= b.x + b.w + e && cy >= b.y - e && cy <= b.y + b.h + e, `${name} ${viewport.width}×${viewport.height} t ${t}: centre (${cx}, ${cy}) outside the layout`);
     }
-    // reduced motion cuts: no frame lies between two beats' cameras
-    const a = cameraAt(plan, L, 1.2, viewports[0], {reduced: true}), z = cameraAt(plan, L, 1.8, viewports[0], {reduced: true});
-    assert.deepEqual(a, cameraAt(plan, L, 1, viewports[0]), `${name}: before the cut`);
-    assert.deepEqual(z, cameraAt(plan, L, 2, viewports[0]), `${name}: after the cut`);
+    // reduced motion cuts: a beat holds one camera until its middle, then the one it ends on
+    for (let k = 0; k < n; k++) {
+      const hold = cameraAt(plan, L, k + .05, viewports[0], {reduced: true});
+      for (const u of [.2, .45]) assert.deepEqual(cameraAt(plan, L, k + u, viewports[0], {reduced: true}), hold, `${name} beat ${k}: before the cut`);
+      for (const u of [.5, .8]) assert.deepEqual(cameraAt(plan, L, k + u, viewports[0], {reduced: true}), cameraAt(plan, L, k + 1, viewports[0]), `${name} beat ${k}: after the cut`);
+    }
+    // and the hold is where the beat before ended unless its movers start out of that view
+    assert.deepEqual(cameraAt(plan, L, .2, viewports[0], {reduced: true}), cameraAt(plan, L, 0, viewports[0]), `${name}: the opening frame holds`);
   }
 });
 
@@ -144,6 +159,60 @@ test('a tall carry pans: every moving bulb is at least 18 px and on screen in tw
       }
     }
     for (const id of Object.keys(after.bulbs)) if (before.bulbs[id] && before.bulbs[id].l !== after.bulbs[id].l) assert.ok((seen.get(id) || 0) >= 2, `${viewport.width}×${viewport.height}: ${id} on screen in ${seen.get(id) || 0} frames`);
+  }
+});
+
+// Browser check 6 (6.9), in Node: the stage the app gives the camera on a 390×844 and an
+// 844×390 phone (measured in headless Chrome), the rendered bulbs mapped through the viewBox.
+// Every moving bulb is on stage and at least 18 px across at u .1, .5 and .9 of its beat for
+// [16,7] in both bases, and in at least 2 of 5 frames for the 21-level [1048575,1].
+const PHONES = [{width: 374, height: 614}, {width: 568, height: 322}];
+function moversOnStage(plan, viewport, us, inset = {}) {
+  const L = layoutPlan(plan), list = scenesOf(plan), ease = u => 1 - (1 - u) ** 2, out = [];
+  const at = (scene, b) => { const t = scene.towers[b.t]; if (!t) return null; const p = L.place(t.at, b.slot); return {x: p.x, y: p.y - (t.form === 'coin' ? 6 : 84) * b.l, tower: t.form !== 'coin'}; };
+  plan.beats.forEach((beat, i) => {
+    const a = list[i], z = list[i + 1], m = beat.motion || {}, moving = [];
+    for (const id of new Set([...Object.keys(a.bulbs), ...Object.keys(z.bulbs)])) {
+      const A = a.bulbs[id], B = z.bulbs[id]; let p0 = null, p1 = null;
+      if (A && B) { p0 = at(a, A); p1 = at(z, B); } else if (A && m[id]?.to) { p0 = at(a, A); p1 = at(z, m[id].to); } else if (B && m[id]?.from) { p0 = at(a, m[id].from); p1 = at(z, B); }
+      if (p0 && p1 && (p0.tower || p1.tower) && Math.hypot(p1.x - p0.x, p1.y - p0.y) >= 1) moving.push([id, p0, p1]);
+    }
+    if (!moving.length) return;
+    const seen = new Map(moving.map(([id]) => [id, 0]));
+    for (const u of us) {
+      const {svg, viewBox} = renderMachine(plan, i + u, L, undefined, {viewport, inset}), [x0, y0, w] = viewBox.split(' ').map(Number), s = viewport.width / w;
+      const drawn = new Map([...svg.matchAll(/data-(?:b|was)="([^"]+)"[^>]*transform="translate\(([^ ]+) ([^)]+)\)/g)].map(q => [q[1], [+q[2], +q[3]]]));
+      const on = (x, y) => { const X = (x - x0) * s, Y = (y - y0) * s; return X >= 0 && X <= viewport.width && Y >= 0 && Y <= viewport.height; };
+      for (const [id, p0, p1] of moving) {
+        const k = ease(u), d = drawn.get(id);
+        if (74 * s >= 18 - 1e-9 && on(p0.x + (p1.x - p0.x) * k, p0.y + (p1.y - p0.y) * k) && (!d || on(...d))) seen.set(id, seen.get(id) + 1);
+      }
+    }
+    out.push({i, kind: beat.kind, least: Math.min(...seen.values())});
+  });
+  return out;
+}
+test('phones: every moving bulb of [16,7] and [1048575,1] stays on stage at a readable size (check 6)', () => {
+  for (const viewport of PHONES) for (const inset of [{}, {hud: {width: 160, height: 70}}]) {
+    const where = `${viewport.width}×${viewport.height}${inset.hud ? ' with the HUD' : ''}`;
+    for (const base of ['binary', 'ternary']) for (const b of moversOnStage(planned('mul', ['16', '7'], base), viewport, [.1, .5, .9], inset)) assert.equal(b.least, 3, `${where} ${base} [16,7] beat ${b.i} (${b.kind})`);
+    const tall = moversOnStage(planned('add', ['1048575', '1']), viewport, [.1, .3, .5, .7, .9], inset);
+    assert.ok(tall.some(b => b.kind === 'return'), 'the return beat is checked');
+    for (const b of tall) assert.ok(b.least >= 2, `${where} [1048575,1] beat ${b.i} (${b.kind}): a mover on stage in ${b.least} of 5 frames`);
+  }
+});
+
+test('the HUD: the opening frame and every beat\'s movers keep clear of the corner it covers', () => {
+  const plan = planned('mul', ['16', '7']), L = layoutPlan(plan), viewport = PHONES[0], hud = {width: 160, height: 70};
+  const list = scenesOf(plan);
+  for (let k = 0; k <= plan.beats.length; k++) {
+    const cam = cameraAt(plan, L, k, viewport, {inset: {hud}}), s = viewport.width / cam.w;
+    // the towers that rest at the end of the beat, by their boxes (bulbs and pills)
+    const scene = list[k], ids = k ? [...new Set(Object.keys(plan.beats[k - 1].set.bulbs || {}))].map(id => scene.bulbs[id]?.t).filter(Boolean) : Object.keys(scene.towers);
+    for (const id of new Set(ids)) {
+      const box = L.towerBox(scene, id), X = (box.x - cam.x) * s, Y = (box.y - cam.y) * s;
+      assert.ok(!(X < hud.width && Y < hud.height && X + box.w * s > 0 && Y + box.h * s > 0) || k > 0 && box.h * s > viewport.height - hud.height - 2 * FURNITURE.pad, `boundary ${k}: tower ${id} under the HUD`);
+    }
   }
 });
 

@@ -4,9 +4,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { renderMachine, renderStatic, machineDefs, blockGlyphSVG, easeOut } from '../src/machine/render.js';
 import { layoutPlan, scenesOf, sceneAt, cameraAt } from '../src/machine/layout.js';
-import { machineScenes } from '../src/machine/scenes.js';
+import { machineScenes, E_FIXTURES, FIXTURES } from '../src/machine/scenes.js';
+import { planMachine } from '../src/machine/plan.js';
 import { bulb, socket } from '../src/mvc/view.js';
 import { styles, setStyle, ink } from '../src/mvc/theme.js';
+
+// This file keeps well inside the 30 s the machine tests share (6.9): the fixtures, goldens
+// and hand-made plans are swept densely; the planner's and base e's many longer plans more
+// lightly, with every beat boundary still checked exactly.
+const started = performance.now();
 
 // Hand-made plans for the renderer's tests: each exercises picture features the full-plan
 // fixtures do not (the sign lamp, owed bulbs and a borrow, the quotient register with scan and
@@ -73,19 +79,33 @@ const SYNTHETIC = {notLamp, owedBorrow, divMarks, ePile};
 
 const { scenes } = await machineScenes();
 const plans = [...scenes.map(s => [s.name, s.plan]), ...Object.entries(SYNTHETIC)];
+// dense: fixtures, goldens, hand-made plans; light: planner and base-e scenes
+const light = new Set(scenes.filter(s => s.source === 'planner' || s.source === 'e-fixture').map(s => s.name));
 const fixture = name => scenes.find(s => s.name === name).plan;
 const VIEWS = [{}, {digits: true}, {motion: 'reduced'}, {digits: true, motion: 'reduced'}];
+// The first element that names an attribute twice: HTML keeps the first, XML (an <img>, a
+// standalone frame) refuses the whole picture.
+const repeated = svg => {
+  for (const [tag, attrs] of svg.matchAll(/<[\w-]+((?:\s+[\w:-]+="[^"]*")*)\s*\/?>/g)) {
+    const names = [...attrs.matchAll(/\s([\w:-]+)=/g)].map(m => m[1]);
+    if (new Set(names).size !== names.length) return tag;
+  }
+  return null;
+};
 // Every <g data-b> in a frame: id, state shown, level, position and opacity.
 const bulbsIn = svg => [...svg.matchAll(/<g class="mb" data-b="([^"]+)" data-s="(-?\d)" data-l="([^"]+)" data-t="[^"]*" transform="translate\(([^ ]+) ([^)]+)\)[^"]*"(?: opacity="([^"]+)")?>/g)]
   .map(m => ({id: m[1], s: +m[2], l: +m[3], x: +m[4], y: +m[5], o: m[6] === undefined ? 1 : +m[6]}));
 
-test('frames are pure and finite, in both styles, at every eighth of every beat', () => {
+test('frames are pure and finite, in both styles, at every eighth of every beat (every quarter for planner scenes)', () => {
   for (const [name, plan] of plans) {
-    const layout = layoutPlan(plan), n = plan.beats.length;
-    for (const palette of [styles.sketchpad, styles.cyber]) for (const view of VIEWS) for (let k = 0; k <= 8 * n; k++) {
-      const t = k / 8, a = renderMachine(plan, t, layout, palette, view);
+    const layout = layoutPlan(plan), n = plan.beats.length, steps = light.has(name) ? 4 : 8;
+    const views = light.has(name) ? [{digits: true}, {motion: 'reduced'}] : VIEWS;
+    for (const palette of [styles.sketchpad, styles.cyber]) for (const view of views) for (let k = 0; k <= steps * n; k++) {
+      const t = k / steps, a = renderMachine(plan, t, layout, palette, view);
       assert.deepEqual(renderMachine(plan, t, layout, palette, view), a, `${name} t ${t}: pure`);
       assert.doesNotMatch(a.svg, /NaN|undefined|Infinity|\[object/, `${name} t ${t} ${JSON.stringify(view)}`);
+      // (structure, not colour: one palette, the Digits view in full motion)
+      if (palette === styles.cyber && view.digits && !view.motion) assert.equal(repeated(a.svg), null, `${name} t ${t}: an attribute twice`);
       assert.match(a.viewBox, /^-?[\d.]+ -?[\d.]+ [\d.]+ [\d.]+$/);
     }
   }
@@ -98,7 +118,7 @@ test('the beat-boundary property: the frame at integer t = i is the static drawi
     const layout = layoutPlan(plan), list = scenesOf(plan);
     for (let i = 0; i <= plan.beats.length; i++) {
       if (reference) assert.deepEqual(reference.snapshotAt(plan, i), list[i], `${name}: scene ${i} replays as scene.js does`);
-      const views = [...VIEWS, {digits: true, active: plan.beats[Math.max(0, i - 1)]?.node}, {highlight: 'n1', selected: 'n1.L'}];
+      const views = light.has(name) ? [{}, {digits: true, active: plan.beats[Math.max(0, i - 1)]?.node}, {motion: 'reduced'}] : [...VIEWS, {digits: true, active: plan.beats[Math.max(0, i - 1)]?.node}, {highlight: 'n1', selected: 'n1.L'}];
       for (const palette of [styles.sketchpad, styles.cyber]) for (const view of views)
         assert.equal(renderMachine(plan, i, layout, palette, view).svg, renderStatic(sceneAt(plan, i), layout, palette, view), `${name}: boundary ${i} ${JSON.stringify(view)}`);
     }
@@ -108,9 +128,9 @@ test('the beat-boundary property: the frame at integer t = i is the static drawi
 
 test('each live bulb is drawn once, and every bulb of the scene is drawn at the boundary', () => {
   for (const [name, plan] of plans) {
-    const layout = layoutPlan(plan), list = scenesOf(plan);
-    for (let k = 0; k <= 10 * plan.beats.length; k++) {
-      const t = k / 10, drawn = bulbsIn(renderMachine(plan, t, layout).svg), ids = drawn.map(b => b.id);
+    const layout = layoutPlan(plan), list = scenesOf(plan), steps = light.has(name) ? 4 : 10;
+    for (let k = 0; k <= steps * plan.beats.length; k++) {
+      const t = k / steps, drawn = bulbsIn(renderMachine(plan, t, layout).svg), ids = drawn.map(b => b.id);
       assert.equal(new Set(ids).size, ids.length, `${name} t ${t}: a bulb drawn twice`);
       if (Number.isInteger(t)) assert.deepEqual(new Set(ids), new Set(Object.keys(list[t].bulbs)), `${name} boundary ${t}`);
     }
@@ -156,7 +176,7 @@ test('reduced motion holds, crossfades and holds: no bulb ever between levels', 
   for (const [name, plan] of plans) {
     const layout = layoutPlan(plan), list = scenesOf(plan);
     plan.beats.forEach((beat, i) => {
-      for (const u of [.1, .3, .45, .48, .5, .53, .55, .7, .95]) {
+      for (const u of light.has(name) ? [.1, .45, .5, .55, .95] : [.1, .3, .45, .48, .5, .53, .55, .7, .95]) {
         const svg = renderMachine(plan, i + u, layout, ink, {motion: 'reduced'}).svg;
         const drawn = [...svg.matchAll(/data-(?:b|was)="([^"]+)" data-s="-?\d" data-l="([^"]+)"/g)].map(m => [m[1], +m[2]]);
         for (const [id, l] of drawn) {
@@ -268,11 +288,13 @@ test('machineDefs symbols use bulb() and socket() geometry; block glyphs for eve
     assert.ok(defs.includes(bulb(-21.5, -21.5, 'amber', 1, p)));
     assert.ok(defs.includes(`<symbol id="x-socket" overflow="visible">${socket(-21.5, -21.5, p)}</symbol>`));
     for (const id of ['lamp', 'sliver', 'halo', 'burst', 'overhang', 'owed']) assert.ok(defs.includes(`id="x-${id}"`), id);
+    assert.equal(repeated(defs), null);
   }
   for (const op of ['add', 'sub', 'mul', 'div', 'mod', 'cmp', 'shl', 'shr', 'and', 'or', 'xor', 'not', 'min', 'max', 'sum', 'cons', 'neg', 'mule', 'measure', 'ln']) {
     const svg = blockGlyphSVG(op, ink, 'ternary');
     assert.match(svg, /^<svg [^>]*viewBox="[^"]+"[^>]*>.*<\/svg>$/s, op);
     assert.doesNotMatch(svg, /undefined|NaN|>\?</, op);
+    assert.equal(repeated(svg), null, `${op}: an attribute twice`);
   }
   assert.match(blockGlyphSVG('shl', ink, 'ternary'), /×3ᵏ/);
   assert.match(blockGlyphSVG('shr', ink, 'binary'), /÷2ᵏ/);
@@ -308,7 +330,8 @@ test('render.js and layout.js import no arithmetic module', () => {
   for (const file of ['render.js', 'layout.js']) {
     const source = fs.readFileSync(new URL(`../src/machine/${file}`, import.meta.url), 'utf8');
     const imports = [...source.matchAll(/^\s*import\b[^'"]*['"]([^'"]+)['"]/gm), ...source.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1]);
-    for (const spec of imports) assert.ok(['../mvc/theme.js', '../mvc/view.js', './layout.js'].includes(spec), `${file} imports ${spec}`);
+    // scene.js is the shared diff replay of 6.2: scenes, not numbers
+    for (const spec of imports) assert.ok(['../mvc/theme.js', '../mvc/view.js', './layout.js', './scene.js'].includes(spec), `${file} imports ${spec}`);
     assert.doesNotMatch(source, /bigmath|e-exact|bases\.js|oracle|BigInt/, file);
   }
 });
@@ -336,5 +359,33 @@ test('frames are fast enough to animate', () => {
   for (let k = 0; k < 400; k++) renderMachine(plan, (k % 160) / 10, L, ink, {viewport: {width: 1280, height: 720}, digits: true, active: 'n1'});
   const ms = (performance.now() - start) / 400;
   assert.ok(ms < 4, `${ms.toFixed(2)} ms a frame`);
+});
+
+// The perf scene of 6.9: (2³² − 1)², 161 beats, its widest ADD with 1489 bulbs on stage. The
+// browser has 16.7 ms a frame for this and the DOM together.
+test('a 64-level product lays out and draws its widest ADD fast enough', () => {
+  const {plan} = planMachine({tree: {n1: {op: 'mul', parent: 'io', socket: 'C'}}, inputs: ['4294967295', '4294967295'], base: 'binary'});
+  const t0 = performance.now(), L = layoutPlan(plan), layoutMs = performance.now() - t0;
+  assert.ok(layoutMs < 1500, `layoutPlan took ${layoutMs.toFixed(0)} ms`);
+  const beat = plan.beats.reduce((best, b, i) => b.kind === 'collide' && Object.keys(sceneAt(plan, i + 1).bulbs).length > Object.keys(sceneAt(plan, best + 1).bulbs).length ? i : best, plan.beats.findIndex(b => b.kind === 'collide'));
+  assert.ok(Object.keys(sceneAt(plan, beat + 1).bulbs).length > 1400, 'the widest ADD');
+  for (const [style, digits] of [['sketchpad', false], ['cyber', true]]) {
+    // the best of three rounds' medians, so a burst of load on a shared machine does not count
+    const view = {viewport: {width: 1280, height: 720}, digits, active: plan.beats[beat].node};
+    renderMachine(plan, beat + .5, L, styles[style], view);
+    const round = () => { const times = []; for (let k = 1; k <= 15; k++) { const s = performance.now(); renderMachine(plan, beat + k / 15, L, styles[style], view); times.push(performance.now() - s); } return times.sort((a, b) => a - b)[7]; };
+    const median = Math.min(round(), round(), round());
+    assert.ok(median < 10, `${style}: ${median.toFixed(2)} ms a frame`);
+  }
+});
+
+test('the browser bench lists every base-e fixture', () => {
+  const files = fs.readdirSync(new URL('./fixtures/machine/', import.meta.url)).filter(f => f.startsWith('e-') && f.endsWith('.json')).map(f => f.slice(0, -5));
+  assert.deepEqual([...E_FIXTURES].sort(), files.filter(f => !FIXTURES.includes(f)).sort());
+  assert.ok(scenes.filter(s => s.source === 'e-fixture').length === E_FIXTURES.length);
+});
+
+test('machine-render.test.js runs in under 20 s, as machine-plan.test.js does', () => {
+  assert.ok(performance.now() - started < 20000, `${Math.round(performance.now() - started)} ms`);
 });
 
