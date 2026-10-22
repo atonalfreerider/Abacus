@@ -960,6 +960,7 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
   - It hides when the base changes, another term is focused, the equation is reloaded, or 8 s after the term's animation ends.
   - It opens Machine with `{expression: termText, base}`.
   - Only × and ÷ terms qualify: + and − are not operation terms in the equation space.
+  - Every ÷ but the last must divide exactly. The machine's ÷ passes only its quotient up (the remainder fades), so `7 ÷ 2 × 4` would play 3 × 4 = 12 beside the cards' 14; the last ÷ shows its quotient and remainder, as a lone `7 ÷ 2` does.
   - Moving between the modes is a plain mode switch; the earlier row-to-column quarter turn is dropped from v1.
 - **To the cards** (`#machine-to-cards`) loads Output's first value into the equation space. The app.js `cards` handler:
   1. calls `showMachine(false)`;

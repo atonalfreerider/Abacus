@@ -286,7 +286,10 @@ async function showMachine(on,preset){
 $('open-machine').onclick=()=>showMachine($('machine-mode').hidden);
 // Watch in the machine: a × or ÷ term in base 2 or balanced ternary, tapped or focused,
 // can be replayed as a function machine. Integer operands only (parenthesised sums too),
-// and only when the machine can plan it within its limits.
+// and only when the machine can plan it within its limits. The machine's ÷ passes only its
+// quotient up (the remainder fades), so every ÷ below the last must divide exactly: 7 ÷ 2 × 4
+// would play 3 × 4 = 12 beside the cards' 14. The last ÷ shows its quotient and remainder,
+// as a lone 7 ÷ 2 does.
 let watch=null,watchTimer=0;
 function hideWatch(){clearTimeout(watchTimer);watchTimer=0;watch=null;$('watch-machine').hidden=true;}
 const wholeTerm=t=>!t.expr&&t.kind==='constant'&&t.value.d===1;
@@ -301,8 +304,11 @@ const machineText=t=>t.expr.operands.map((o,i)=>(i?(t.expr.ops[i-1]==='×'?'*':'
 async function offerWatch(t){
  hideWatch();const base=numeral.id;if(!['binary','ternary'].includes(base)||!watchable(t))return;
  const shown=math.termText(t),text=machineText(t),token=watch={text,shown,base};
- try{const [{parseExpression},{planMachine}]=await Promise.all([import('../machine/tree.js'),import('../machine/plan.js')]);
-  const parsed=parseExpression(text,base);if(!parsed.ok||!planMachine({tree:parsed.tree,inputs:parsed.inputs,base}).ok)return;}
+ try{const [{parseExpression,evaluateNodes},{planMachine}]=await Promise.all([import('../machine/tree.js'),import('../machine/plan.js')]);
+  const parsed=parseExpression(text,base);if(!parsed.ok)return;
+  const exact=evaluateNodes(parsed.tree,parsed.inputs,base);
+  if(!exact.ok||Object.entries(exact.nodes).some(([id,n])=>parsed.tree[id].op==='div'&&id!==exact.root&&n.values[1]!=='0'))return;
+  if(!planMachine({tree:parsed.tree,inputs:parsed.inputs,base}).ok)return;}
  catch(error){console.error(error);return;}
  if(watch!==token||numeral.id!==base)return;
  $('watch-machine').textContent=`Watch ${shown} in the machine`;$('watch-machine').hidden=false;watchLater();

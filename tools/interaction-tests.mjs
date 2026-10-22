@@ -402,6 +402,13 @@ try{
    expect(await page.eval(`(()=>{const p=window.__machine.plan();return JSON.stringify([p.base,Object.values(p.tree).map(n=>n.op),p.inputs.map(v=>v.replace('−','-'))]);})()`),JSON.stringify(['binary',...want]),`${input} preloaded`);
    expect((await mstate()).error,null,`${input} plans`);
   }
+  // a ÷ before the last that leaves a remainder: the machine would pass on only its quotient
+  await page.eval(`window.__native.open('equation')`);await wait(300);
+  for(const [input,offered] of [['7/2*4',false],['8/2*3',true]]){
+   await load(input);const [term]=await terms();await page.mouse('mousePressed',term.x,term.y);await page.mouse('mouseReleased',term.x,term.y);
+   for(let t=0;t<15&&await page.eval(`document.getElementById('watch-machine').hidden`);t++)await wait(100);
+   expect(await page.eval(`!document.getElementById('watch-machine').hidden`),offered,`Watch for ${input}`);
+  }
  },undefined,{path:'/?examples=written&automation'});
  await mcheck('machine 13: the outline is not reachable by Tab while its sheet is closed',async()=>{
   await touch();await reopen();
