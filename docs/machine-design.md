@@ -978,6 +978,10 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
   - the copies are added with `unitPlanMany(…, {sequential: true, base})`.
 
   It imports nothing from `src/machine`, so lazy loading stays intact. It is gated on `base !== 'decimal'`, so the decimal hashes are untouched, and ÷ keeps the crossfade. The files phase 5 touches are listed in 6.11.
+- **Phase 5 as built (2026-10-22).** Two departures from the paragraph above, both asked for when phase 5 was commissioned:
+  - **The Machine's planner does the arithmetic.** `src/mvc/row-split.js` plans × from `planMachine`'s ledgers (`shift` gives each copy, `sum` each addition, in the machine's depth-first order) and ÷ from its rounds (`compare`/`collide` in base 2, `try`/`judge` in balanced ternary). Nothing in the equation space imports `src/machine` statically: when a bulb base is chosen, `app.js` imports `plan.js` and `row-split.js` (which brings `row-view.js`, the frames) and hands `rowForm(planMachine)` to `operations.js` (`useRowForm`). Until they arrive, and for anything they do not cover (non-integer operands, a fraction divisor, base e, more than 12 rows or rounds, more than 20 places), × and ÷ cross-fade as before; a tap that comes first waits for them.
+  - **÷ has a row form too:** the divisor, shifted under the dividend's top, is taken away round by round where it fits (base 2, truncating) or where it leaves a remainder nearer zero (balanced ternary), lighting that place's quotient bulb, then moves one place right; a quotient row ends as the answer when nothing remains, and otherwise the caption gives `a = q × b + r` before the cards show a ÷ b exactly.
+  - × draws one row per lit bulb of the multiplier, top first, units aligned over the answer's; each copy peels off the multiplicand while the bulb that made it flies to the copy's units and dissolves (× 1), a red bulb swapping the copy's colours; the rows are then added lowest first with `unitPlanMany(…, {sequential: true, base})`, each landing only once the sum so far has settled, so `16 × 7` reads `16`, `32 + 16 = 48`, `64 + 48 = 112`, the machine's own additions. `operations.js`, `animation.js` and `operation-view.js` changed only by the hook; decimal frames are byte-identical (720 hashes), and the bulb-base scenes (`src/mvc/bulb-scenarios.js`) have their own baselines, `tests/visual-baselines-bulbs.json`.
 - **Cross-engine test.** The final digits of a machine ADD equal `unitPlanMany`'s final tokens for |a|, |b| ≤ 200 in both bases.
 
 ### 4.7 Styles
@@ -1216,6 +1220,7 @@ All ten together run about 15 minutes per format.
 - **Predict** pauses before chosen beats. Examples: "Which level will the carry land on? Tap it", "Keep or discard?", "Which level is ⌊ln x⌋?".
 - **Lessons:** Split and shift; Carries climb; Borrowing; Long division; Gates; Trits; Closest to zero; Base-e fold.
 - **Data:** `{id, base, tree, make(r), pauses: [{beatKind, question, answer(plan, beat)}]}`.
+- **As built (2026-10-22).** Ten lessons in `src/machine/lessons.js`: the eight above, plus *Shifts* (SHL and SHR) and *Red copies* (ternary MULT). A lesson is `{id, title, base, example: {op, inputs}, make(r) → {op, inputs}, intro, pauses: [{beatKind, limit, ask(plan, i) → {question, choices, answer, explain, hint, tap?}}]}`: one `ask` returns the question, its choices and its answer, read from the plan about to play, and `pausesOf(lesson, plan)` lists the stops. *Watch* plays the example with AUTO in level pace; *Predict* plays a fresh problem; *Your turn* gives another fresh problem on an empty machine in the lesson's base, which the learner builds (one block, the numbers typed), and stops only when that machine is the problem's (`matches`). `BeatClock.holds` rests AUTO before each stop; a choice, or a tap on the asked tower at a level, answers it, and the beat then plays; Enter and Step wait for the answer, Show me gives it. The lesson mode (`src/machine/lesson-mode.js`: the bar, the flow, the questions) and its stylesheet `lessons.css` load with the first lesson, and `app.js` imports `lessons.js` when the lesson dialog first opens (`listInto`), so neither app start nor opening the mode pays for lessons; `machine-app.js` only calls into the lesson mode when a plan is made, each frame (to ask at a stop), at Output, at Enter and at a tap on the stage. `tests/machine-lessons.test.js` plans each example and 200 problems per lesson and checks every stop's answer against arithmetic done in the test (about 1.5 s).
 
 ---
 
@@ -1251,7 +1256,8 @@ The owners A–D are defined in section 7.
 | `src/machine/clock.js` | D | `schedule`, `BeatClock` (the Enter rule's step semantics) |
 | `src/machine/machine-app.js` | D | `MachineView`: DOM, input, palette, building, keys, camera override, a11y, haptics, hook, recording mode; lazy-imports `e-base.js` |
 | `index.html`, `src/mvc/app.js`, `src/mvc/style.css`, `src/mvc/cyber.css`, `src/native.js`, `tools/build.mjs`, `package.json`, `tools/interaction-tests.mjs`, `tools/perf.mjs`, `README.md`, `docs/verification.md` | D | the mode shell, Watch in the machine, To the cards, styles, routing, build, browser and perf tests, docs |
-| `src/machine/lessons.js`, `tests/machine-lessons.test.js` | D (phase 5) | guided lessons |
+| `src/machine/lessons.js`, `src/machine/lesson-mode.js`, `src/machine/lessons.css`, `tests/machine-lessons.test.js` | D (phase 5) | guided lessons |
+| `src/mvc/row-split.js`, `src/mvc/row-view.js`, `src/mvc/bulb-scenarios.js`, `tests/row-split.test.js`, `tests/visual-baselines-bulbs.json` | D (phase 5) | the row form of the split in the equation space (4.6) |
 
 ### 6.2 Shared formats
 
@@ -1890,6 +1896,7 @@ Unit and property tests run with `node --test tests/*.test.js`.
 **Phase 5 (owner D, after v1), the files it will touch:**
 - Lessons: `src/machine/lessons.js` and `tests/machine-lessons.test.js` (new); `src/machine/machine-app.js` (lesson mode); `src/mvc/app.js` (dialog entries, `startMachineLesson`).
 - The row-form split: `src/mvc/operations.js`, `src/mvc/animation.js` and `src/mvc/view.js` (copy rows), gated on `base !== 'decimal'`; new binary/ternary scenarios in a separate baselines file. The 720 decimal hashes stay unchanged and are re-verified.
+- *As built:* the rows are drawn by the new `src/mvc/row-view.js` (reached from `operation-view.js`) and planned by `src/mvc/row-split.js`, both loaded with `plan.js`; `view.js` is unchanged. `operations.js` holds only the hook. **Size, measured 2026-10-22** (files concatenated, gzip -9, against the Machine's merge a532f06): what every app start loads (index.html, both stylesheets and the static import graph of `app.js`) grows by 2 073 bytes raw and 584 gzip; with the 37.4 KB / 8.9 KB counted in `docs/verification.md` that is 39.5 KB / 9.5 KB, inside 40 KB / 10 KB. What opening the mode loads (`machine-app.js`'s static import graph) grows by 1.3 KB (300.8 → 302.2 KB raw, 96.2 → 96.7 KB gzip): the hooks into the lesson mode and the clock's holds. The lessons (`lessons.js` 20 KB, `lesson-mode.js` 12 KB, `lessons.css` 3 KB) load only with the lesson dialog and the first lesson, and the row form (`row-split.js` and `row-view.js`, 24.6 KB, in `src/mvc`) only with a bulb base. Counted as a directory, as shipped, `src/machine` was already 360.4 KB raw / 117.4 KB gzip at the merge (the 341.9 KB above was counted at the end of repair round 1) and is 397.0 KB / 128.8 KB with the lessons, past the 350 / 120 KB restated for v1; that budget is held here for what opening the mode loads, and the lessons, which load only when asked for, are counted apart.
 
 ---
 
@@ -1927,7 +1934,7 @@ No file statically imports a file that merges after it.
      - D drives the fixtures through `BeatClock` and `renderMachine` stubs until the real ones land.
 3. **Merge order:** A → C → B (`machine-e`) → D → B (`machine-videos`), each merged `--no-ff`.
    - At B's first merge, `scenes.js` picks up the new `e-*.json` fixtures and B commits `tests/machine-e-baselines.json`.
-4. **Phase 5,** after the four-way build, owned by D: lessons, and the equation-space row-form split for × in bulb bases (files in 6.11).
+4. **Phase 5,** after the four-way build, owned by D: lessons, and the equation-space row-form split for × in bulb bases (files in 6.11). Built on `feature/machine-phase5` (2026-10-22), with ÷ in rows too (4.6, 5.4 and 6.11 record what was built).
 
 **Done means:**
 - all of 6.9 passes within its time budget;

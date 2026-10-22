@@ -1,0 +1,30 @@
+/* Machine lessons (lessons.js): the Tutor's bar over the machine's own, with the choices of a
+   prediction. Loaded with the first lesson (machine-app.js), so neither app start nor opening the
+   Machine pays for it; style.css keeps the grid row the bar sits in ("lesson"). */
+#machine-lesson{grid-area:lesson;display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:6px;padding:6px 12px;border:1px solid #6d6655;border-radius:14px;background:#fffaf0d9;font-size:15px}
+#mlesson-title{font-weight:normal;color:#4a463b}
+#mlesson-phase{font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:10px;background:#3b6c78;color:#fff}
+#mlesson-phase[data-phase=predict]{background:#5a6b2a}#mlesson-phase[data-phase=turn]{background:#8a5a14}
+#mlesson-prompt{flex:1 1 320px;margin:0;line-height:1.35}
+#mlesson-prompt[data-tone=good],#mlesson-prompt[data-tone=done]{color:#1f5e3a}#mlesson-prompt[data-tone=done]{font-weight:bold}#mlesson-prompt[data-tone=detour]{color:#8c4a12}#mlesson-prompt[data-tone=hint]{color:#2f5d6b}
+#mlesson-choices{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
+#mlesson-choices button{font-size:15px;padding:5px 14px;background:#fff3d6;border-color:#b07a1d}
+@media(pointer:coarse){#mlesson-choices button,#machine-lesson .tutor-actions button{min-height:44px}}
+/* Phones: a lesson needs no expression field, so the bar takes that row's height. */
+@media(max-width:700px){#machine-lesson{font-size:13px;padding:5px 8px;margin-bottom:3px;gap:4px 8px}#mlesson-prompt{flex-basis:100%}}
+@media(max-width:699px){#machine-mode.lesson .machine-bar-more{display:none}}
+@media(max-height:520px) and (min-aspect-ratio:3/2){
+ #machine-mode.lesson .machine-bar-more{display:none}
+ #machine-lesson{margin:0 0 4px;padding:4px 6px;gap:3px 6px;font-size:12px;border-radius:10px}#mlesson-prompt{flex-basis:100%}
+ #machine-lesson .tutor-actions{gap:4px}#machine-lesson .tutor-actions button{font-size:12px;padding:3px 7px}#mlesson-choices button{font-size:13px;padding:3px 9px}
+}
+/* Cyber: the Tutor bar's glass, phase chips and tones. */
+[data-style=cyber] #machine-lesson{background:var(--glass);border:1px solid var(--line-bright);border-top-color:var(--cyan);border-radius:4px;color:var(--text);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+[data-style=cyber] #mlesson-title{color:var(--text)}
+[data-style=cyber] #mlesson-phase{background:none;border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;font-family:var(--mono)}
+[data-style=cyber] #mlesson-phase[data-phase=predict]{border-color:var(--acid);color:var(--acid)}
+[data-style=cyber] #mlesson-phase[data-phase=turn]{border-color:var(--amber);color:var(--amber)}
+[data-style=cyber] #mlesson-prompt[data-tone=good],[data-style=cyber] #mlesson-prompt[data-tone=done]{color:var(--acid)}
+[data-style=cyber] #mlesson-prompt[data-tone=detour]{color:var(--amber)}
+[data-style=cyber] #mlesson-prompt[data-tone=hint]{color:var(--cyan)}
+[data-style=cyber] #mlesson-choices button{background:#ffb21e1a;border-color:var(--amber);color:var(--amber)}

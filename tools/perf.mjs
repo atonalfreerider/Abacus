@@ -28,6 +28,23 @@ try{
   }
   return out;})()`);
  for(const r of results){console.log(r.skipped?`skip ${r.input}: ${r.skipped}`:`${r.medianMs>budget?'SLOW':'ok  '} ${r.input.padEnd(22)} ${r.camera.padEnd(7)} median ${r.medianMs} ms  p95 ${r.p95Ms} ms  (${r.frames} frames)`);if(r.medianMs>budget)failed=true;}
+ // The row form of the split in the bulb bases (phase 5): the products with the most rows and
+ // carries the equation space offers there, and a long division of many rounds.
+ const rowScenes=[['255*255','binary'],['1023*1023','binary'],['9841*9841','ternary'],['1000÷7','ternary'],['1023÷3','binary']];
+ const rowResults=await page.eval(`(async()=>{
+  const {Controller}=await import('/src/mvc/controller.js'),{Surface}=await import('/src/mvc/surface.js'),{setBase}=await import('/src/mvc/bases.js'),{useRowForm}=await import('/src/mvc/operations.js');
+  const [{planMachine},{rowForm}]=await Promise.all([import('/src/machine/plan.js'),import('/src/mvc/row-split.js')]);useRowForm(rowForm(planMachine));
+  const surface=new Surface(document.getElementById('stage')),out=[];
+  for(const [input,base] of ${JSON.stringify(rowScenes)}){
+   setBase(base);const c=new Controller({render(state,options,plan,p){surface.draw(state,options,plan,p);}},input);c.render();await new Promise(r=>setTimeout(r,600));
+   c.execute({type:'evaluate',id:c.model.state.left[0].id},performance.now());
+   const kind=c.clock.plan.op?.kind,times=[];
+   await new Promise(res=>{function f(now){times.push(now);c.frame(now);if(c.clock.playing)requestAnimationFrame(f);else res();}requestAnimationFrame(f);});
+   const d=times.slice(1).map((t,i)=>t-times[i]).sort((a,b)=>a-b);
+   out.push({input,base,kind,frames:times.length,medianMs:+d[d.length>>1].toFixed(1),p95Ms:+d[Math.floor(d.length*.95)].toFixed(1)});
+  }
+  setBase('decimal');return out;})()`);
+ for(const r of rowResults){const slow=r.medianMs>budget||!r.kind?.startsWith('rows-');console.log(`${slow?'SLOW':'ok  '} rows ${r.input.padEnd(12)} ${r.base.padEnd(8)} ${String(r.kind).padEnd(13)} median ${r.medianMs} ms  p95 ${r.p95Ms} ms  (${r.frames} frames)`);if(slow)failed=true;}
  if(page.errors.length){console.error('Page errors:\n'+page.errors.join('\n'));failed=true;}
  // The Machine (design 6.9): the heaviest beat of each scene, played in real time at
  // 1 s per beat in both styles. Median frame ≤ MACHINE_MEDIAN_MS (16.7 ms, one 60 Hz

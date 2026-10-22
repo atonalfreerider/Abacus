@@ -24,10 +24,10 @@
 .original-dock .parentheses{gap:4px}.original-dock .parentheses button{min-width:0;flex:1}
 .term.operation{cursor:pointer}.term.operation:hover .operation-frame{stroke:#2f5d6b;fill-opacity:.6}
 /* Tutor: worked example, then the learner's turn. */
-#tutor-bar,#machine-lesson{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:6px 12px;border:1px solid #6d6655;border-radius:14px;background:#fffaf0d9;font-size:15px}
-.tutor-head{display:flex;align-items:center;gap:8px}#tutor-title,#mlesson-title{font-weight:normal;color:#4a463b}
-#tutor-phase,#mlesson-phase{font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:10px;background:#3b6c78;color:#fff}#tutor-phase[data-phase=practice],#mlesson-phase[data-phase=turn]{background:#8a5a14}#mlesson-phase[data-phase=predict]{background:#5a6b2a}
-#tutor-prompt,#mlesson-prompt{flex:1 1 320px;margin:0;line-height:1.35}#tutor-prompt[data-tone=good],#tutor-prompt[data-tone=done],#mlesson-prompt[data-tone=good],#mlesson-prompt[data-tone=done]{color:#1f5e3a}#tutor-prompt[data-tone=done],#mlesson-prompt[data-tone=done]{font-weight:bold}#tutor-prompt[data-tone=detour],#mlesson-prompt[data-tone=detour]{color:#8c4a12}#tutor-prompt[data-tone=hint],#mlesson-prompt[data-tone=hint]{color:#2f5d6b}
+#tutor-bar{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:6px 12px;border:1px solid #6d6655;border-radius:14px;background:#fffaf0d9;font-size:15px}
+.tutor-head{display:flex;align-items:center;gap:8px}#tutor-title{font-weight:normal;color:#4a463b}
+#tutor-phase{font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:10px;background:#3b6c78;color:#fff}#tutor-phase[data-phase=practice]{background:#8a5a14}
+#tutor-prompt{flex:1 1 320px;margin:0;line-height:1.35}#tutor-prompt[data-tone=good],#tutor-prompt[data-tone=done]{color:#1f5e3a}#tutor-prompt[data-tone=done]{font-weight:bold}#tutor-prompt[data-tone=detour]{color:#8c4a12}#tutor-prompt[data-tone=hint]{color:#2f5d6b}
 .tutor-actions{display:flex;gap:6px;flex-wrap:wrap}.tutor-actions button{font-size:14px;padding:5px 10px}.tutor-actions .primary{background:#3b6c78;color:#fff;border-color:#2f5d6b}.tutor-actions .primary.ready{animation:beckon 1.2s ease-in-out infinite}
 #tutor-action{background:#fff3d6;border-color:#b07a1d}
 #lesson-dialog{max-height:88vh}#lessons h2{font-size:13px;font-weight:normal;color:#7a7263;margin:10px 0 0;text-transform:uppercase;letter-spacing:.07em}#lessons button{display:flex;justify-content:space-between;gap:12px}#lessons small{color:#7a7263;font-variant-numeric:lining-nums}
@@ -41,7 +41,7 @@
 .operation-caption{font-family:Georgia,serif}
 @keyframes hint-pulse{50%{stroke-opacity:.25}}@keyframes beckon{50%{box-shadow:0 0 0 5px #3b6c7840}}
 @media(prefers-reduced-motion:reduce){.term.hinted .hit,.tutor-actions .primary.ready{animation:none}}
-@media(max-width:700px){#tutor-bar,#machine-lesson{font-size:13px;padding:5px 8px}.tutor-actions button{font-size:12px;padding:4px 7px}#tutor-prompt,#mlesson-prompt{flex-basis:100%}}
+@media(max-width:700px){#tutor-bar{font-size:13px;padding:5px 8px}.tutor-actions button{font-size:12px;padding:4px 7px}#tutor-prompt{flex-basis:100%}}
 .hint-arrow path{fill:none;stroke:#d18a1c;stroke-width:4;stroke-dasharray:10 9;stroke-linecap:round;animation:hint-flow 1s linear infinite}.hint-arrow circle{fill:#d18a1c}
 @keyframes hint-flow{to{stroke-dashoffset:-19}}@media(prefers-reduced-motion:reduce){.hint-arrow path{animation:none}}
 /* Graph mode */
@@ -177,10 +177,6 @@ body.machine-active #feedback:empty{display:none}
 .visually-hidden{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 #watch-machine{background:#fff3d6;border-color:#b07a1d}
 #machine-mode{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto minmax(0,1fr) auto auto auto auto auto auto;grid-template-areas:"lesson side" "bar side" "stage side" "sentence side" "caption side" "result side" "status side" "ask side" "controls side";column-gap:10px}
-/* A lesson (lessons.js): the Tutor's bar over the machine's, with the prediction's choices. */
-#machine-lesson{grid-area:lesson;margin-bottom:6px}
-#mlesson-choices{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}#mlesson-choices button{font-size:15px;padding:5px 14px;background:#fff3d6;border-color:#b07a1d}
-@media(pointer:coarse){#mlesson-choices button,#machine-lesson .tutor-actions button{min-height:44px}}
 .machine-bar{grid-area:bar;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:14px;margin-bottom:6px}
 .machine-bar-more{display:contents}
 #machine-base{display:inline-flex;border:1px solid #777366;border-radius:8px;overflow:hidden;flex-shrink:0}
@@ -263,8 +259,6 @@ body.machine-active #feedback:empty{display:none}
    run the strip and the bar's second row fold away, giving the stage about 100 px more. */
 @media(max-width:699px){
  #machine-mode{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto auto auto auto auto auto;grid-template-areas:"lesson" "bar" "stage" "sentence" "caption" "result" "status" "ask" "palette" "controls"}
- /* a lesson needs no expression field: its bar takes that row's height */
- #machine-mode.lesson .machine-bar-more{display:none}#machine-lesson{margin-bottom:3px;gap:4px 8px}
  .machine-bar{gap:4px 5px;margin-bottom:2px}.machine-in{flex:1;min-width:0}.machine-in span{display:none}#machine-input{flex:1;min-width:0;width:auto;font-size:17px}
  .machine-bar-more{display:flex;gap:5px;flex:1 1 100%}#machine-expr{flex:1;min-width:0;width:auto;font-size:16px}
  #machine-mode.running .machine-bar-more,#machine-mode.running #machine-palette{display:none}
@@ -292,7 +286,6 @@ body.machine-active #feedback:empty{display:none}
     280 px, so the base switch's 44 px buttons leave Input room for [16,7]. */
  body.machine-active .brand small{display:none!important}
  #machine-mode{grid-column:1/-1;grid-row:2/7;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:auto auto auto auto auto auto auto minmax(0,1fr);grid-template-areas:"stage lesson" "stage bar" "stage sentence" "stage caption" "stage result" "stage status" "stage ask" "stage rail"}
- #machine-mode.lesson .machine-bar-more{display:none}#machine-lesson{margin:0 0 4px;padding:4px 6px;gap:3px 6px;font-size:12px;border-radius:10px}#machine-lesson .tutor-actions{gap:4px}#machine-lesson .tutor-actions button{font-size:12px;padding:3px 7px}#mlesson-choices button{font-size:13px;padding:3px 9px}
  .machine-bar{gap:4px;margin-bottom:2px}.machine-in{flex:1;min-width:0}.machine-in span{display:none}#machine-input{flex:1;min-width:0;width:auto;font-size:15px;padding:3px 6px}
  #machine-base button{min-width:30px;padding:4px 6px}#machine-run{padding:4px 8px}
  .machine-bar-more{display:flex;gap:4px;flex:1 1 100%}#machine-expr{flex:1;min-width:0;width:auto;font-size:14px}

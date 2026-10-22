@@ -11,7 +11,7 @@ import { setStyle,onStyle,ink } from './theme.js';
 import { statusBarStyle } from '../native.js';
 import { numeral,setBase,onBase,bases,baseOrder,baseSpec,baseText,placeMeta,digitGlyph } from './bases.js';
 import { fingerprintSVG } from '../numbers/fingerprint.js';
-import { useMachinePlanner,hasMachinePlanner } from './operations.js';
+import { useRowForm,hasRowForm } from './operations.js';
 import { describe } from '../numbers/primes.js';
 const $=id=>document.getElementById(id);
 const entry=new EquationEntry();
@@ -51,12 +51,11 @@ function refresh() {
  if(tutor)refreshTutor();
 }
 controller.addEventListener('change',refresh);
-// Base 2 and balanced ternary work × and ÷ out in rows, PRIME's split (operations.js): the
-// Machine's planner does the arithmetic. It loads when a bulb base is chosen, never at a
-// decimal start, and a tap that comes first waits for it.
-let rowPlanner=null;
-function loadRowPlanner(){return rowPlanner??=import('../machine/plan.js').then(m=>useMachinePlanner(m.planMachine)).catch(error=>{rowPlanner=null;console.error(error);});}
-async function evaluateTerm(t){if(bases[numeral.id].bulbs&&t.expr&&!hasMachinePlanner())await loadRowPlanner();return safe(()=>controller.evaluate(t.id));}
+// Bulb bases work × and ÷ out in rows (row-split.js) with the Machine's planner: both load
+// when such a base is chosen, and a tap that comes first waits for them.
+let rowForm=null;
+function loadRowForm(){return rowForm??=Promise.all([import('../machine/plan.js'),import('./row-split.js')]).then(([m,r])=>useRowForm(r.rowForm(m.planMachine))).catch(error=>{rowForm=null;console.error(error);});}
+async function evaluateTerm(t){if(bases[numeral.id].bulbs&&t.expr&&!hasRowForm())await loadRowForm();return safe(()=>controller.evaluate(t.id));}
 const dragger=new Dragger($('stage'),controller,{
  onTap:id=>safe(()=>{const t=terms().find(t=>t.id===id);if(t&&math.evaluable(t)){offerWatch(t);return evaluateTerm(t);}controller.render();message(t?.expr?'':'Drag a card across the mirror or onto a like card. Arrow keys also move a focused card.');}),
  onCommit:(id,drop,origin)=>safe(()=>controller.drop(id,drop.side,drop.target,drop.index,performance.now(),origin)),
@@ -153,19 +152,11 @@ const answer=()=>controller.model.expression?`The answer is ${controller.status(
 // (?examples=written keeps the written examples, for tests and recorded videos.)
 if(new URLSearchParams(location.search).get('examples')!=='written')dealExamples(crypto.getRandomValues(new Uint32Array(1))[0]);
 $('open-tutor').onclick=()=>{$('lesson-dialog').showModal();listMachineLessons();};
-// Machine lessons (src/machine/lessons.js) follow under a heading of their own, added when the
-// dialog first opens: they load with the machine's planner, never at start. One opens the
-// machine and runs there; it never calls startLesson, never touches the equation model and
-// never changes the cards' base (design 5.4).
+// Machine lessons (design 5.4) join the dialog when it first opens. One runs in the machine:
+// it never calls startLesson, never touches the model and keeps the cards' base.
 let machineLessons=null;
-function listMachineLessons(){
- return machineLessons??=import('../machine/lessons.js').then(({lessons:list,describe})=>{
-  const h=document.createElement('h2');h.textContent='Machine';$('lessons').append(h);
-  for(const lesson of list){const b=document.createElement('button');b.dataset.machineLesson=lesson.id;b.innerHTML=`<span>${lesson.title}</span><small>${describe(lesson)}</small>`;b.onclick=()=>{$('lesson-dialog').close();startMachineLesson(lesson);};$('lessons').append(b);}
-  return list;
- }).catch(error=>{machineLessons=null;console.error(error);});
-}
-async function startMachineLesson(lesson){const view=await showMachine(true);if(view&&!$('machine-mode').hidden)await view.startLesson(lesson);}
+const listMachineLessons=()=>machineLessons??=import('../machine/lessons.js').then(m=>m.listInto($('lessons'),startMachineLesson)).catch(error=>{machineLessons=null;console.error(error);});
+async function startMachineLesson(lesson){$('lesson-dialog').close();const view=await showMachine(true);if(!$('machine-mode').hidden)await view.startLesson(lesson);}
 {let group='';for(const lesson of lessons){
  if(lesson.group!==group){group=lesson.group;const h=document.createElement('h2');h.textContent=group;$('lessons').append(h);}
  const b=document.createElement('button');b.innerHTML=`<span>${lesson.title}</span><small>${typesetExample(exampleOf(lesson))}</small>`;b.onclick=()=>{$('lesson-dialog').close();startLesson(lesson);};$('lessons').append(b);
@@ -375,7 +366,7 @@ $('style').onchange=event=>{setStyle(event.target.value);try{localStorage.setIte
 if(document.documentElement.dataset.style==='cyber')setStyle('cyber');
 $('style').value=ink.name;
 // Numerals: the base the cards are drawn and regrouped in. Saved per device.
-onBase(id=>{if(bases[id].bulbs)loadRowPlanner();hideWatch();controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
+onBase(id=>{if(bases[id].bulbs)loadRowForm();hideWatch();controller.clock.finish();controller.clock.plan=null;controller.render();surface.prewarm(controller.options.camera);$('numerals').value=id;$('base-cycle').textContent=bases[id].short;$('base-cycle').title=`Cards in ${bases[id].name.toLowerCase()}: tap for the next base`;});
 const chooseBase=id=>{lessonBase=null;setBase(id);try{localStorage.setItem('abacus-base',id);}catch{}};
 $('numerals').onchange=event=>chooseBase(event.target.value);
 $('base-cycle').onclick=()=>chooseBase(baseOrder[(baseOrder.indexOf(numeral.id)+1)%baseOrder.length]);

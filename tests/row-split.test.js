@@ -8,7 +8,8 @@ import { planTransition } from '../src/mvc/animation.js';
 import { renderEquation } from '../src/mvc/view.js';
 import { setBase, wholeDigits } from '../src/mvc/bases.js';
 import { unitValue } from '../src/mvc/units.js';
-import { useMachinePlanner, rowMultiplicationPlan, rowDivisionPlan, rowPlan } from '../src/mvc/operations.js';
+import { useRowForm, rowPlan } from '../src/mvc/operations.js';
+import { rowForm, rowMultiplicationPlan, rowDivisionPlan } from '../src/mvc/row-split.js';
 import { planMachine } from '../src/machine/plan.js';
 
 const RADIX = { binary: 2n, ternary: 3n };
@@ -18,7 +19,7 @@ const term = (a, op, b) => new EquationModel(`${a}${op}${b}`.replace(/-(\d+)$/, 
 const digitsTopFirst = (b, base) => wholeDigits(BigInt(b), base).filter(d => d.digit).map(d => ({ k: d.place, sign: base === 'ternary' ? d.digit : Math.sign(b) })).reverse();
 
 test('× splits into one shifted copy per lit bulb of the multiplier, and the copies add up as the machine adds them', () => {
-  useMachinePlanner(planMachine);
+  useRowForm(rowForm(planMachine));
   for (const base of ['binary', 'ternary']) for (let a = -20; a <= 20; a++) for (let b = -20; b <= 20; b++) {
     const op = rowMultiplicationPlan(term(a, '*', b), base, planMachine), where = `${base} ${a} × ${b}`;
     assert.ok(op, where); assert.equal(op.kind, 'rows-multiply');
@@ -75,7 +76,7 @@ test('÷ takes shifted copies of the divisor away round by round, and its rounds
 });
 
 test('frames of the row form are finite in both layouts, and settle on the answer', () => {
-  useMachinePlanner(planMachine);
+  useRowForm(rowForm(planMachine));
   for (const [base, input] of [['binary', '16*7'], ['ternary', '16*7'], ['binary', '13*11'], ['ternary', '5*(-4)'], ['binary', '0*9'], ['binary', '45÷6'], ['ternary', '19÷5'], ['binary', '12÷3*5'], ['ternary', '-100÷7']]) {
     const plan = evaluate(input, base), state = plan.after;
     assert.ok(plan.op?.kind.startsWith('rows-'), `${base} ${input}`);
@@ -90,7 +91,7 @@ test('frames of the row form are finite in both layouts, and settle on the answe
 });
 
 test('decimal and every case the row form does not cover keep their transitions', () => {
-  useMachinePlanner(planMachine);
+  useRowForm(rowForm(planMachine));
   setBase('decimal');
   const m = new EquationModel('16*7'), t = m.dispatch({ type: 'evaluate', id: m.state.left[0].id });
   assert.equal(planTransition(t, 'decimal').op.kind, 'multiply');
@@ -100,14 +101,17 @@ test('decimal and every case the row form does not cover keep their transitions'
     setBase(base); const x = new EquationModel(input), tx = x.dispatch({ type: 'evaluate', id: x.state.left[0].id });
     assert.equal(planTransition(tx, base).op, undefined, `${base} ${input} cross-fades`);
   }
-  useMachinePlanner(null);
+  useRowForm(null);
   setBase('binary'); const y = new EquationModel('16*7');
   assert.deepEqual(planTransition(y.dispatch({ type: 'evaluate', id: y.state.left[0].id }), 'binary').events, [{ type: 'evaluate' }], 'without the planner, a cross-fade');
-  useMachinePlanner(planMachine); setBase('decimal');
+  useRowForm(rowForm(planMachine)); setBase('decimal');
 });
 
 test('the equation space never imports the machine statically: app.js hands the planner over after a dynamic import', () => {
-  for (const file of ['src/mvc/operations.js', 'src/mvc/row-view.js', 'src/mvc/animation.js', 'src/mvc/operation-view.js', 'src/mvc/view.js', 'src/mvc/app.js'])
-    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /^\s*import[^;]*['"]\.\.\/machine\//m, file);
-  assert.match(fs.readFileSync('src/mvc/app.js', 'utf8'), /import\('\.\.\/machine\/plan\.js'\)\.then\(m=>useMachinePlanner\(m\.planMachine\)\)/);
+  for (const file of ['src/mvc/operations.js', 'src/mvc/row-split.js', 'src/mvc/row-view.js', 'src/mvc/animation.js', 'src/mvc/operation-view.js', 'src/mvc/view.js', 'src/mvc/app.js'])
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /^\s*import[^;(]*['"]\.\.\/machine\//m, file);
+  // nor the row form itself: it comes with the planner
+  for (const file of ['src/mvc/operations.js', 'src/mvc/animation.js', 'src/mvc/operation-view.js', 'src/mvc/view.js', 'src/mvc/app.js'])
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /^\s*import[^;(]*['"]\.\/row-(split|view)\.js/m, file);
+  assert.match(fs.readFileSync('src/mvc/app.js', 'utf8'), /Promise\.all\(\[import\('\.\.\/machine\/plan\.js'\),import\('\.\/row-split\.js'\)\]\)\.then\(\(\[m,r\]\)=>useRowForm\(r\.rowForm\(m\.planMachine\)\)\)/);
 });

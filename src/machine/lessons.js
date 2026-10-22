@@ -85,7 +85,7 @@ export const lessons = [
         const a = before(plan, i), b = after(plan, i), id = Object.keys(b.bulbs).find(id => a.bulbs[id] && b.bulbs[id].l < a.bulbs[id].l);
         if (!id) return null;
         const j = a.bulbs[id].l, k = b.bulbs[id].l, top = Math.max(...Object.values(a.bulbs).filter(x => x.t === a.bulbs[id].t).map(x => x.l));
-        return { question: `Level ${k} is owed. Which bulb comes down to pay it? Tap its level.`, choices: levelChoices(k + 1, top), answer: j,
+        return { question: `Level ${k} is owed. Which bulb comes down to pay it? Tap its level.`, choices: levelChoices(0, top).filter(c => c.value !== k), answer: j,
           explain: `Level ${j}: the nearest blue bulb above comes down, lighting the levels it passes.`, hint: 'Look above the owed level for the nearest blue bulb.', tap: { tower: a.bulbs[id].t } };
       } },
     ] },
@@ -180,6 +180,15 @@ function tritQuestion(plan, i, k) {
 }
 
 export const lessonById = id => lessons.find(l => l.id === id) ?? null;
+// The lesson dialog's Machine section (app.js adds it when the dialog first opens).
+export function listInto(container, start) {
+  const head = document.createElement('h2'); head.textContent = 'Machine'; container.append(head);
+  for (const lesson of lessons) {
+    const b = document.createElement('button'); b.dataset.machineLesson = lesson.id;
+    b.innerHTML = `<span>${lesson.title}</span><small>${describe(lesson)}</small>`; b.onclick = () => start(lesson); container.append(b);
+  }
+  return lessons;
+}
 const treeOf = op => attach({}, 'io', op).tree;
 const planCache = new Map();
 function planFor({ op, inputs }, base, pace = 'level') {
