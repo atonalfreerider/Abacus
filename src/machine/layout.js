@@ -6,7 +6,9 @@
 import { snapshotAt } from './scene.js';
 export const UNITS = {block: [176, 88], socketX: {binary: 88, ternary: 88, e: 150}, pitch: 84, coin: 6,
   bulbR: 37, lane: 84, eScale: .8, eSlots: [-34, 34, 102], labelGap: 42, pillLine: 36, charW: 17,
-  gutter: 48, placeCol: 56, wire: 2.5, hub: 25, bead: 9, rowGap: 36, qMinX: 264};
+  gutter: 48, placeCol: 56, wire: 2.5, hub: 25, bead: 9, rowGap: 36, qMinX: 264, ring: 44};
+// One-socket blocks: their socket (none in base e) sits within the block's face.
+export const UNARY = new Set(['not', 'neg', 'measure', 'ln']);
 // Furniture that the contract leaves to the picture: IO (1.5), coin rows, perched bulbs,
 // the sign lamp's ghosts and the camera's limits (4.5).
 export const IO = {tip: 60, top: -66, half: 120, eye: 38, pillY: -94, pillX: 162, horizon: 100};
@@ -157,7 +159,10 @@ export function layoutPlan(plan) {
   const blockW = Math.max(UNITS.block[0], 2 * sx), blockH = UNITS.block[1];
   // 1. The union tree: every node of every scene (a node's parent never changes).
   const nodes = new Map();
-  for (const scene of scenes) for (const [id, n] of Object.entries(scene.nodes)) if (!nodes.has(id)) nodes.set(id, {id, parent: n.parent, socket: n.socket, children: []});
+  for (const scene of scenes) for (const [id, n] of Object.entries(scene.nodes)) {
+    if (!nodes.has(id)) nodes.set(id, {id, parent: n.parent, socket: n.socket, children: [], sides: false});
+    if (!UNARY.has(n.op)) nodes.get(id).sides = true;
+  }
   for (const n of nodes.values()) if (n.parent !== 'io' && nodes.has(n.parent)) nodes.get(n.parent).children.push(n);
   const byId = (a, b) => a.id.length - b.id.length || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   for (const n of nodes.values()) n.children.sort((a, b) => SOCKET_ORDER[a.socket] - SOCKET_ORDER[b.socket] || byId(a, b));
@@ -290,7 +295,11 @@ export function layoutPlan(plan) {
 
   // 3. Extents per node over every scene: half-width W (with the place-value column left of
   // the leftmost tower), up above the centre line and down below it.
-  for (const n of nodes.values()) Object.assign(n, {W: blockW / 2, up: 44, down: 44, minLeft: Infinity});
+  // A two-socket block reaches past its face to its socket rings (r 44) and the dashed mark of
+  // a selected socket (r 52): without towers (a machine still being built) nothing else would
+  // widen it, and siblings packed by their faces alone overlapped rings, so a tap on one
+  // socket's centre picked its neighbour's.
+  for (const n of nodes.values()) Object.assign(n, {W: n.sides ? Math.max(blockW / 2, sx + UNITS.ring + 8) : blockW / 2, up: 44, down: 44, minLeft: Infinity});
   for (const scene of scenes) for (const [id, t] of Object.entries(scene.towers)) {
     const p = parsePlace(t.at), n = nodes.get(p.node); if (!n) continue;
     const o = relPlace(t.at), s = towerShape(base, t, bulbsOf(scene, id)), pill = relPill(scene, id), note = relNote(scene, id);
@@ -539,7 +548,9 @@ function chainOf(plan, layout, viewport, inset) {
   // framed as close to `want` as it allows, and that sets ρ against the first box. When the
   // first box does not fit, ρ is the pan's end: the far end if the beat started too big to
   // show as well (so the sweep crosses all of it), else the end the movers head for.
-  const solve = (boxes, want, top, start, dir) => {
+  // tight (the opening only): a last box that misses with its margins but fits without them
+  // is still framed whole, centred, the margin it has shared by both ends.
+  const solve = (boxes, want, top, start, dir, tight = false) => {
     const lam = clampLam(need(boxes.at(-1), top)), {v, p} = sizes(lam, top), first = boxes[0];
     const out = {lam, top, c: [0, 0], rho: [0, 0], slide: [false, false]};
     for (const axis of [0, 1]) {
@@ -547,12 +558,14 @@ function chainOf(plan, layout, viewport, inset) {
       out.slide[axis] = over;
       if (!fits(l, h, v[axis], p)) { out.rho[axis] = over ? (start.rho[axis] <= .5 ? 1 : 0) : dir[axis] < 0 ? 0 : 1; out.slide[axis] = true; }
       else {
-        let c = null;
+        let c = null, whole = false;
         for (let j = boxes.length - 1; j >= 0 && c === null; j--) {
           const [bl, bh] = ext(boxes[j], axis);
           if (fits(bl, bh, v[axis], p)) c = Math.min(bl - p + v[axis] / 2, Math.max(bh + p - v[axis] / 2, want ? (axis ? want.y : want.x) : (bl + bh) / 2));
+          else if (tight && j === boxes.length - 1 && fits(bl, bh, v[axis], 0)) { c = (bl + bh) / 2; whole = true; }
         }
         out.rho[axis] = clamp01(rhoOf(c, l, h, v[axis], p));
+        if (whole) { out.c[axis] = inBounds(c, axis); continue; }
       }
       out.c[axis] = inBounds(centre(l, h, v[axis], p, out.rho[axis]), axis);
     }
@@ -564,14 +577,17 @@ function chainOf(plan, layout, viewport, inset) {
     const H = G.H(cam.top), X = G.left + G.W / 2 + (box.x - cam.c[0]) / cam.lam, Y = cam.top + H / 2 + (box.y - cam.c[1]) / cam.lam;
     return X < hud.width && Y < hud.height && X + box.w / cam.lam > 0 && Y + box.h / cam.lam > 0;
   };
-  const end = (boxes, want, start, dir) => {
-    let out = solve(boxes, want, G.top, start, dir);
-    if (underHud(boxes[0], out) && hud.height > G.top) out = solve(boxes, want, hud.height, start, dir);
+  const end = (boxes, want, start, dir, tight) => {
+    let out = solve(boxes, want, G.top, start, dir, tight);
+    if (underHud(boxes[0], out) && hud.height > G.top) out = solve(boxes, want, hud.height, start, dir, tight);
     return out;
   };
-  // the opening frame: IO, the inputs, the machine as built (too wide to show: the Input end)
+  // the opening frame: IO, the inputs, the machine as built (too wide to show: the Input end).
+  // On a landscape phone the root block hangs as far below IO as the tallest tower it will
+  // hold, so the machine as built may miss the smallest scale by a margin's width: it is
+  // framed tight rather than left with only a wire running off the stage.
   const open = contextOf(plan, layout, -1), first = plan.beats.length ? beatMovers(plan, layout, 0) : null;
-  const opening = end([open.core, ...(first?.s0 ? [union(open.core, first.s0)] : []), open.box], open.want, null, [-1, 1]);
+  const opening = end([open.core, ...(first?.s0 ? [union(open.core, first.s0)] : []), open.box], open.want, null, [-1, 1], true);
   const keys = [{lam: opening.lam, top: opening.top, c: opening.c}], beats = [];
   for (let k = 0; k < plan.beats.length; k++) {
     const prev = keys[k], mv = beatMovers(plan, layout, k), ctx = contextOf(plan, layout, k);

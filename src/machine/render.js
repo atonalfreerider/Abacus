@@ -6,7 +6,7 @@
 // itself, which keeps the two drawings from drifting apart.
 import { ink } from '../mvc/theme.js';
 import { bulb, socket, round as r, esc } from '../mvc/view.js';
-import { UNITS, IO, FURNITURE, scenesOf, parsePlace, isCollapsed, bulbOffset, bulbsOf, pathLevel, pillLines, pillWidth, textWidth, railOf, furnitureOf, dustBox, cameraAt } from './layout.js';
+import { UNITS, IO, FURNITURE, UNARY, scenesOf, parsePlace, isCollapsed, bulbOffset, bulbsOf, pathLevel, pillLines, pillWidth, textWidth, railOf, furnitureOf, dustBox, cameraAt } from './layout.js';
 
 export const easeOut = u => 1 - (1 - u) ** 2;
 const win = (u, [a, b]) => u <= a ? 0 : u >= b ? 1 : (u - a) / (b - a);
@@ -45,7 +45,6 @@ export function machineDefs(palette = ink, prefix = 'm-') {
 }
 
 // ---- block glyphs (PRIME's pin-and-tray vocabulary, 1.5) ----
-const UNARY = new Set(['not', 'neg', 'measure', 'ln']);
 function glyphBody(op, palette, base, tilt = 0) {
   // one stroke-width per element: a repeated attribute is an XML error (and HTML keeps the first)
   const g = palette.machine.glyph, pen = (w = 3.5) => `stroke="${g}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" fill="none"`, stroke = pen();
@@ -405,7 +404,13 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
         if (ta) parts.pills.push(pill(ta, a, layout.pillCentre(ta.at, pillWidth(pillLines(ta, digits))), null, staticTop(a, ta), (1 - v) * ghostOf(ta)));
         if (tz) parts.pills.push(pill(tz, z, layout.pillCentre(tz.at, pillWidth(pillLines(tz, digits))), null, staticTop(z, tz), v * ghostOf(tz)));
       }
-    } else parts.pills.push(pill(lt, labelScene, null, o, top, lerp(ghostOf(ta || tz), ghostOf(tz || ta), E(u, [.6, 1]))));
+    } else {
+      // A tower that leaves as another arrives at its place (balanced ternary's judge: the kept
+      // try slides onto the dividend's place) lets its pill go before the newcomer's lands,
+      // rather than printing the two labels over each other ('−9' and '9' read '−99').
+      const ceded = ta && !tz && Object.values(z.towers).some(t => t.at === ta.at);
+      parts.pills.push(pill(lt, labelScene, null, o, top, lerp(ghostOf(ta || tz), ghostOf(tz || ta), E(u, [.6, 1])) * (ceded ? 1 - E(u, [0, .25]) : 1)));
+    }
   }
 
   // -- the place-value column, left of the active node's leftmost tower (as the beat ends) --

@@ -943,6 +943,7 @@ Shortcuts listen on `#machine-stage` and never fire in fields, with one exceptio
 - **Framing:** the union of the active node, its towers and pills at the beat's start and end, and its parent socket, padded by 24 px.
   - The scale lies between **18/74 CSS px per unit** (bulbs at least 18 px across) and 1.2.
   - `view.inset` (recording mode, 5.1) shrinks the usable viewport.
+  - The opening frames IO, the inputs and the machine as built. When that just misses at the minimum scale (on a landscape phone the root hangs as far below IO as the tallest tower it will hold), it is framed without its margins, centred, rather than leaving only a wire running off the stage.
 - **Panning when the frame does not fit.** If the box does not fit at the minimum scale, the camera stays at the minimum scale and pans along the tower during the beat:
   - it follows the motion front: the carry being resolved (level pace), the climbing ripple from bottom to top (together pace), A's top (shift), the donor (borrow), or the light (UNFOLD);
   - the pan is eased like the beat, so every moving bulb passes through the frame at ≥ 18 px.
@@ -1418,7 +1419,8 @@ All coordinates are machine units, with y pointing down. The layout is a pure fu
 4. **Extents.** A node's half-width W(n) is the maximum over its places of |x| + the place's horizontal extent:
    - bulb 37 + digit gutter 48 + place-value column 56 on the leftmost place;
    - lanes 84 + 37;
-   - pill extents.
+   - pill extents;
+   - a two-socket block's socket rings, socketX + 44, and the 8 of a selected socket's mark: a machine still being built has no towers to widen it, and siblings packed by their faces alone overlapped rings, so a tap on one socket picked its neighbour.
 
    up(n) is the highest point above the centre line of any tower, lane, pill or rail in n's places over all scenes, at least 44. down(n) is the lowest point below it: 37 for binary/ternary, 84·(−minLevel) + 37 in base e including rails and dust, at least 44.
 5. **Rows.**

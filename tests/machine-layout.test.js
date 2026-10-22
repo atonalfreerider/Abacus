@@ -202,6 +202,34 @@ test('phones: every moving bulb of [16,7] and [1048575,1] stays on stage at a re
   }
 });
 
+// A landscape phone's stage below its HUD band (568×322, the band 24 px): a 15-level product
+// is taller than the smallest scale shows, so the camera pans; every bulb that moves is still
+// on stage in some frame of its beat (4.5), though the tower's foot may end a beat below it.
+test('a landscape phone: [255,255] × pans, and every moving bulb crosses the stage in its beat', () => {
+  for (const b of moversOnStage(planned('mul', ['255', '255']), PHONES[1], [.1, .3, .5, .7, .9], {top: 24})) assert.ok(b.least >= 1, `beat ${b.i} (${b.kind}): a mover never on stage`);
+});
+// The opening on a landscape phone: the root hangs as far below IO as the tallest tower it
+// will hold, so IO, the inputs and the block only just miss the smallest scale; they are
+// framed without their margins rather than leaving a wire running off the stage.
+test('the opening on a landscape phone shows the block under the triangle', () => {
+  for (const viewport of [PHONES[1], {width: 464, height: 292}, {width: 620, height: 346}]) {
+    const plan = planned('mul', ['16', '7']), L = layoutPlan(plan), cam = cameraAt(plan, L, 0, viewport, {inset: {top: 24}}), s = viewport.width / cam.w, box = L.nodeBox('n1');
+    assert.ok(box.y >= cam.y + 24 / s - 1e-6 && box.y + box.h <= cam.y + cam.h + 1e-6, `${viewport.width}×${viewport.height}: the × block at ${box.y}..${box.y + box.h}, the stage ${cam.y + 24 / s}..${cam.y + cam.h}`);
+    for (const id of Object.keys(plan.start.towers)) { const t = L.towerBox(plan.start, id); assert.ok(t.y >= cam.y + 24 / s - 1e-6, `${viewport.width}×${viewport.height}: input ${id} under the band`); }
+  }
+});
+// A machine still being built has no towers to widen its blocks: siblings are kept apart by
+// their socket rings (r 44) and a selected socket's mark (r 52), so a tap on one socket's
+// centre never lands on its neighbour's ring.
+test('blocks hung but not yet planned keep their socket rings apart', () => {
+  const display = (tree, base) => ({v: 1, base, pace: 'together', tree, inputs: [], start: {nodes: {...tree}, towers: {}, bulbs: {}}, beats: [], result: {values: [], text: ''}});
+  const row = (n, ops) => Object.fromEntries(ops.map((op, i) => [`n${i + 1}`, i ? {op, parent: `n${(i - 1 >> 1) + 1}`, socket: i % 2 ? 'L' : 'R'} : {op, parent: 'io', socket: 'C'}]));
+  for (const base of ['binary', 'ternary']) for (const tree of [row(3, ['add', 'sub', 'mul']), row(7, ['add', 'add', 'add', 'add', 'add', 'add', 'add']), row(7, ['mul', 'div', 'add', 'not', 'sub', 'cmp', 'shl'])]) {
+    const L = layoutPlan(display(tree, base)), points = Object.entries(tree).flatMap(([id, n]) => (['not', 'neg'].includes(n.op) ? ['C'] : ['L', 'R']).map(s => L.place(`${id}.${s}`)));
+    for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) if (Math.abs(points[i].y - points[j].y) < 1) assert.ok(Math.abs(points[i].x - points[j].x) >= 2 * 52, `${base}: sockets ${Math.abs(points[i].x - points[j].x)} apart`);
+  }
+});
+
 test('the HUD: the opening frame and every beat\'s movers keep clear of the corner it covers', () => {
   const plan = planned('mul', ['16', '7']), L = layoutPlan(plan), viewport = PHONES[0], hud = {width: 160, height: 70};
   const list = scenesOf(plan);
