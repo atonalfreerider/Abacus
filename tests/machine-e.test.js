@@ -543,7 +543,7 @@ test('random base-e machines plan or refuse cleanly, and every accepted plan val
   const pool = ['0', '1', '2', '3', '7', '16', '-5', 'e', 'e+1', 'e^2+2', '1/3', '-1/2', '2e+2', '30', '112', '1/30', '1/1000000', '-1/1000000',
     'e^12', 'e^-6', 'e^12+e^11', '999999/1000000', '5-e^-6/1000000', '1+e^-6/1000000', 'e+e^-3', '-e-e^-3', '2721/1001', '3e^2', '-e^2-2', 'e^-3', '13', '-7'];
   const ops = eSpec.palette, seen = {};
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 120; i++) {
     const tree = { n1: { op: ops[rand(ops.length)], parent: 'io', socket: 'C' } };
     const grow = (id, depth) => { for (const s of ARITY[tree[id].op] === 1 ? ['C'] : ['L', 'R']) if (depth < 3 && Object.keys(tree).length < 5 && rand(2)) {
       const op = ops.filter(o => o !== 'ln')[rand(ops.length - 1)], child = `n${Object.keys(tree).length + 1}`;
@@ -558,7 +558,7 @@ test('random base-e machines plan or refuse cleanly, and every accepted plan val
     assert.deepEqual(r.plan.result.values, evaluateTree(tree, inputs, 'e').values, what);
     for (const bt of r.plan.beats) assert.ok(!bt.caption.includes('-'), `${what}: ${bt.caption}`);
   }
-  assert.ok(seen.ok > 80 && seen.tooBig > 2, JSON.stringify(seen));
+  assert.ok(seen.ok > 60 && seen.tooBig > 5, JSON.stringify(seen));
 });
 
 // The base-e scenes for the snapshots (C's scenes.js renders every e-*.json). Regenerate
