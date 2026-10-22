@@ -406,6 +406,16 @@ test('legible labels: pills grow to 10 px into free space only (view.minFont)', 
     }
   }
   assert.ok(io > 0, 'the IO pills grow too');
+  // the opening's captions: INPUT lies under the first input coin's rim, so it grows down from
+  // its top (about its middle it stopped at 7.9 px on an 844 × 390 phone)
+  for (const vp of [viewport, {width: 529, height: 337}, {width: 536, height: 264}]) {
+    const plan = planMachine({tree: {n1: {op: 'mul', parent: 'io', socket: 'C'}}, inputs: ['16', '7'], base: 'binary'}).plan, L = layoutPlan(plan);
+    const drawn = renderMachine(plan, 0, L, ink, {viewport: vp, inset: {top}, active: 'io', minFont: 10}), s = vp.width / +drawn.viewBox.split(' ')[2];
+    for (const caption of ['INPUT', 'OUTPUT']) {
+      const m = drawn.svg.match(new RegExp(`(?:<g transform="matrix\\(([^ ]+) 0 0 [^"]*">)?<text[^>]*font-size="14"[^>]*>${caption}</text>`));
+      assert.ok(m && 14 * +(m[1] ?? 1) * s >= 7.95, `${vp.width}×${vp.height}: ${caption} at ${m && (14 * +(m[1] ?? 1) * s).toFixed(2)} px`);
+    }
+  }
   assert.ok(grown > 100 && readable > grown / 2, `${grown} grown pills, ${readable} of them at 10 px`);
 });
 

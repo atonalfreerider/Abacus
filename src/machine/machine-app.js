@@ -11,13 +11,14 @@ import { BeatClock, SPEEDS, schedule, enterAction } from './clock.js';
 import { planMachine } from './plan.js';
 import { ARITY, palette, defaultMachine, attach, detach, openSockets, parseInput, parseExpression, sentence } from './tree.js';
 import { snapshotAt } from './scene.js';
-import { layoutPlan } from './layout.js';
+import { layoutPlan, cameraAt, foldWeight, moveCamera, foldCamera } from './layout.js';
 import { renderMachine, machineDefs, blockGlyphSVG } from './render.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const media = q => typeof matchMedia === 'function' && matchMedia(q).matches;
 const touchFirst = () => media('(pointer: coarse)');
+const windowSize = () => `${innerWidth}×${innerHeight}`;
 export const BASES = ['binary', 'ternary', 'e'];
 const BASE_SHORT = { binary: '2', ternary: '±3', e: 'e' }, BASE_NAME = { binary: 'binary', ternary: 'balanced ternary', e: 'base e' };
 // Palette names (PRIME's FunctBar spelled them out) and what the outline calls each block.
@@ -407,8 +408,10 @@ export class MachineView extends EventTarget {
     const done = Math.floor(t + 1e-9);
     if (done > this.lastDone) for (let k = Math.max(0, this.lastDone); k < done; k++) this.ended(k);
     this.lastDone = done;
-    if (t !== this.lastT || this.dirty) this.draw(t);
+    // The text and the run's fold first, so the frame is drawn for the stage it is shown in: a
+    // caption or sentence that takes another line resizes it, and so does the phone layout's fold.
     this.sync(t);
+    if (t !== this.lastT || this.dirty) this.draw(t);
   }
   began(i) {
     const beat = this.planned.beats[i];
@@ -434,15 +437,19 @@ export class MachineView extends EventTarget {
   }
   sentenceAt(k) { try { return this.planned.display ? '' : sentence(snapshotAt(this.planned, k)); } catch { return ''; } }
   viewport() { return { width: Math.max(1, this.stage.clientWidth), height: Math.max(1, this.stage.clientHeight) }; }
+  // The stage's client box on screen, the one viewport() measures (its border is not framed).
+  stageBox() {
+    const b = this.stage.getBoundingClientRect(), { width, height } = this.viewport();
+    return { x: b.left + this.stage.clientLeft, y: b.top + this.stage.clientTop, width, height };
+  }
   // The camera frames what is left of the stage: above the burned-in caption band in
   // recording mode, and above the palette where it lies over the stage (desktop, tablets).
   // It also keeps clear of the HUD in the top-left corner, insetting whichever side costs the
   // viewport the smaller share (the top on a portrait phone, the left in landscape).
   inset() {
     const { width, height } = this.viewport(), band = this.recording ? (height > width ? 170 : 120) : 0;
-    // st is the stage's client box, the one viewport() measures (its border is not framed)
-    const p = $('machine-palette').getBoundingClientRect(), b = this.stage.getBoundingClientRect(), hud = $('machine-hud').getBoundingClientRect();
-    const st = { top: b.top + this.stage.clientTop, left: b.left + this.stage.clientLeft, bottom: b.top + this.stage.clientTop + height, right: b.left + this.stage.clientLeft + width };
+    const p = $('machine-palette').getBoundingClientRect(), b = this.stageBox(), hud = $('machine-hud').getBoundingClientRect();
+    const st = { top: b.y, left: b.x, bottom: b.y + height, right: b.x + width };
     // The palette counts only where it lies over the stage: in the phone landscape rail it is
     // beside the stage, level with it, and covers none of it.
     const over = p.width && p.top < st.bottom && p.bottom > st.top + 1 && p.left < st.right && p.right > st.left ? (media('(hover: none)') ? st.bottom - p.top : 30) : 0, inset = {};
@@ -456,11 +463,35 @@ export class MachineView extends EventTarget {
     // the recording keeps the layout's sizes, which its 1280 × 720 frames read at
     const view = { viewport: this.viewport(), motion: this.reduced ? 'reduced' : 'full', digits: this.digits, prefix: 'm-', selected: this.selected, highlight: this.highlight, inset: this.inset(), active: this.active(t), minFont: this.recording ? 0 : MIN_FONT };
     if (this.manual) view.camera = this.fit(this.manual);
+    else { const folded = this.folded(t, view.viewport, view.inset); if (folded) view.camera = folded; }
     const out = renderMachine(this.planned, t, this.layout, ink, view);
     this.cam = parseBox(out.viewBox) ?? view.camera;
     this.frames.apply(inner(out.svg));
     if (this.cam) this.svg.setAttribute('viewBox', boxText(this.cam));
     this.lastT = t; this.dirty = false; this.hits(t);
+  }
+  // On a phone the run folds the HUD away (4.8), and in portrait the palette strip and the bar's
+  // second row: the stage grows and moves, or loses only the HUD's inset. The camera does not
+  // jump there: at t = 0 and t = n it frames as at rest (the stage as the run began), carried
+  // into the run's stage so that nothing moves on screen, and it eases to the run's own
+  // framing over the first beat and back over the last (layout.js foldWeight). Null where
+  // nothing folds (desktop, tablets, a recording), or after a resize or rotation mid-run:
+  // the run's own camera.
+  folded(t, viewport, inset) {
+    const rest = this.rest, plan = this.planned, tt = Number.isFinite(t) ? t : 0, w = foldWeight(tt, plan.beats.length, this.reduced);
+    if (!rest || w >= 1 || !this.mode.classList.contains('running') || rest.win !== windowSize()) return null;
+    const now = this.stageBox(), same = (p, q, keys) => keys.every(k => Math.abs((p[k] || 0) - (q[k] || 0)) < .5);
+    if (same(rest.box, now, ['x', 'y', 'width', 'height']) && same(rest.inset, inset, ['top', 'left', 'right', 'bottom'])) return null;
+    const at = moveCamera(cameraAt(plan, this.layout, tt, rest.box, { reduced: this.reduced, inset: rest.inset }), rest.box, now);
+    return w > 0 ? foldCamera(at, cameraAt(plan, this.layout, tt, viewport, { reduced: this.reduced, inset }), w) : at;
+  }
+  // The run state that the phone layout folds on (4.8), set before a frame is drawn. As a run
+  // begins, the stage and the camera's inset at rest are kept for folded().
+  fold() {
+    const c = this.clock, running = !!c && c.started && !c.done;
+    if (this.mode.classList.contains('running') === running) return;
+    if (running) { const box = this.stageBox(); this.rest = this.visible && box.width > 1 && box.height > 1 ? { box, inset: this.inset(), win: windowSize() } : null; }
+    this.mode.classList.toggle('running', running); this.dirty = true;
   }
   // The node at work: the beat in motion's, else the one just finished (while it stands),
   // else the next one's. The renderer draws place values and digits beside it.
@@ -510,12 +541,11 @@ export class MachineView extends EventTarget {
   }
   // Text, controls and attributes that follow the clock. Cheap; most of it only on change.
   sync(t, force = false) {
-    const c = this.clock, n = c.n, boundary = Math.max(0, Math.min(n, Math.floor(t + 1e-9))), running = c.started && !c.done;
+    const c = this.clock, n = c.n, boundary = Math.max(0, Math.min(n, Math.floor(t + 1e-9)));
     const s = this.stage.dataset, put = (key, v) => { if (s[key] !== v) s[key] = v; };
     put('beat', String(c.beat)); put('beats', String(n)); put('playing', String(c.playing)); put('t', String(Math.round(t * 1000) / 1000));
-    // (on a phone the HUD folds away during a run: the camera's inset changes with it, though
-    // the stage's size may not, so the frame is drawn again)
-    if (this.mode.classList.contains('running') !== running) { this.mode.classList.toggle('running', running); this.dirty = true; }
+    // (a Step, Back or seek folds or unfolds the phone layout at once: the frame is drawn again)
+    this.fold();
     const pause = $('machine-pause'); if (pause.getAttribute('aria-pressed') !== String(c.paused)) { pause.setAttribute('aria-pressed', String(c.paused)); pause.textContent = c.paused ? 'Resume' : 'Pause'; }
     const shown = c.run ? c.run.i : c.beat;
     if (!force && boundary === this.lastBoundary && shown === this.lastShown) return;

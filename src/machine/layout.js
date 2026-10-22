@@ -692,6 +692,34 @@ export function cameraAt(plan, layout, t, viewport, {reduced = false, inset = {}
   }
   return viewBoxOf(G, cam);
 }
+// ---- the fold (4.5, 4.8) ----
+// On a phone the HUD folds away during a run, and in portrait the palette strip and the bar's
+// second row with it: the stage grows and moves, or (in landscape) only loses the HUD's inset.
+// The camera does not jump there. At t = 0 and t = n it frames as at rest, carried into the
+// run's stage so that nothing moves on screen (foldCamera), and over the first beat it eases
+// to the run's own framing, and back over the last, like the beat: foldWeight is the run
+// framing's share at t (with reduced motion it cuts at mid-beat, as the camera does).
+export function foldWeight(t, n, reduced = false) {
+  if (!(n > 0) || !(t > 0) || t >= n) return 0;
+  const f = u => { const v = clamp01(u); return reduced ? (v >= .5 ? 1 : 0) : ease(v); };
+  return Math.min(f(t), 1 - f(t - (n - 1)));
+}
+// A viewBox for one stage shown in another (stages are client boxes on screen, {x, y, width,
+// height} in CSS px): the same scale, every machine point under the same screen point.
+// (Sizes round down, as viewBoxOf's do, so the scale never drops below its floor.)
+export function moveCamera(cam, from, to) {
+  const s = from.width / cam.w;
+  return {x: round3(cam.x + (to.x - from.x) / s), y: round3(cam.y + (to.y - from.y) / s), w: down3(to.width / s), h: down3(to.height / s)};
+}
+// From the camera at rest (rest, already in the run's stage) to the run's (run), by w ∈ [0, 1].
+// Both keep the movers in the stage, so every blend does; both scales are at least the
+// floor, so the blend's is too.
+export function foldCamera(rest, run, w) {
+  if (!(w > 0)) return rest;
+  if (w >= 1) return run;
+  return {x: round3(lerp(rest.x, run.x, w)), y: round3(lerp(rest.y, run.y, w)), w: down3(lerp(rest.w, run.w, w)), h: down3(lerp(rest.h, run.h, w))};
+}
+const round3 = v => Math.round(v * 1000) / 1000, down3 = v => Math.floor(v * 1000) / 1000;
 // sizes round down, so the scale never drops below its floor
 function viewBoxOf(G, cam) {
   const r = v => Math.round(v * 1000) / 1000, down = v => Math.floor(v * 1000) / 1000, H = G.H(cam.top);

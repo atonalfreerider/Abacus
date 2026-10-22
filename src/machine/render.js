@@ -508,10 +508,11 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       if (legible) {
         // the pill grows about its foot, its top or its middle, centred or from its inner end
         // (the one by IO), so it can grow away from a tower that rides up beside it; its caption
-        // goes with it, then grows from its own inner end
+        // goes with it, then grows from its own inner end: its middle, else its top or its foot
+        // (at the opening INPUT lies under the first input coin's rim, so it grows down from it)
         const cw = 11 * caption.length, box = {x0: p.x - p.w / 2, y0: top, x1: p.x + p.w / 2, y1: p.bottom}, inner = key === 'in' ? box.x1 : box.x0;
         const pill = {t: `io:${key}`, prio: 1, font: 27, inner: svg, box, anchors: [p.x, inner].flatMap(x => [[x, p.bottom], [x, top], [x, (top + p.bottom) / 2]])};
-        parts.io.push({io: key, labels: [pill, {t: `caption:${key}`, prio: 3, font: 14, min: .8, inner: label, follow: pill, box: {x0: key === 'in' ? cx - cw : cx, y0: cy - 9, x1: key === 'in' ? cx : cx + cw, y1: cy + 9}, anchors: [[cx, cy]]}]});
+        parts.io.push({io: key, labels: [pill, {t: `caption:${key}`, prio: 3, font: 14, min: .8, inner: label, follow: pill, box: {x0: key === 'in' ? cx - cw : cx, y0: cy - 9, x1: key === 'in' ? cx : cx + cw, y1: cy + 9}, anchors: [[cx, cy], [cx, cy - 9], [cx, cy + 9]]}]});
         continue;
       }
       svg += label;

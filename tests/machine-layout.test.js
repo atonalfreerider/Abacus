@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutPlan, scenesOf, cameraAt, parsePlace, intersects, bulbOffset, FURNITURE, UNITS } from '../src/machine/layout.js';
+import { layoutPlan, scenesOf, cameraAt, parsePlace, intersects, bulbOffset, foldWeight, moveCamera, foldCamera, FURNITURE, UNITS } from '../src/machine/layout.js';
 import { renderMachine } from '../src/machine/render.js';
 import { machineScenes } from '../src/machine/scenes.js';
 import { planMachine } from '../src/machine/plan.js';
@@ -296,6 +296,38 @@ test('the HUD: the opening frame and every beat\'s movers keep clear of the corn
       const box = L.towerBox(scene, id), X = (box.x - cam.x) * s, Y = (box.y - cam.y) * s;
       assert.ok(!(X < hud.width && Y < hud.height && X + box.w * s > 0 && Y + box.h * s > 0) || k > 0 && box.h * s > viewport.height - hud.height - 2 * FURNITURE.pad, `boundary ${k}: tower ${id} under the HUD`);
     }
+  }
+});
+
+// The fold (4.5, 4.8): on a phone the HUD (and in portrait the palette strip and the bar's second
+// row) folds away during a run. The camera frames as at rest at t = 0 and t = n, carried into the
+// run's stage so that nothing moves on screen, and eases to the run's framing over the first beat
+// and back over the last: no jump as the run begins or ends (at 568 × 320 the picture dropped
+// 47 px on the first frame of a run and rose 31 px on the frame after it ended).
+test('the fold: the camera eases between the framing at rest and the run\'s, and never jumps', () => {
+  assert.equal(foldWeight(0, 16), 0); assert.equal(foldWeight(16, 16), 0); assert.equal(foldWeight(-1, 16), 0); assert.equal(foldWeight(NaN, 16), 0);
+  for (const t of [1, 2, 7.5, 15]) assert.equal(foldWeight(t, 16), 1, `t ${t}`);
+  assert.ok(Math.abs(foldWeight(.5, 16) - .75) < 1e-12 && Math.abs(foldWeight(15.5, 16) - .25) < 1e-12, 'eased like the beat');
+  for (let t = 0; t < 16; t += .01) assert.ok(Math.abs(foldWeight(t + .01, 16) - foldWeight(t, 16)) <= .021, `continuous at ${t.toFixed(2)}`);
+  assert.deepEqual([.2, .49, .5, .8, 15.2, 15.49, 15.5].map(t => foldWeight(t, 16, true)), [0, 0, 1, 1, 1, 1, 0], 'a cut at mid-beat with reduced motion');
+  assert.ok(foldWeight(.5, 1) > 0 && foldWeight(.5, 1) <= .5 && foldWeight(1, 1) === 0, 'one beat: out and back');
+  // a viewBox carried into another stage keeps its scale and every machine point on screen
+  const cam = {x: -300, y: -200, w: 1200, h: 800}, from = {x: 16, y: 149, width: 360, height: 240}, to = {x: 16, y: 101, width: 360, height: 393};
+  const moved = moveCamera(cam, from, to), on = (c, st, [mx, my]) => [st.x + (mx - c.x) * st.width / c.w, st.y + (my - c.y) * st.width / c.w];
+  for (const p of [[0, 0], [-300, -200], [900, 600], [123, -45]]) { const [a, b] = on(cam, from, p), [c, d] = on(moved, to, p); assert.ok(Math.abs(a - c) < .01 && Math.abs(b - d) < .01, `${p} stays put`); }
+  assert.ok(Math.abs(moved.w / moved.h - to.width / to.height) < 1e-4, 'the run stage\'s shape');
+  // the blend: its ends are the cameras themselves; between them the scale stays at its floor or more
+  const plan = planned('mul', ['16', '7']), L = layoutPlan(plan), viewport = {width: 536, height: 264}, n = plan.beats.length;
+  const rest = t => cameraAt(plan, L, t, viewport, {inset: {top: 32}}), run = t => cameraAt(plan, L, t, viewport);
+  const at = t => foldCamera(rest(t), run(t), foldWeight(t, n));
+  assert.deepEqual(at(0), rest(0)); assert.deepEqual(at(n), rest(n)); assert.deepEqual(at(4), run(4));
+  for (let t = 0; t <= n; t += .05) assert.ok(viewport.width / at(t).w >= FURNITURE.minScale - 1e-9, `t ${t.toFixed(2)}: scale`);
+  // no jump: from frame to frame (1/60 of a 1 s beat) the stage's corners move no further than
+  // the cameras themselves do
+  const shift = (p, q) => Math.max(...[[0, 0], [viewport.width, 0], [0, viewport.height], [viewport.width, viewport.height]].map(([x, y]) => { const mx = p.x + x * p.w / viewport.width, my = p.y + y * p.w / viewport.width; return Math.hypot((mx - q.x) * viewport.width / q.w - x, (my - q.y) * viewport.width / q.w - y); }));
+  for (const t0 of [0, n - 1]) for (let t = t0; t < t0 + 1; t += 1 / 60) {
+    const own = Math.max(shift(rest(t), rest(t + 1 / 60)), shift(run(t), run(t + 1 / 60)));
+    assert.ok(shift(at(t), at(t + 1 / 60)) <= own + 3, `t ${t.toFixed(3)}: ${shift(at(t), at(t + 1 / 60)).toFixed(1)} px against ${own.toFixed(1)}`);
   }
 });
 

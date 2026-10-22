@@ -632,22 +632,62 @@ try{
  },{width:844,height:390});
  // Legibility at 844×390 (design 1.3): at every half beat of [16,7] ×, every value and IO pill
  // wholly on the stage reads at 10 px or more and every INPUT/OUTPUT caption at 8, but the
- // opening's Input pill and caption, boxed in between the input coins and the triangle (their
- // numbers are in the coins' own pills and in Input). 8 of 73 were under 10 px: the 1 over its
- // socket ring, the Input pill as 112 rides up beside it, the 3 at the stage's foot.
- await mcheck('machine 24: 844×390 [16,7] ×: every pill on the stage reads at 10 px and every caption at 8, but the opening\'s Input pill',async()=>{
-  await touch();await reopen();
-  for(const style of ['sketchpad','cyber']){
-   await setStyle(style);
-   await mload({op:'mul',input:'16,7',auto:0});await wait(200);
-   const n=(await mstate()).beats,bad=[];
-   for(let t=0;t<=n;t+=.5){
-    await page.eval(`window.__machine.seek(${t})`);await settle();
-    for(const p of (await page.eval(PILLS)).out)if(!p.hud&&!p.cut&&p.px<(p.caption?7.85:9.9)&&!(t===0&&(p.text==='[16, 7]'||p.text==='INPUT')))bad.push(`t ${t}: ${p.text} ${p.px.toFixed(1)} px`);
+ // opening's Input pill, boxed in between the input coins and the triangle (its numbers are in
+ // the coins' own pills and in Input; docs/verification.md, round 4). 8 of 73 were under 10 px:
+ // the 1 over its socket ring, the Input pill as 112 rides up beside it, the 3 at the stage's foot.
+ // The opening's INPUT caption drew at 7.9 px: it lies under the first input coin's rim, and grew
+ // only about its middle; it grows down from its top now, as it does at the opening on the
+ // smaller landscape phones (7.45 px at 640×360 and 667×375). (Sizes are k rounded down to
+ // 1/1000: 9.99 px is 10.)
+ await mcheck('machine 24: 844×390 [16,7] ×: every pill on the stage reads at 10 px and every caption at 8, but the opening\'s Input pill (640×360, 667×375: the opening\'s captions)',async()=>{
+  await touch();
+  for(const [w,h] of [[844,390],[640,360],[667,375]]){
+   await resize(w,h);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await mload({op:'mul',input:'16,7',auto:0});await wait(200);
+    const n=w===844?(await mstate()).beats:0,bad=[];
+    for(let t=0;t<=n;t+=.5){
+     await page.eval(`window.__machine.seek(${t})`);await settle();
+     for(const p of (await page.eval(PILLS)).out)if(!p.hud&&!p.cut&&(p.caption||w===844)&&p.px<(p.caption?7.95:9.95)&&!(t===0&&p.text==='[16, 7]'))bad.push(`t ${t}: ${p.text} ${p.px.toFixed(2)} px`);
+    }
+    if(bad.length)throw Error(`${w}×${h} ${style}: ${bad.join('; ')}`);
    }
-   if(bad.length)throw Error(`${style}: ${bad.join('; ')}`);
   }
  },{width:844,height:390});
+ // The fold (design 4.5, 4.8): on a phone the HUD folds away during a run, and in portrait the
+ // palette strip and the bar's second row with it. The camera jumped with it: at 568×320 the
+ // picture dropped 47 px on the first frame of a run and rose 31 px on the frame after it ended
+ // (and at 640×360, 667×375 and 844×390); in portrait, where the stage grows, 80 to 110 px. The
+ // frame at rest is carried into the run's stage now and eased to the run's own framing: from
+ // t = 0 (at rest) to t = 0.0005 (running) and from n − 0.0005 to n no point of the stage moves
+ // 2 px on screen, in both styles, on phones, a tablet and a desktop. The run's end is checked
+ // where the stage at rest keeps its size from the opening to the end, as it does on every
+ // landscape phone: where Output's line, which first appears at t = n, sits under the stage and
+ // takes its height (≈ 20 px at 360×640, 375×667 and 1440×900), the camera reframes for the
+ // smaller stage, an older jump than the fold's (docs/verification.md).
+ const CAMERA=`(()=>{const st=document.getElementById('machine-stage'),s=st.getBoundingClientRect(),m=document.getElementById('machine-svg').getScreenCTM();return {box:{l:s.left+st.clientLeft,t:s.top+st.clientTop,r:s.left+st.clientLeft+st.clientWidth,b:s.top+st.clientTop+st.clientHeight},a:m.a,e:m.e,f:m.f,hud:document.getElementById('machine-hud').getBoundingClientRect().height>0};})()`;
+ // how far the machine point under each corner (and the centre) of the stage moves on screen
+ const moved=(p,q)=>{const b=p.box;return Math.max(...[[b.l,b.t],[b.r,b.t],[b.l,b.b],[b.r,b.b],[(b.l+b.r)/2,(b.t+b.b)/2]].map(([x,y])=>{const mx=(x-p.e)/p.a,my=(y-p.f)/p.a;return Math.hypot(q.a*mx+q.e-x,q.a*my+q.f-y);}));};
+ await mcheck('machine 26: the camera does not jump as a run begins or ends, though the HUD folds (phones in both orientations, a tablet, a desktop; both styles)',async()=>{
+  await touch();
+  for(const [w,h] of [[568,320],[640,360],[667,375],[844,390],[360,640],[375,667],[390,844],[412,915],[768,1024],[1440,900]]){
+   await resize(w,h);
+   const phone=w<700||h<=520;
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await mload({op:'mul',input:'16,7',auto:0});await wait(200);
+    const n=(await mstate()).beats,at=async t=>{await page.eval(`window.__machine.seek(${t})`);await settle();return page.eval(CAMERA);},where=`${w}×${h} ${style}`;
+    const c0=await at(0),c1=await at(.0005);
+    expect(c0.hud,true,`${where}: the HUD at rest`);expect(c1.hud,!phone,`${where}: the HUD during the run`);
+    if(moved(c0,c1)>2)throw Error(`${where}: the picture jumps ${moved(c0,c1).toFixed(1)} px as the run begins`);
+    const c2=await at(n-.0005),c3=await at(n),kept=['l','t','r','b'].every(k=>Math.abs(c3.box[k]-c0.box[k])<.5);
+    expect(c3.hud,true,`${where}: the HUD after the run`);
+    if(h<=520)expect(kept,true,`${where}: the stage at rest keeps its size from the opening to the end`);
+    if(kept&&moved(c2,c3)>2)throw Error(`${where}: the picture jumps ${moved(c2,c3).toFixed(1)} px as the run ends`);
+   }
+  }
+ },{width:568,height:320});
 }finally{server.kill();}
 for(const [name,error] of results)console.log(`${error?'FAIL':'ok  '} ${name}${error?`\n     ${error}`:''}`);
 const failed=results.filter(r=>r[1]).length;
