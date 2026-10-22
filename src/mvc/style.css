@@ -325,9 +325,10 @@ body.machine-recording #machine-palette{transform:none;clip-path:none}
    which frames below it (machine-app.js inset()), loses as little height as possible. During a
    run it folds away with the palette strip and the bar's second row: its readouts are in the
    control row (AUTO, the beat length) and the bar (the base), and a tall tower that settles
-   whole keeps its pill on stage instead of under the band (design 4.5, 4.8). */
+   whole keeps its pill on stage instead of under the band (design 4.5, 4.8). A recording keeps
+   it, as it was filmed. */
 @media(max-width:699px),(max-height:520px){#machine-hud{left:0;right:0;top:0;border-radius:0;padding:2px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;font-size:9px;letter-spacing:.08em;line-height:1.4}.hud-title{font-size:11px;letter-spacing:.1em}.hud-row{gap:4px}.hud-row>span:first-child{width:auto}.hud-bulb{width:12px;height:12px}.hud-bulbs{gap:2px}.hud-bulbs i{width:8px;height:8px}
- #machine-mode.running #machine-hud{display:none}}
+ body:not(.machine-recording) #machine-mode.running #machine-hud{display:none}}
 /* 360 px (a common Android width) and the 332 px stage beside a 640 × 360 phone's rail: tighter
    spacing keeps the HUD to one line, so the default machine opens with its × block on stage. */
 @media(max-width:374px),(max-width:699px) and (max-height:520px){#machine-hud{padding:2px 6px;gap:0 5px;letter-spacing:.04em}.hud-title{letter-spacing:.05em}}

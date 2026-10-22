@@ -243,8 +243,8 @@ test('the opening on a phone shows the root block of every README machine', () =
 // included; only bulbs taller than the stage end at the motion front. Under the HUD band (19 px
 // at 844×390) that is the 16-level 65025, and the pills over the 15-level towers end partly
 // under the band; during a run the band folds away (style.css), and on that whole stage every
-// beat settles with its bulbs on stage and, but for 65025's (19 px taller than the stage with
-// its pill), the pills of its towers too.
+// beat settles with its bulbs on stage and, but for 65025's (with its pill 14 px taller than the
+// stage), the pills of its towers too.
 test('a tall tower settles whole at the end of its beat whenever its bulbs fit (844×390)', () => {
   for (const top of [PHONE_STAGES[2][1], 0]) settles(PHONE_STAGES[2][0], top);
 });
