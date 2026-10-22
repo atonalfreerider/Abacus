@@ -13,8 +13,9 @@ export const OPS = {
   binary: ['add', 'sub', 'mul', 'div', 'mod', 'cmp', 'shl', 'shr', 'and', 'or', 'xor', 'not'],
   ternary: ['add', 'sub', 'mul', 'div', 'mod', 'cmp', 'shl', 'shr', 'min', 'max', 'sum', 'cons', 'neg'],
 };
-// 2¹⁴ bits (4 933 decimal digits): every block stays fast at that size, balanced ternary's
-// digit-by-digit gates included (about 0.1 s).
+// 2¹⁴ bits, so every value below 2¹⁶³⁸⁴ in size (that is up to 4 933 decimal digits, but not
+// every number of 4 933 digits): every block stays fast at that size, balanced ternary's
+// digit-by-digit gates included (about 0.1 s). The budget is the same in both bases.
 export const MAX_BITS = 1n << 14n;
 const fits = v => BigInt(bitLength(v)) <= MAX_BITS ? {value: v} : {error: 'tooBig'};
 const divide = (base, a, b) => base === 'binary' ? divTrunc(a, b) : divRound(a, b);
@@ -34,8 +35,11 @@ export function evaluate(op, base, args) {
     case 'shl':
       if (b < 0n) return {error: 'domain'};
       if (a === 0n) return {value: 0n};
-      // 3^k has fewer than 2k bits
-      if (BigInt(bitLength(a)) + b * (radix === 2n ? 1n : 2n) > MAX_BITS) return {error: 'tooBig'};
+      // a·2^k has exactly bitLength(a) + k bits; 3^k > 2^(1.58·k), so past that count a
+      // ternary shift is surely too big, and below it the value is worked out and measured
+      // (the budget is a size in bits, and a refusal says so: it must not refuse a value
+      // that fits, as the old bound of 2k bits for 3^k did from k = 8 192)
+      if (radix === 2n ? BigInt(bitLength(a)) + b > MAX_BITS : b * 158n >= MAX_BITS * 100n) return {error: 'tooBig'};
       return fits(a * radix ** b);
     case 'shr': {
       if (b < 0n) return {error: 'domain'};

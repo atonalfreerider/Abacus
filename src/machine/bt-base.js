@@ -31,6 +31,10 @@ function parseValue(text) {
   const v = BigInt(s);
   return {ok: true, value: String(negative ? -v : v)};
 }
+// The oracle's size budget is in bits whatever the base (2¹⁴ of them: values below 2¹⁶³⁸⁴),
+// so the refusal says so; a count of decimal digits would be wrong both ways, since 2¹⁶³⁸⁴
+// and 10⁴⁹³³ − 1 both have 4 933 of them.
+const LIMIT = '16 384 bits (2¹⁴)';
 // The registry's evaluate. MOD answers [q, r] like DIV, so it asks the oracle's DIV. These
 // bases have no reach to lift ({limits: false} changes nothing): the oracle computes any value
 // up to its size budget, and past it a shift count or a product is tooBig either way.
@@ -38,7 +42,7 @@ function evaluate(base) {
   return (op, args) => {
     const r = oracle(op === 'mod' ? 'div' : op, base, args.map(BigInt));
     if (r.error === 'zeroDivision') return {ok: false, reason: 'zeroDivision', message: 'Nothing fits into zero.'};
-    if (r.error === 'tooBig') return {ok: false, reason: 'tooBig', message: op === 'shl' ? 'That shift is too long to work out: its answer would run past 4 933 digits.' : 'That number is too long to work out: it would run past 4 933 digits.'};
+    if (r.error === 'tooBig') return {ok: false, reason: 'tooBig', message: op === 'shl' ? `That shift is too long to work out: its answer would need more than ${LIMIT}.` : `That number is too long to work out: it would need more than ${LIMIT}.`};
     if (r.error) return {ok: false, reason: 'domain', message: OPS[base].includes(op) ? 'A shift needs a whole number of levels: the count is negative.' : `${NAMES[base]} has no ${op} block.`};
     if (op === 'div' || op === 'mod' || op === 'shr') return {ok: true, values: [String(r.value), String(r.remainder)]};
     return {ok: true, values: [String(r.value)]};

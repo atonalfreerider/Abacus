@@ -486,6 +486,208 @@ try{
   await mload({op:'mul',input:'[16,7]',pace:'together'});
   expect((await page.eval(`window.__machine.beats()`))[0].end,2,'the next machine plays at the chosen 2 s');
  });
+ await mcheck('machine 19: a run too big to animate shows its exact answer in Output, by load(), the expression field or Enter',async()=>{
+  const shown=()=>page.eval(`[document.getElementById('machine-output').textContent,getComputedStyle(document.querySelector('.machine-result')).display!=='none'].join('|')`),want=`[${5n<<70n}]|true`;
+  await mload({machine:'5<<70'});await wait(100);expect(await shown(),want,'after load()');
+  await mload({machine:'mul',input:'16,7'});await wait(100);
+  await page.eval(`(()=>{const e=document.getElementById('machine-expr');e.focus();e.value='5<<70';})()`);await press('Enter');await wait(200);
+  expect(await shown(),want,'after the expression field');
+  await mload({op:'shl',input:'[5,3]'});await wait(100);
+  await page.eval(`(()=>{const i=document.getElementById('machine-input');i.focus();i.value='[5,70]';})()`);await press('Enter');await wait(200);
+  expect(await shown(),want,'after Enter in Input');
+  expect(await page.eval(`document.getElementById('machine-status').textContent`),'Too big to animate step by step; here is the exact answer.','the status');
+ });
+ // Every touch-reachable control in the mode, by what a finger can land on: buttons, selects,
+ // option labels, tabs, the Parts outline's rows and anything else with pointer events (the
+ // HUD's AUTO bulb, 12 px, is a readout on touch). [name, width, height] of each under 44 px.
+ const SMALL_TARGETS=`[...document.querySelectorAll('#machine-mode button,#machine-mode select,#machine-mode .machine-check,#machine-mode [role=tab],#machine-outline [role=treeitem]>span')].filter(e=>e.getClientRects().length&&getComputedStyle(e).pointerEvents!=='none').map(e=>{const r=e.getBoundingClientRect();return [e.id||e.dataset.op||e.dataset.beat||e.textContent.trim().slice(0,14),Math.round(r.width),Math.round(r.height)];}).filter(([,a,b])=>a<43.5||b<43.5)`;
+ const setStyle=async style=>{await page.eval(`(()=>{const s=document.getElementById('style');s.value='${style}';s.dispatchEvent(new Event('change'));})()`);await wait(300);};
+ // A phone of another size in the same page (touch emulation and media features stay on).
+ const resize=async(w,h)=>{await page.send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:0,mobile:false});await reopen();};
+ // Phones in both orientations and styles: every touch control is a 44 px target (the landscape
+ // base switch was 30 px wide; the Parts outline's rows were 24 px and the long run's Play at 4×
+ // and Show the answer 30 px), the options are in the Steps sheet, Take off shows inside the
+ // visible rail, and the opening of (5 + 3) × 7 shows its root block under the triangle.
+ for(const [w,h] of [[390,844],[844,390],[360,640],[667,375]]){
+  await mcheck(`machine 20: phone ${w}×${h}, both styles: 44 px targets (outline rows and the long run's ask included), options in the sheet, Take off in view, the root block at the opening`,async()=>{
+   await touch();await reopen();
+   const small=()=>page.eval(SMALL_TARGETS);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    let bad=await small();if(bad.length)throw Error(`${style}: controls under 44 px: ${JSON.stringify(bad)}`);
+    expect(await page.eval(`(()=>{const b=document.getElementById('machine-hud-auto').getBoundingClientRect();return document.elementFromPoint(b.x+b.width/2,b.y+b.height/2)?.id!=='machine-hud-auto';})()`),true,`${style}: the HUD's 12 px AUTO bulb is not a touch target`);
+    await page.eval(`document.getElementById('machine-steps-toggle').click()`);await wait(200);
+    expect(await page.eval(`!!document.querySelector('#machine-side.open .machine-extras #machine-digits')&&getComputedStyle(document.querySelector('.machine-extras')).display`),'flex','the options are in the open sheet');
+    bad=await small();if(bad.length)throw Error(`${style}: controls in the sheet under 44 px: ${JSON.stringify(bad)}`);
+    await page.eval(`document.querySelector('#machine-side [data-tab=parts]').click()`);await wait(200);
+    expect(await page.eval(`document.querySelectorAll('#machine-outline [role=treeitem]>span').length>=4`),true,'the outline lists the triangle, the block and its sockets');
+    bad=await small();if(bad.length)throw Error(`${style}: Parts outline rows under 44 px: ${JSON.stringify(bad)}`);
+    await page.eval(`document.querySelector('#machine-side [data-tab=steps]').click()`);await wait(100);
+    await page.eval(`document.getElementById('machine-sheet-close').click()`);await wait(200);
+    // a 441-beat run asks first: Play at 4× and Show the answer
+    await mload({op:'mul',input:'[65535,65535]',pace:'level',auto:1});await wait(200);
+    await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');await wait(200);
+    expect(await page.eval(`document.getElementById('machine-ask').hidden`),false,`${style}: the long run asks`);
+    bad=await small();if(bad.length)throw Error(`${style}: the long run's ask under 44 px: ${JSON.stringify(bad)}`);
+    for(const id of ['machine-ask-play','machine-ask-answer']){const r=await box('#'+id);if(!r||r.x-r.w/2<0||r.x+r.w/2>w||r.y-r.h/2<0||r.y+r.h/2>h)throw Error(`${style}: ${id} is off screen: ${JSON.stringify(r)}`);}
+    await page.eval(`document.getElementById('machine-ask-answer').click()`);await wait(100);
+    await mload({op:'mul',input:'16,7',pace:'together'});await wait(200);
+    const p=await box('#machine-svg .m-hit-node[data-node="n1"]');await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:p.x,y:p.y}]});await wait(40);await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await wait(200);
+    const r=await box('#machine-remove');
+    expect(await page.eval(`document.elementFromPoint(${r.x},${r.y})?.id`),'machine-remove','Take off is on screen, not scrolled out of the rail');
+    await page.eval(`document.getElementById('machine-remove').click()`);await wait(100);
+    await mload({machine:'(5+3)*7'});await wait(300);
+    const at=await page.eval(`(()=>{const st=document.getElementById('machine-stage').getBoundingClientRect(),hud=document.getElementById('machine-hud').getBoundingClientRect(),b=document.querySelector('#machine-svg .m-hit-node[data-node="n1"]').getBoundingClientRect();return b.top>=hud.bottom-1&&b.bottom<=st.bottom+1&&b.left>=st.left-1&&b.right<=st.right+1;})()`);
+    expect(at,true,`${style}: the root block of (5 + 3) × 7 is on the stage at the opening`);
+    await mload({machine:'mul',input:'16,7'});await wait(200);
+   }
+  },{width:w,height:h});
+ }
+ // The Steps/Parts sheet on every phone. A landscape phone under 700 px wide matched the
+ // portrait query too, whose bottom sheet (left 0, 62vh) made the landscape sheet a 62vh box at
+ // the top left, with 25 to 60 px for the list above the options. In landscape the sheet stands
+ // at the right, the full height; in portrait at the foot; the Steps list shows three steps
+ // whole in at least 150 px, the Parts outline has 150 px, and the options are in the sheet.
+ await mcheck('machine 21: the Steps/Parts sheet gives its list a usable height on every phone, landscape under 700 px wide included',async()=>{
+  await touch();
+  for(const [w,h] of [[667,375],[640,360],[568,320],[844,390],[360,640],[390,844]]){
+   await resize(w,h);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await page.eval(`document.getElementById('machine-steps-toggle').click()`);await wait(200);
+    const at=`${w}×${h} ${style}`,landscape=h<=520&&w/h>=1.5;
+    const m=await page.eval(`(()=>{const R=s=>{const e=document.querySelector(s);if(!e||!e.getClientRects().length)return null;const r=e.getBoundingClientRect();return {l:r.left,t:r.top,r:r.right,b:r.bottom,h:r.height};};const panel=R('#machine-steps-panel');return {side:R('#machine-side'),panel,extras:R('#machine-side .machine-extras'),whole:[...document.querySelectorAll('#machine-steps button')].filter(b=>{const r=b.getBoundingClientRect();return r.top>=panel.t-.5&&r.bottom<=panel.b+.5;}).length};})()`);
+    if(landscape){if(!(Math.abs(m.side.r-w)<1&&m.side.t<=.5&&m.side.b>=h-.5&&m.side.l>0))throw Error(`${at}: the sheet is not the full height at the right: ${JSON.stringify(m.side)}`);}
+    else if(!(Math.abs(m.side.b-h)<1&&m.side.l<=.5))throw Error(`${at}: the sheet is not at the foot: ${JSON.stringify(m.side)}`);
+    if(!(m.panel.h>=150&&m.whole>=3))throw Error(`${at}: the Steps list has ${Math.round(m.panel.h)} px and ${m.whole} whole steps`);
+    if(!(m.extras&&m.extras.t>=m.side.t-.5&&m.extras.b<=m.side.b+.5))throw Error(`${at}: the options are not in the sheet: ${JSON.stringify(m.extras)}`);
+    await page.eval(`document.querySelector('#machine-side [data-tab=parts]').click()`);await wait(150);
+    const parts=await page.eval(`document.getElementById('machine-parts-panel').getBoundingClientRect().height`);
+    if(!(parts>=150))throw Error(`${at}: the Parts outline has ${Math.round(parts)} px`);
+    await page.eval(`document.querySelector('#machine-side [data-tab=steps]').click()`);await page.eval(`document.getElementById('machine-sheet-close').click()`);await wait(150);
+   }
+  }
+ },{width:667,height:375});
+ // The long run's ask on every phone: Play at 4× and Show the answer whole on the screen, 44 px
+ // tall (in cyber at 568 × 320 they took two rows and Show the answer fell below the screen).
+ await mcheck('machine 25: the long run\'s Play at 4× and Show the answer are whole on screen on every phone, both styles',async()=>{
+  await touch();
+  for(const [w,h] of [[568,320],[640,360],[667,375],[844,390],[360,640],[390,844]]){
+   await resize(w,h);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await mload({op:'mul',input:'[65535,65535]',pace:'level',auto:1});await wait(200);
+    await page.eval(`document.getElementById('machine-input').focus()`);await press('Enter');await wait(200);
+    for(const id of ['machine-ask-play','machine-ask-answer']){
+     const r=await page.eval(`(()=>{const r=document.getElementById('${id}').getBoundingClientRect();return {l:r.left,t:r.top,r:r.right,b:r.bottom,h:r.height};})()`);
+     if(!(r.h>=43.5&&r.l>=0&&r.t>=0&&r.r<=w&&r.b<=h))throw Error(`${w}×${h} ${style}: ${id} at ${JSON.stringify(r)}`);
+    }
+    await page.eval(`document.getElementById('machine-ask-answer').click()`);await wait(100);
+   }
+  }
+ },{width:568,height:320});
+ // The opening on phones: the HUD keeps to one line (at 360 px it took two, and the default
+ // [16,7] opened with only the triangle and a wire running off the stage), and the × block
+ // stands on the stage below it, in both styles.
+ await mcheck('machine 22: every phone opens the default machine with its × block on the stage, under a one-line HUD',async()=>{
+  await touch();
+  for(const [w,h] of [[360,640],[375,667],[390,844],[412,915],[640,360],[667,375],[844,390]]){
+   await resize(w,h);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    const m=await page.eval(`(()=>{const st=document.getElementById('machine-stage').getBoundingClientRect(),hud=document.getElementById('machine-hud').getBoundingClientRect(),b=document.querySelector('#machine-svg .m-hit-node[data-node="n1"]').getBoundingClientRect();return {hud:Math.round(hud.height),on:b.top>=hud.bottom-1&&b.bottom<=st.bottom+1&&b.left>=st.left-1&&b.right<=st.right+1,block:[Math.round(b.top),Math.round(b.bottom)],stage:[Math.round(hud.bottom),Math.round(st.bottom)]};})()`);
+    if(m.hud>22)throw Error(`${w}×${h} ${style}: the HUD takes ${m.hud} px (two lines)`);
+    if(!m.on)throw Error(`${w}×${h} ${style}: the × block at ${m.block} is not on the stage below the HUD ${m.stage}`);
+   }
+  }
+ },{width:360,height:640});
+ // Each visible pill (value or IO) whose rect meets the client box of the stage: is it under
+ // the HUD, or cut by the stage's edge? And the drawn size of each pill's value and caption.
+ const PILLS=`(()=>{const st=document.getElementById('machine-stage'),s=st.getBoundingClientRect(),c={l:s.left+st.clientLeft,t:s.top+st.clientTop,r:s.left+st.clientLeft+st.clientWidth,b:s.top+st.clientTop+st.clientHeight},hud=document.getElementById('machine-hud').getBoundingClientRect(),out=[];
+  for(const g of document.querySelectorAll('#machine-svg g.pill,#machine-svg g.io-pill')){let o=1;for(let e=g;e&&e.id!=='machine-svg';e=e.parentElement)o*=+(e.getAttribute('opacity')??1);if(o<.5)continue;
+   for(const tx of g.querySelectorAll('text')){const size=+tx.getAttribute('font-size');if(!tx.textContent||size!==27&&size!==14)continue;
+    const r=(size===14?tx:g.querySelector('rect')).getBoundingClientRect(),m=tx.getScreenCTM();if(r.right<=c.l||r.left>=c.r||r.bottom<=c.t||r.top>=c.b)continue;
+    out.push({text:tx.textContent,caption:size===14,px:size*Math.hypot(m.a,m.b),hud:!!hud.height&&r.top<hud.bottom-.5&&r.bottom>hud.top&&r.left<hud.right&&r.right>hud.left,cut:r.top<c.t-.5||r.bottom>c.b+.5||r.left<c.l-.5||r.right>c.r+.5});}}
+  return {hud:hud.height>0,out};})()`;
+ const settle=()=>page.eval('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+ // A tall tower that settles whole at the end of its beat (844×390, [255,255] ×) left its pill
+ // under the HUD band (32640 after the 255 × 128 shift, the collides' operands at 37 and 38).
+ // On a phone the HUD folds away during a run (its readouts are in the rail), so at every beat
+ // end each pill on the stage is wholly on it, but for the 16-level 65025's, which with its pill
+ // is taller than the stage (design 4.5); at the opening and after the run the HUD is back.
+ await mcheck('machine 23: 844×390 [255,255] ×: the HUD folds during a run, and no pill ends a beat under it or off the stage but 65025',async()=>{
+  await touch();await reopen();
+  for(const style of ['sketchpad','cyber']){
+   await setStyle(style);
+   await mload({op:'mul',input:'255,255',auto:0});await wait(200);
+   const n=(await mstate()).beats,bad=[];
+   for(let k=0;k<=n;k++){
+    await page.eval(`window.__machine.seek(${k})`);await settle();
+    const f=await page.eval(PILLS);
+    expect(f.hud,k===0||k===n,`${style}: the HUD shows at boundary ${k}`);
+    for(const p of f.out)if(!p.caption&&(p.hud||p.cut)&&p.text!=='65025')bad.push(`${k}: ${p.text} ${p.hud?'under the HUD':'cut by the stage'}`);
+   }
+   if(bad.length)throw Error(`${style}: ${bad.join('; ')}`);
+  }
+ },{width:844,height:390});
+ // Legibility at 844×390 (design 1.3): at every half beat of [16,7] ×, every value and IO pill
+ // wholly on the stage reads at 10 px or more and every INPUT/OUTPUT caption at 8, but the
+ // opening's Input pill, boxed in between the input coins and the triangle (its numbers are in
+ // the coins' own pills and in Input; docs/verification.md, round 4). 8 of 73 were under 10 px:
+ // the 1 over its socket ring, the Input pill as 112 rides up beside it, the 3 at the stage's foot.
+ // The opening's INPUT caption drew at 7.9 px: it lies under the first input coin's rim, and grew
+ // only about its middle; it grows down from its top now, as it does at the opening on the
+ // smaller landscape phones (7.45 px at 640×360 and 667×375). (Sizes are k rounded down to
+ // 1/1000: 9.99 px is 10.)
+ await mcheck('machine 24: 844×390 [16,7] ×: every pill on the stage reads at 10 px and every caption at 8, but the opening\'s Input pill (640×360, 667×375: the opening\'s captions)',async()=>{
+  await touch();
+  for(const [w,h] of [[844,390],[640,360],[667,375]]){
+   await resize(w,h);
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await mload({op:'mul',input:'16,7',auto:0});await wait(200);
+    const n=w===844?(await mstate()).beats:0,bad=[];
+    for(let t=0;t<=n;t+=.5){
+     await page.eval(`window.__machine.seek(${t})`);await settle();
+     for(const p of (await page.eval(PILLS)).out)if(!p.hud&&!p.cut&&(p.caption||w===844)&&p.px<(p.caption?7.95:9.95)&&!(t===0&&p.text==='[16, 7]'))bad.push(`t ${t}: ${p.text} ${p.px.toFixed(2)} px`);
+    }
+    if(bad.length)throw Error(`${w}×${h} ${style}: ${bad.join('; ')}`);
+   }
+  }
+ },{width:844,height:390});
+ // The fold (design 4.5, 4.8): on a phone the HUD folds away during a run, and in portrait the
+ // palette strip and the bar's second row with it. The camera jumped with it: at 568×320 the
+ // picture dropped 47 px on the first frame of a run and rose 31 px on the frame after it ended
+ // (and at 640×360, 667×375 and 844×390); in portrait, where the stage grows, 80 to 110 px. The
+ // frame at rest is carried into the run's stage now and eased to the run's own framing: from
+ // t = 0 (at rest) to t = 0.0005 (running) and from n − 0.0005 to n no point of the stage moves
+ // 2 px on screen, in both styles, on phones, a tablet and a desktop. The run's end is checked
+ // where the stage at rest keeps its size from the opening to the end, as it does on every
+ // landscape phone: where Output's line, which first appears at t = n, sits under the stage and
+ // takes its height (≈ 20 px at 360×640, 375×667 and 1440×900), the camera reframes for the
+ // smaller stage, an older jump than the fold's (docs/verification.md).
+ const CAMERA=`(()=>{const st=document.getElementById('machine-stage'),s=st.getBoundingClientRect(),m=document.getElementById('machine-svg').getScreenCTM();return {box:{l:s.left+st.clientLeft,t:s.top+st.clientTop,r:s.left+st.clientLeft+st.clientWidth,b:s.top+st.clientTop+st.clientHeight},a:m.a,e:m.e,f:m.f,hud:document.getElementById('machine-hud').getBoundingClientRect().height>0};})()`;
+ // how far the machine point under each corner (and the centre) of the stage moves on screen
+ const moved=(p,q)=>{const b=p.box;return Math.max(...[[b.l,b.t],[b.r,b.t],[b.l,b.b],[b.r,b.b],[(b.l+b.r)/2,(b.t+b.b)/2]].map(([x,y])=>{const mx=(x-p.e)/p.a,my=(y-p.f)/p.a;return Math.hypot(q.a*mx+q.e-x,q.a*my+q.f-y);}));};
+ await mcheck('machine 26: the camera does not jump as a run begins or ends, though the HUD folds (phones in both orientations, a tablet, a desktop; both styles)',async()=>{
+  await touch();
+  for(const [w,h] of [[568,320],[640,360],[667,375],[844,390],[360,640],[375,667],[390,844],[412,915],[768,1024],[1440,900]]){
+   await resize(w,h);
+   const phone=w<700||h<=520;
+   for(const style of ['sketchpad','cyber']){
+    await setStyle(style);
+    await mload({op:'mul',input:'16,7',auto:0});await wait(200);
+    const n=(await mstate()).beats,at=async t=>{await page.eval(`window.__machine.seek(${t})`);await settle();return page.eval(CAMERA);},where=`${w}×${h} ${style}`;
+    const c0=await at(0),c1=await at(.0005);
+    expect(c0.hud,true,`${where}: the HUD at rest`);expect(c1.hud,!phone,`${where}: the HUD during the run`);
+    if(moved(c0,c1)>2)throw Error(`${where}: the picture jumps ${moved(c0,c1).toFixed(1)} px as the run begins`);
+    const c2=await at(n-.0005),c3=await at(n),kept=['l','t','r','b'].every(k=>Math.abs(c3.box[k]-c0.box[k])<.5);
+    expect(c3.hud,true,`${where}: the HUD after the run`);
+    if(h<=520)expect(kept,true,`${where}: the stage at rest keeps its size from the opening to the end`);
+    if(kept&&moved(c2,c3)>2)throw Error(`${where}: the picture jumps ${moved(c2,c3).toFixed(1)} px as the run ends`);
+   }
+  }
+ },{width:568,height:320});
 }finally{server.kill();}
 for(const [name,error] of results)console.log(`${error?'FAIL':'ok  '} ${name}${error?`\n     ${error}`:''}`);
 const failed=results.filter(r=>r[1]).length;

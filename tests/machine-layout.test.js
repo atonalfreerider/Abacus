@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutPlan, scenesOf, cameraAt, parsePlace, intersects, bulbOffset, FURNITURE, UNITS } from '../src/machine/layout.js';
+import { layoutPlan, scenesOf, cameraAt, parsePlace, intersects, bulbOffset, foldWeight, moveCamera, foldCamera, FURNITURE, UNITS } from '../src/machine/layout.js';
 import { renderMachine } from '../src/machine/render.js';
 import { machineScenes } from '../src/machine/scenes.js';
 import { planMachine } from '../src/machine/plan.js';
+import { parseExpression } from '../src/machine/tree.js';
 
 const { scenes } = await machineScenes();
 const planned = (op, inputs, base = 'binary', tree = {n1: {op, parent: 'io', socket: 'C'}}) => planMachine({tree, inputs, base}).plan;
@@ -218,6 +219,60 @@ test('the opening on a landscape phone shows the block under the triangle', () =
     for (const id of Object.keys(plan.start.towers)) { const t = L.towerBox(plan.start, id); assert.ok(t.y >= cam.y + 24 / s - 1e-6, `${viewport.width}×${viewport.height}: input ${id} under the band`); }
   }
 });
+// The stages the app gives the camera on phones at the opening (measured in headless Chrome
+// with touch, both styles; the client box, under a one-line HUD band of 19 px): 390×844,
+// 375×667, 844×390, 667×375, 740×360, and 360×640 and 640×360, where the HUD keeps to one
+// line in its tighter spacing (it took two, 33 px, and 360×640 opened [16,7] with no block).
+const PHONE_STAGES = [[{width: 372, height: 490}, 19], [{width: 357, height: 313}, 19], [{width: 536, height: 332}, 19], [{width: 359, height: 319}, 19], [{width: 432, height: 302}, 19], [{width: 342, height: 286}, 19], [{width: 332, height: 304}, 19]];
+// The opening of every README machine shows its root block under the triangle, and the inputs
+// below the band, on every one of them: a machine of two rows ((5 + 3) × 7) misses the
+// smallest scale even unpadded, and is framed from IO down rather than centred on IO.
+test('the opening on a phone shows the root block of every README machine', () => {
+  for (const text of ['16*7', '(5+3)*7', '45/6', '45%6', '12&10', '~5', '7<=>9', '5<<3', 'shr(45,2)', '-(3+4)', '((1+2)*(3+4))*5']) {
+    const parsed = parseExpression(text, 'binary'), plan = planMachine({tree: parsed.tree, inputs: parsed.inputs, base: 'binary'}).plan, L = layoutPlan(plan);
+    const root = Object.keys(plan.tree).find(id => plan.tree[id].parent === 'io'), box = L.nodeBox(root);
+    for (const [viewport, top] of PHONE_STAGES) {
+      const cam = cameraAt(plan, L, 0, viewport, {inset: {top}}), s = viewport.width / cam.w, y0 = cam.y + top / s, where = `${text} at ${viewport.width}×${viewport.height}`;
+      assert.ok(box.y >= y0 - 1e-6 && box.y + box.h <= cam.y + cam.h + 1e-6, `${where}: the root block at ${box.y}..${box.y + box.h}, the stage ${y0}..${cam.y + cam.h}`);
+      for (const id of Object.keys(plan.start.towers)) { const t = L.towerBox(plan.start, id); assert.ok(t.y >= y0 - 1e-6 && t.x >= cam.x - 1e-6 && t.x + t.w <= cam.x + cam.w + 1e-6, `${where}: input ${id} off the stage`); }
+    }
+  }
+});
+// The end of a pan (4.5): a beat whose moving bulbs fit the stage at the smallest scale ends
+// with every one of them on it, the dark bulbs a shift slides in under a 15-level tower
+// included; only bulbs taller than the stage end at the motion front. Under the HUD band (19 px
+// at 844×390) that is the 16-level 65025, and the pills over the 15-level towers end partly
+// under the band; during a run the band folds away (style.css), and on that whole stage every
+// beat settles with its bulbs on stage and, but for 65025's (with its pill 14 px taller than the
+// stage), the pills of its towers too.
+test('a tall tower settles whole at the end of its beat whenever its bulbs fit (844×390)', () => {
+  for (const top of [PHONE_STAGES[2][1], 0]) settles(PHONE_STAGES[2][0], top);
+});
+function settles(viewport, top) {
+  const plan = planned('mul', ['255', '255']), L = layoutPlan(plan), list = scenesOf(plan), cut = [];
+  const at = (scene, b) => { const t = scene.towers[b.t]; if (!t) return null; const p = L.place(t.at, b.slot); return {x: p.x, y: p.y - (t.form === 'coin' ? 6 : 84) * b.l, tower: t.form !== 'coin', t: b.t}; };
+  let settled = 0, tall = 0;
+  plan.beats.forEach((beat, i) => {
+    const a = list[i], z = list[i + 1], m = beat.motion || {}, ends = [];
+    for (const id of new Set([...Object.keys(a.bulbs), ...Object.keys(z.bulbs)])) {
+      const A = a.bulbs[id], B = z.bulbs[id]; let p0 = null, p1 = null;
+      if (A && B) { p0 = at(a, A); p1 = at(z, B); } else if (A && m[id]?.to) { p0 = at(a, A); p1 = at(z, m[id].to); } else if (B && m[id]?.from) { p0 = at(a, m[id].from); p1 = at(z, B); }
+      if (p0 && p1 && p1.tower && Math.hypot(p1.x - p0.x, p1.y - p0.y) >= 1) ends.push(p1);
+    }
+    if (!ends.length) return;
+    const cam = cameraAt(plan, L, i + 1, viewport, {inset: {top}}), s = viewport.width / cam.w, y0 = cam.y + top / s, R = UNITS.bulbR;
+    const lo = Math.min(...ends.map(p => p.y)) - R, hi = Math.max(...ends.map(p => p.y)) + R;
+    if (hi - lo > cam.y + cam.h - y0) { tall++; return; }
+    for (const p of ends) assert.ok(p.y - R >= y0 - 1e-6 && p.y + R <= cam.y + cam.h + 1e-6 && p.x - R >= cam.x - 1e-6 && p.x + R <= cam.x + cam.w + 1e-6, `band ${top}, beat ${i} (${beat.kind}): a bulb ends at ${p.y}, the stage ${y0}..${cam.y + cam.h}`);
+    settled++;
+    for (const t of new Set(ends.map(p => p.t))) { const q = L.pillBox(z, t); if (q.y < y0 - 1e-6 || q.y + q.h > cam.y + cam.h + 1e-6) cut.push(`${i} ${z.towers[t].value ?? t}`); }
+  });
+  if (top) assert.ok(settled >= 36 && tall <= 2, `band ${top}: ${settled} beats settled, ${tall} taller than the stage`);
+  else {
+    assert.deepEqual([settled, tall], [38, 0], 'with no band every beat settles');
+    assert.deepEqual(cut.map(c => +c.split(' ')[0]), [38, 39], `pills cut: ${cut.join(', ')}`);
+  }
+}
 // A machine still being built has no towers to widen its blocks: siblings are kept apart by
 // their socket rings (r 44) and a selected socket's mark (r 52), so a tap on one socket's
 // centre never lands on its neighbour's ring.
@@ -241,6 +296,38 @@ test('the HUD: the opening frame and every beat\'s movers keep clear of the corn
       const box = L.towerBox(scene, id), X = (box.x - cam.x) * s, Y = (box.y - cam.y) * s;
       assert.ok(!(X < hud.width && Y < hud.height && X + box.w * s > 0 && Y + box.h * s > 0) || k > 0 && box.h * s > viewport.height - hud.height - 2 * FURNITURE.pad, `boundary ${k}: tower ${id} under the HUD`);
     }
+  }
+});
+
+// The fold (4.5, 4.8): on a phone the HUD (and in portrait the palette strip and the bar's second
+// row) folds away during a run. The camera frames as at rest at t = 0 and t = n, carried into the
+// run's stage so that nothing moves on screen, and eases to the run's framing over the first beat
+// and back over the last: no jump as the run begins or ends (at 568 × 320 the picture dropped
+// 47 px on the first frame of a run and rose 31 px on the frame after it ended).
+test('the fold: the camera eases between the framing at rest and the run\'s, and never jumps', () => {
+  assert.equal(foldWeight(0, 16), 0); assert.equal(foldWeight(16, 16), 0); assert.equal(foldWeight(-1, 16), 0); assert.equal(foldWeight(NaN, 16), 0);
+  for (const t of [1, 2, 7.5, 15]) assert.equal(foldWeight(t, 16), 1, `t ${t}`);
+  assert.ok(Math.abs(foldWeight(.5, 16) - .75) < 1e-12 && Math.abs(foldWeight(15.5, 16) - .25) < 1e-12, 'eased like the beat');
+  for (let t = 0; t < 16; t += .01) assert.ok(Math.abs(foldWeight(t + .01, 16) - foldWeight(t, 16)) <= .021, `continuous at ${t.toFixed(2)}`);
+  assert.deepEqual([.2, .49, .5, .8, 15.2, 15.49, 15.5].map(t => foldWeight(t, 16, true)), [0, 0, 1, 1, 1, 1, 0], 'a cut at mid-beat with reduced motion');
+  assert.ok(foldWeight(.5, 1) > 0 && foldWeight(.5, 1) <= .5 && foldWeight(1, 1) === 0, 'one beat: out and back');
+  // a viewBox carried into another stage keeps its scale and every machine point on screen
+  const cam = {x: -300, y: -200, w: 1200, h: 800}, from = {x: 16, y: 149, width: 360, height: 240}, to = {x: 16, y: 101, width: 360, height: 393};
+  const moved = moveCamera(cam, from, to), on = (c, st, [mx, my]) => [st.x + (mx - c.x) * st.width / c.w, st.y + (my - c.y) * st.width / c.w];
+  for (const p of [[0, 0], [-300, -200], [900, 600], [123, -45]]) { const [a, b] = on(cam, from, p), [c, d] = on(moved, to, p); assert.ok(Math.abs(a - c) < .01 && Math.abs(b - d) < .01, `${p} stays put`); }
+  assert.ok(Math.abs(moved.w / moved.h - to.width / to.height) < 1e-4, 'the run stage\'s shape');
+  // the blend: its ends are the cameras themselves; between them the scale stays at its floor or more
+  const plan = planned('mul', ['16', '7']), L = layoutPlan(plan), viewport = {width: 536, height: 264}, n = plan.beats.length;
+  const rest = t => cameraAt(plan, L, t, viewport, {inset: {top: 32}}), run = t => cameraAt(plan, L, t, viewport);
+  const at = t => foldCamera(rest(t), run(t), foldWeight(t, n));
+  assert.deepEqual(at(0), rest(0)); assert.deepEqual(at(n), rest(n)); assert.deepEqual(at(4), run(4));
+  for (let t = 0; t <= n; t += .05) assert.ok(viewport.width / at(t).w >= FURNITURE.minScale - 1e-9, `t ${t.toFixed(2)}: scale`);
+  // no jump: from frame to frame (1/60 of a 1 s beat) the stage's corners move no further than
+  // the cameras themselves do
+  const shift = (p, q) => Math.max(...[[0, 0], [viewport.width, 0], [0, viewport.height], [viewport.width, viewport.height]].map(([x, y]) => { const mx = p.x + x * p.w / viewport.width, my = p.y + y * p.w / viewport.width; return Math.hypot((mx - q.x) * viewport.width / q.w - x, (my - q.y) * viewport.width / q.w - y); }));
+  for (const t0 of [0, n - 1]) for (let t = t0; t < t0 + 1; t += 1 / 60) {
+    const own = Math.max(shift(rest(t), rest(t + 1 / 60)), shift(run(t), run(t + 1 / 60)));
+    assert.ok(shift(at(t), at(t + 1 / 60)) <= own + 3, `t ${t.toFixed(3)}: ${shift(at(t), at(t + 1 / 60)).toFixed(1)} px against ${own.toFixed(1)}`);
   }
 });
 
