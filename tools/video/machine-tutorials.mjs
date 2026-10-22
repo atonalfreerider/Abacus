@@ -375,7 +375,7 @@ export const machineTutorials = {
       await run(ctx, {flow: 1});
       await M.captionBeat(2, {text: 'Base e: each level is worth e ≈ 2.718 of the one below.', min: 4.5});
       // A close-up of the level 2 stands on: two sockets full, and the sliver.
-      const level = await M.point('t3', 0);
+      const level = await M.point('t3', 0, {dx: 50});
       await ctx.wheel(level, 2.2, 1.2);
       await M.note('A level has room for e bulbs: two, and a sliver.', {extra: .4});
       await ctx.wheel(level, 1 / 2.2, .8);
@@ -472,7 +472,7 @@ export const machineTutorials = {
       await M.captionBeat(2, {min: 3.5});
       await M.captionBeat(3, {text: 'The height of the folded light is ln.', min: 4});
       await finish(ctx);
-      await closing(ctx, {rows: [{bits: '1110000', label: 'base 2'}, {bits: '11011', base: 'ternary', label: 'base 3'}, {bits: '20010.001…', base: 'e', label: 'base e'}], title: 'The cost of a base, b ÷ ln b: 2.885, 2.731, 2.718.'}, 5.5);
+      await closing(ctx, {rows: [{bits: '1110000', label: 'base 2'}, {bits: '11011', base: 'ternary', label: 'base 3'}, {bits: '20010.001…', base: 'e', label: 'base e'}], title: 'The cost of a base, b\u00a0÷\u00a0ln\u00a0b: 2.885, 2.731, 2.718.'}, 5.5);
     },
   },
 };

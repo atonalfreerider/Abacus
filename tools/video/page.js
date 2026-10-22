@@ -55,6 +55,7 @@ export const overlay = `(() => {
   #rec .key{position:absolute;right:var(--key-right,36px);top:var(--key-top,120px);bottom:var(--key-bottom,auto);min-width:1.6em;padding:.2em .55em .28em;border:2px solid #25241e;border-bottom-width:5px;border-radius:.32em;background:#fbf6e8;color:#25241e;font:600 var(--key-size,30px)/1.1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.02em;text-align:center;box-shadow:0 6px 16px #0003;opacity:0;white-space:nowrap}
   #rec .card .kicker{font-size:calc(var(--title-size)*.2);letter-spacing:.22em;text-transform:uppercase;color:#6d6858;margin-top:-.2em}
   #rec .bulbset{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-end;gap:.4em 1.6em;margin-bottom:.45em;max-width:100%}
+  #rec .bulbset.stack{flex-direction:column;align-items:center;gap:.7em}
   #rec .bulbgroup{display:flex;flex-direction:column;align-items:center;gap:.35em}
   #rec .bulbrow{display:flex;align-items:center;justify-content:center;gap:calc(var(--bs)*.3)}
   #rec .bulbrow .level{display:flex;gap:calc(var(--bs)*.06)}
@@ -136,9 +137,13 @@ export const overlay = `(() => {
     async bulbTitle({bits, base = 'binary', text, rows, brand = 'Abacus', kicker = 'Machine', title, subtitle} = {}, on = true, time = .5) {
       await theme;
       const list = rows || (bits ? [{bits, base, text}] : []);
-      const room = 84 / Math.max(1, list.reduce((w, r) => w + rowWidth(r), 0) + (list.length - 1) * 2.4);
-      const size = 'min(calc(var(--title-size) * .5), ' + room.toFixed(3) + 'vw)';
-      const html = '<div class="bulbcard">' + (list.length ? '<div class="bulbset">' + list.map(r => bulbRow(r, size)).join('') + '</div>' : '')
+      // Rows sit side by side while their bulbs stay at least 24 px across; otherwise (a
+      // portrait card) each row takes a line of its own.
+      const room = innerWidth * .84, big = (parseFloat(getComputedStyle(root).getPropertyValue('--title-size')) || 80) * .5;
+      let px = Math.min(big, room / Math.max(1, list.reduce((w, r) => w + rowWidth(r), 0) + (list.length - 1) * 2.4)), stack = false;
+      if (list.length > 1 && px < 24) { stack = true; px = Math.min(big, room / Math.max(1, ...list.map(rowWidth))); }
+      const size = px.toFixed(2) + 'px';
+      const html = '<div class="bulbcard">' + (list.length ? '<div class="bulbset' + (stack ? ' stack' : '') + '">' + list.map(r => bulbRow(r, size)).join('') + '</div>' : '')
         + '<div class="brand">' + brand + '</div>' + (kicker ? '<div class="kicker">' + kicker + '</div>' : '')
         + (title ? '<div class="title">' + title + '</div>' : '') + (subtitle ? '<div class="subtitle">' + subtitle + '</div>' : '') + '</div>';
       this.card(html, on, time);

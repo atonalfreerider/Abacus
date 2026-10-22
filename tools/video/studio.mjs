@@ -41,6 +41,17 @@ function chunk(words, limit) {
   }
   return chunks.map(list => ({text: text(list), start: list[0].start, end: list.at(-1).end}));
 }
+// A silent caption a little past the width splits at its first colon into a scrap ('13 + 9:')
+// that would flash by; a scrap joins its neighbour when the two fit in about two lines.
+function tidy(chunks, limit) {
+  const out = [];
+  for (const c of chunks) {
+    const last = out.at(-1), join = (a, b) => ({text: `${a.text} ${b.text}`, start: a.start, end: b.end});
+    if (last && (last.text.length < 20 || c.text.length < 20) && last.text.length + c.text.length + 1 <= limit * 1.3) out[out.length - 1] = join(last, c);
+    else out.push(c);
+  }
+  return out;
+}
 const stamp = s => { const ms = Math.round(s * 1000), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
 
 // Reading pace for silent captions: about 15 characters a second, at least 1.6 s.
@@ -126,7 +137,7 @@ export async function record({origin, format: formatName, script, out, fps = 30,
       const words = text.split(/\s+/).filter(Boolean), total = words.reduce((n, w) => n + w.length + 1, 0);
       let chars = 0;
       const timed = words.map(w => { const s = start + length * chars / total; chars += w.length + 1; return {text: w, start: s, end: start + length * chars / total}; });
-      const mine = chunk(timed, format.captionChars).map(c => ({text: c.text, start: c.start, end: c.end, at}));
+      const mine = tidy(chunk(timed, format.captionChars), format.captionChars).map(c => ({text: c.text, start: c.start, end: c.end, at}));
       captions.push(...mine);
       captions.sort((a, b) => a.start - b.start);
       // stop() takes the caption down now (a chunk not yet shown is dropped).
@@ -333,9 +344,9 @@ function machineHelpers(ctx, page) {
       const seconds = Math.max(speed ? 0 : min, reading, speed ? length / 1000 / speed : 0);
       // several lines share the beat in proportion to their reading time; each caption
       // stays until the next one replaces it, so none blinks out between frames
-      for (const line of lines) {
+      for (const [k, line] of lines.entries()) {
         const share = seconds * readingTime(line) / reading;
-        ctx.caption(line, share + .25, {at});
+        ctx.caption(line, share + .25 + (k === lines.length - 1 ? hold : 0), {at});
         await ctx.stretch(length * share / seconds, share);
       }
       for (const line of [].concat(extra)) await m.note(line, {at});
