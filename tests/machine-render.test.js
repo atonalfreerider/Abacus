@@ -172,6 +172,17 @@ test('UNFOLD: every deposit is born within 0.05 level of the falling light', () 
   assert.ok(!bulbsIn(renderMachine(plan, i + 1, layout).svg).some(b => b.id === 'b1'));
 });
 
+test('a fill readout shows only while its light is at rest: it fades as the light sets off (3.3)', () => {
+  // level pace: the second UNFOLD beat starts where the first left the light, with its readout
+  const plan = fixture('e-measure-112-level'), L = layoutPlan(plan), i = plan.beats.findIndex((b, k) => b.kind === 'unfold' && plan.beats[k - 1].kind === 'unfold');
+  const note = t => { const m = renderMachine(plan, t, L).svg.match(/<g class="note"( opacity="([^"]+)")?>.*?<text[^>]*>([^<]*)</); return m ? {o: m[1] ? +m[2] : 1, text: m[3]} : null; };
+  const before = note(i), after = note(i + 1);
+  assert.match(before.text, /bulbs?’ worth at e/); assert.equal(before.o, 1);
+  assert.ok(note(i + .05).o < 1, 'fading as the light falls');
+  assert.equal(note(i + .5), null, 'hidden while the light moves');
+  assert.deepEqual(note(i + .9), after, 'the next rest\'s readout from u 0.9');
+});
+
 test('reduced motion holds, crossfades and holds: no bulb ever between levels', () => {
   for (const [name, plan] of plans) {
     const layout = layoutPlan(plan), list = scenesOf(plan);

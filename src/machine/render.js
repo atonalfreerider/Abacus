@@ -167,6 +167,11 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
   const drawnAt = new Map();  // tower → [{x, y, level, scale}] for the place-value column
   const markOpacity = beat ? Math.min(E(u, [0, .1]), 1 - E(u, [.9, 1])) : 0;
   const labelScene = reduced ? (v < .5 ? a : z) : (u < .9 ? a : z);
+  // Towers whose light glides along a path this beat: the fill readout in their note belongs
+  // to the light at rest (3.3), so the old one fades out as the light sets off and the new one
+  // shows only when the labels switch at u 0.9.
+  const gliding = new Set();
+  if (!reduced) for (const [id, mo] of Object.entries(motions)) { const q = mo.path && (a.bulbs[id] || z.bulbs[id]); if (q?.k === 'light') gliding.add(q.t); }
   const atActive = t => { const p = parsePlace(t.at); return view.active === 'io' ? p.io === 'io' : p.node === view.active; };
   const origins = new Map();
   const originOf = tid => {
@@ -373,9 +378,10 @@ function frame(layout, a, z, beat, u, palette, view, far = null) {
       let svg = lift < 0 ? `<path d="M${r(cx)} ${r(bottom)}V${r(bottom - lift)}" stroke="${m.label}" stroke-width="1.5" stroke-dasharray="3 4" opacity=".6"/>` : '';
       svg += `<rect x="${r(cx - w / 2)}" y="${r(top)}" width="${w}" height="${h}" rx="18" fill="${m.labelFill}" fill-opacity=".85" stroke="${m.label}" stroke-width="1.2"/>`;
       lines.forEach((line, j) => { svg += `<text x="${r(cx)}" y="${r(top + UNITS.pillLine * (j + .5) + 1)}" font-size="${j ? 22 : 27}" text-anchor="middle" dominant-baseline="central" fill="${m.label}"${j ? ' opacity=".8"' : ''}>${esc(line)}</text>`; });
-      if (t.note) {
+      const noteOp = gliding.has(tid) && u < .9 ? 1 - E(u, [0, .1]) : 1;
+      if (t.note && r(noteOp) > 0) {
         const nw = textWidth(t.note), left = place.socket === 'L' && place.i === null ? cx - w / 2 - 6 - nw : cx + w / 2 + 6;
-        svg += `<g class="note"><rect x="${r(left)}" y="${r(bottom - UNITS.pillLine)}" width="${nw}" height="${UNITS.pillLine}" rx="18" fill="${m.labelFill}" fill-opacity=".6" stroke="${m.label}" stroke-width="1" stroke-dasharray="4 3"/><text x="${r(left + nw / 2)}" y="${r(bottom - UNITS.pillLine / 2 + 1)}" font-size="22" text-anchor="middle" dominant-baseline="central" fill="${m.label}">${esc(t.note)}</text></g>`;
+        svg += `<g class="note"${attr('opacity', noteOp)}><rect x="${r(left)}" y="${r(bottom - UNITS.pillLine)}" width="${nw}" height="${UNITS.pillLine}" rx="18" fill="${m.labelFill}" fill-opacity=".6" stroke="${m.label}" stroke-width="1" stroke-dasharray="4 3"/><text x="${r(left + nw / 2)}" y="${r(bottom - UNITS.pillLine / 2 + 1)}" font-size="22" text-anchor="middle" dominant-baseline="central" fill="${m.label}">${esc(t.note)}</text></g>`;
       }
       return `<g class="pill" data-t="${tid}"${attr('opacity', opacity)}>${svg}</g>`;
     };
