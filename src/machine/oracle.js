@@ -1,5 +1,10 @@
 // Reference results for every binary and ternary block, with no animation: the planners'
 // outputs and the identities are checked against this, and this against BigInt.
+//
+// evaluate(op, base, args) → {value, remainder?} | {error: 'zeroDivision'|'domain'|'tooBig'}
+// (6.6). DIV and SHR give the remainder beside the quotient; MOD's value is the remainder.
+// 'tooBig' is 6.10's computed shift count past any tower: such a count cannot even be
+// multiplied out, so it is refused here rather than computed.
 import {RADIX, divTrunc, divRound, tritwise, signOf, bitLength} from './bigmath.js';
 
 export const OPS = {
@@ -19,7 +24,7 @@ export function evaluate(op, base, args) {
     case 'div': case 'mod': {
       if (b === 0n) return {error: 'zeroDivision'};
       const {q, r} = divide(base, a, b);
-      return op === 'div' ? {value: q, remainder: r} : {value: r, quotient: q};
+      return op === 'div' ? {value: q, remainder: r} : {value: r};
     }
     case 'cmp': return {value: BigInt(signOf(a - b))};
     case 'shl':

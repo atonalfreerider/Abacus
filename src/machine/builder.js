@@ -150,9 +150,11 @@ export class PlanBuilder {
     this.#sorted.set(towerId, out);
     return out;
   }
+  // The bigint a tower's bulbs sum to (6.6), for the whole-number bases. A base-e tower has
+  // no bigint value (its levels are powers of e), so its planners read Tower.value instead.
   valueOf(towerId) {
     const radix = RADIX[this.#base];
-    if (!radix) throw new Error(`valueOf needs whole-number levels, not base ${this.#base}`);
+    if (!radix) throw new Error(`valueOf sums whole-number levels; base ${this.#base} reads Tower.value`);
     const ids = this.#index.get(towerId) || [], small = SMALL_LEVEL[this.#base];
     let fits = true;
     for (const id of ids) if (this.#s.bulbs[id].l > small) { fits = false; break; }

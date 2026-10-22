@@ -16,10 +16,8 @@ const started = performance.now();
 const tree = op => ({n1: {op, parent: 'io', socket: 'C'}});
 const UNARY = ['not', 'neg'], SHIFTS = ['shl', 'shr'], DIVIDE = ['div', 'mod'], QUOTIENTS = ['div', 'mod', 'shr'];
 const expected = (op, base, args) => {
-  const r = evaluate(op, base, args.map(BigInt));
-  if (op === 'div' || op === 'shr') return [String(r.value), String(r.remainder)];
-  if (op === 'mod') return [String(r.quotient), String(r.value)];
-  return [String(r.value)];
+  const r = evaluate(op === 'mod' ? 'div' : op, base, args.map(BigInt));
+  return op === 'div' || op === 'mod' || op === 'shr' ? [String(r.value), String(r.remainder)] : [String(r.value)];
 };
 // One plan, checked: the oracle's answer, every invariant, MULT's beat count and, when
 // asked, purity: planned twice it is equal and JSON-safe, and the faster of the two plans

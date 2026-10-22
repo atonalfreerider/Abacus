@@ -73,6 +73,14 @@ test('a = q·b + r with each convention\'s bounds, and SHR(a, k) = DIV(a, b^k)',
     if (2n * abs(r3.remainder) === abs(b) && r3.remainder && (r3.remainder < 0n) !== (a < 0n)) assert.fail(`ternary tie ${a} ÷ ${b}`);
     if (evaluate('mod', 'ternary', [a, b]).value !== r3.remainder || evaluate('mod', 'binary', [a, b]).value !== t.remainder) assert.fail(`mod ${a}, ${b}`);
   }
+  // the shapes of 6.6: {value, remainder?} | {error}; MOD's value is the remainder
+  assert.deepEqual(evaluate('mod', 'ternary', [19n, 5n]), {value: -1n});
+  assert.deepEqual(evaluate('div', 'binary', [45n, 6n]), {value: 7n, remainder: 3n});
+  assert.deepEqual(evaluate('shr', 'binary', [-13n, 2n]), {value: -3n, remainder: -1n});
+  assert.deepEqual(evaluate('div', 'binary', [1n, 0n]), {error: 'zeroDivision'});
+  assert.deepEqual(evaluate('shl', 'binary', [1n, -1n]), {error: 'domain'});
+  assert.deepEqual(evaluate('min', 'binary', [1n, 2n]), {error: 'domain'});
+  assert.deepEqual(evaluate('shl', 'binary', [1n, 5000n]), {error: 'tooBig'}, 'a count no tower could hold (6.10)');
   assert.equal(evaluate('mod', 'ternary', [19n, 5n]).value, -1n, '19 mod 5 = −1');
   assert.equal(evaluate('mod', 'ternary', [14n, 4n]).value, 2n, '14 mod 4 = 2');
   for (const base of ['binary', 'ternary']) for (const a of span(-300, 300)) for (let k = 0n; k <= 8n; k++) {

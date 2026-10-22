@@ -213,6 +213,9 @@ function explain(op, res, parts, args) {
   return res.message;
 }
 export const takes = n => `This machine takes ${n} number${n === 1 ? '' : 's'}`;
+// → {ok:true, values, text} | {ok:false, reason, node, message}. Beside 6.6's zeroDivision
+// and domain, reason is 'arity' (no block, or a count of inputs the sockets do not take;
+// node null) or 'tooBig' (a value past the base's reach, 6.10), as planMachine reports them.
 export function evaluateTree(tree, inputs, base) {
   const open = rootOf(tree) ? openSockets(tree).length : 0;
   if (open && inputs.length !== open) return {ok: false, reason: 'arity', node: null, message: takes(open)};
